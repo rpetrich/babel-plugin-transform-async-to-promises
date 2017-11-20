@@ -212,11 +212,15 @@ module.exports = function({ types, template }) {
 			}
 			args = [target, continuation];
 		} else if (isPassthroughContinuation(continuation)) {
-			args = [target, types.unaryExpression("void", types.numericLiteral(0)), catchContinuation];
+			args = [target, voidExpression(), catchContinuation];
 		} else {
 			args = [target, continuation, catchContinuation];
 		}
 		return types.callExpression(types.identifier("__await"), args);
+	}
+
+	function voidExpression(arg) {
+		return types.unaryExpression("void", arg || types.numericLiteral(0));
 	}
 
 	function borrowTail(target) {
@@ -391,50 +395,46 @@ module.exports = function({ types, template }) {
 						that.usedAwaitHelper = true;
 						let exitIdentifier;
 						while (parent !== path && parent) {
-							if (parent.isIfStatement()) {
-								const explicitExits = pathsReachNodeTypes(parent, ["ReturnStatement", "ThrowStatement"]);
-								if (!explicitExits.all) {
-									const index = relocatedBlocks.findIndex(block => block.path === parent);
-									if (index === -1) {
+							const index = relocatedBlocks.findIndex(block => block.path === parent);
+							if (index !== -1) {
+								if (!exitIdentifier) {
+									exitIdentifier = relocatedBlocks[index].identifier;
+								}
+							} else {
+								const block = parent;
+								if (block.isIfStatement()) {
+									const explicitExits = pathsReachNodeTypes(parent, ["ReturnStatement", "ThrowStatement"]);
+									if (!explicitExits.all) {
 										if (!exitIdentifier && explicitExits.any) {
 											exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
 											path.scope.push({ id: exitIdentifier });
 										}
-										const ifStatement = parent;
 										relocatedBlocks.push({
 											relocate() {
 												let resultIdentifier = null;
 												if (explicitExits.any) {
 													resultIdentifier = path.scope.generateUidIdentifier("result");
-													ifStatement.insertAfter(types.IfStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+													block.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
 												}
-												relocateTail(inlineEvaluated([ifStatement.node]), null, ifStatement, resultIdentifier);
+												relocateTail(inlineEvaluated([block.node]), null, block, resultIdentifier);
 											},
 											path: parent,
 										});
-									} else {
-										if (!exitIdentifier) {
-											exitIdentifier = relocatedBlocks[index].identifier;
-										}
 									}
-								}
-							} else if (parent.isTryStatement()) {
-								const index = relocatedBlocks.findIndex(block => block.path === parent);
-								if (index === -1) {
+								} else if (block.isTryStatement()) {
 									const explicitExits = pathsReachNodeTypes(parent, ["ReturnStatement", "ThrowStatement"]);
-									const tryStatement = parent;
 									relocatedBlocks.push({
 										relocate() {
 											const temporary = explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
 											const success = explicitExits.all ? types.returnStatement(temporary) : null;
-											let evalBlock = tryHelper(tryStatement.node.block);
+											let evalBlock = tryHelper(block.node.block);
 											that.usedTryHelper = true;
 											let finallyFunction;
-											if (tryStatement.node.finalizer) {
+											if (block.node.finalizer) {
 												that.usedFinallyHelper = true;
 												let finallyArgs = [];
-												let finallyBody = tryStatement.node.finalizer.body;
-												if (!pathsReachNodeTypes(tryStatement.get("finalizer"), ["ReturnStatement", "ThrowStatement"]).all) {
+												let finallyBody = block.node.finalizer.body;
+												if (!pathsReachNodeTypes(block.get("finalizer"), ["ReturnStatement", "ThrowStatement"]).all) {
 													const resultIdentifier = path.scope.generateUidIdentifier("result");
 													const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
 													finallyArgs = [wasThrownIdentifier, resultIdentifier];
@@ -442,15 +442,49 @@ module.exports = function({ types, template }) {
 												}
 												finallyFunction = types.functionExpression(null, finallyArgs, types.blockStatement(finallyBody));
 											}
-											if (tryStatement.node.handler) {
-												const catchFunction = types.functionExpression(null, [tryStatement.node.handler.param], tryStatement.node.handler.body);
-												evalBlock = types.callExpression(types.memberExpression(evalBlock, types.identifier("then")), [types.unaryExpression("void", types.numericLiteral(0)), catchFunction]);
+											if (block.node.handler) {
+												const catchFunction = types.functionExpression(null, [block.node.handler.param], block.node.handler.body);
+												evalBlock = types.callExpression(types.memberExpression(evalBlock, types.identifier("then")), [voidExpression(), catchFunction]);
 											}
-											relocateTail(evalBlock, success, tryStatement, temporary)
+											relocateTail(evalBlock, success, block, temporary)
 											if (finallyFunction) {
-												const returnArgument = tryStatement.get("argument");
+												const returnArgument = block.get("argument");
 												returnArgument.replaceWith(types.callExpression(types.identifier("__finally"), [returnArgument.node, finallyFunction]));
 											}
+										},
+										path: parent,
+									});
+								} else if (block.isForStatement()) {
+									const explicitExits = pathsReachNodeTypes(parent, ["ReturnStatement", "ThrowStatement"]);
+									block.traverse({
+										Loop(path) {
+											path.skip();
+										},
+										Function(path) {
+											path.skip();
+										},
+										ContinueStatement(path) {
+										}
+									});
+									that.usedForHelper = true;
+									relocatedBlocks.push({
+										relocate() {
+											const init = block.get("init");
+											if (init.node) {
+												block.insertBefore(init.node);
+											}
+											const forIdentifier = path.scope.generateUidIdentifier("for");
+											const body = block.node.body.type === "BlockStatement" ? block.node.body.body : [block.node.body];
+											const bodyFunction = types.functionExpression(null, [], types.blockStatement(body));
+											const testFunction = block.get("test") ? types.functionExpression(null, [], types.blockStatement([types.returnStatement(block.node.test)])) : voidExpression();
+											const updateFunction = block.get("update") ? types.functionExpression(null, [], types.blockStatement([types.expressionStatement(block.node.update)])) : voidExpression();
+											const loopCall = types.callExpression(types.identifier("__for"), [testFunction, updateFunction || voidExpression(), bodyFunction]);
+											let resultIdentifier = null;
+											if (explicitExits.any) {
+												resultIdentifier = path.scope.generateUidIdentifier("result");
+												block.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+											}
+											relocateTail(loopCall, null, block, resultIdentifier);
 										},
 										path: parent,
 									});
@@ -483,18 +517,36 @@ module.exports = function({ types, template }) {
 						}`)());		
 					}
 					if (this.usedAwaitHelper) {
-						body.insertBefore(template(`function __await(v, f, c) {
-							return (v && v.then ? v : Promise.resolve(v)).then(f, c);
+						body.insertBefore(template(`function __await(value, then) {
+							return (value && value.then ? value : Promise.resolve(value)).then(then);
+						}`)());		
+					}
+					if (this.usedForHelper) {
+						this.usedTryHelper = true;
+						body.insertBefore(template(`function __for(test, update, body) {
+							return new Promise(function(resolve, reject) {
+								cycle();
+								function cycle() {
+									__try(test).then(checkTestResult, reject);
+								}
+								function checkTestResult(shouldContinue) {
+									if (shouldContinue) {
+										__try(body).then(update).then(cycle, reject);
+									} else {
+										resolve();
+									}
+								}
+							});
 						}`)());		
 					}
 					if (this.usedTryHelper) {
-						body.insertBefore(template(`function __try(f) {
-							return new Promise(function (resolve) { resolve(f()); });
+						body.insertBefore(template(`function __try(body) {
+							return new Promise(function (resolve) { resolve(body()); });
 						}`)());		
 					}
 					if (this.usedFinallyHelper) {
-						body.insertBefore(template(`function __finally(v, f) {
-							return v.then(f.bind(null, false), f.bind(null, true));
+						body.insertBefore(template(`function __finally(promise, finalizer) {
+							return promise.then(finalizer.bind(null, false), finalizer.bind(null, true));
 						}`)());		
 					}
 					path.stop();

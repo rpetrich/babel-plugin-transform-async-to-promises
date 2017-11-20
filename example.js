@@ -172,3 +172,18 @@ var finallySuppressedExample = async function(value) {
 		return "Ignored";
 	}
 }
+
+var awaitAll = async function(list) {
+	for (var i = 0; i < list.length; i++) {
+		await list[i];
+	}
+}
+
+var awaitWithBreak = async function(list) {
+	for (var i = 0; i < list.length; i++) {
+		if (await list[i]) {
+			// TODO: Support break/return
+			//break;
+		}
+	}
+}

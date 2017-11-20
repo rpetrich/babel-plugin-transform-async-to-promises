@@ -122,3 +122,53 @@ var variables = async function(value) {
 	var a = 1, b = await value, c = 3;
 	return a + b + c;
 }
+
+var catchAndFallback = async function(value) {
+	try {
+		return await value;
+	} catch (e) {
+		return "Error";
+	}
+}
+
+var catchAndIgnore = async function(value) {
+	try {
+		return await value;
+	} catch (e) {
+	}
+}
+
+var catchAndAwait = async function(value) {
+	try {
+		return foo();
+	} catch (e) {
+		await value;
+	}
+}
+
+var catchAndLog = async function(value) {
+	var result;
+	try {
+		result = await value;
+	} catch (e) {
+		result = "Some Error";
+	}
+	console.log("result:", result);
+	return result;
+}
+
+var finallyExample = async function(value) {
+	try {
+		await foo()
+	} finally {
+		console.log("finished foo, might rethrow");
+	}
+}
+
+var finallySuppressedExample = async function(value) {
+	try {
+		await test();
+	} finally {
+		return "Ignored";
+	}
+}

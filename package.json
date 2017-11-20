@@ -1,0 +1,31 @@
+{
+  "name": "babel-plugin-transform-async-to-promises",
+  "version": "0.1.0",
+  "description": "Transform async/await to promise chains",
+  "main": "async-to-promises.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rpetrich/babel-plugin-transform-async-to-promises.git"
+  },
+  "keywords": [
+    "async",
+    "await",
+    "optimization",
+    "babel",
+    "compile",
+    "transform"
+  ],
+  "author": "Ryan Petrich <rpetrich@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/rpetrich/babel-plugin-transform-async-to-promises/issues"
+  },
+  "homepage": "https://github.com/rpetrich/babel-plugin-transform-async-to-promises#readme",
+  "peerDependencies": {
+    "babel-core": "^6.26.0",
+    "babel-traverse": "^6.26.0"
+  }
+}

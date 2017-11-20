@@ -182,8 +182,17 @@ var awaitAll = async function(list) {
 var awaitWithBreak = async function(list) {
 	for (var i = 0; i < list.length; i++) {
 		if (await list[i]) {
-			// TODO: Support break/return
-			//break;
+			break;
 		}
+	}
+}
+
+var awaitWithContinue = async function(list) {
+	for (var i = 0; i < list.length; i++) {
+		var result = await list[i]
+		if (!result) {
+			continue;
+		}
+		console.log(result);
 	}
 }

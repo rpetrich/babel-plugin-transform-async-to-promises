@@ -138,6 +138,12 @@ module.exports = function({ types, template }) {
 		let result = true;
 		let insideIncompatble = 0;
 		path.traverse({
+			ContinueStatement(path) {
+				if (path.node.label) {
+					result = false;
+					path.stop();
+				}
+			},
 			Function(path) {
 				path.skip();
 			},
@@ -186,6 +192,43 @@ module.exports = function({ types, template }) {
 				const argument = statements[0].argument;
 				if (argument.type === "Identifier") {
 					return argument;
+				}
+			}
+		}
+	}
+
+	function identifiersInForToLengthStatement(statement) {
+		// Match: for (var i = 0; i < array.length; i++)
+		const init = statement.get("init");
+		if (init.isVariableDeclaration() && init.node.declarations.length === 1) {
+			const declaration = init.get("declarations.0");
+			if (declaration.get("init").isNumericLiteral() && declaration.node.init.value === 0) {
+				const i = declaration.node.id;
+				const test = statement.get("test");
+				if (test.isBinaryExpression() &&
+					test.node.operator === "<" &&
+					test.get("left").isIdentifier() &&
+					test.node.left.name === i.name
+				) {
+					const right = test.get("right");
+					if (right.isMemberExpression() &&
+						!right.node.computed &&
+						right.get("object").isIdentifier() &&
+						right.get("property").isIdentifier() &&
+						right.node.property.name === "length"
+					) {
+						const update = statement.get("update");
+						if (update.isUpdateExpression() &&
+							update.node.operator == "++" &&
+							update.get("argument").isIdentifier() &&
+							update.node.argument.name === i.name
+						) {
+							return {
+								i,
+								array: test.node.right.object
+							};
+						}
+					}
 				}
 			}
 		}
@@ -244,13 +287,14 @@ module.exports = function({ types, template }) {
 		let ret = awaitAndContinue(awaitExpression, types.functionExpression(null, temporary ? [temporary] : [], types.blockStatement(blocks)));
 		target.replaceWith(types.returnStatement(ret));
 		if (exitIdentifier) {
-			target.get("argument.arguments.1.body").traverse({
+			const body = target.get("argument.arguments.1.body");
+			body.traverse({
 				Function(path) {
 					path.skip();
 				},
 				ReturnStatement(path) {
 					path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument]));
-				}
+				},
 			});
 		}
 	}
@@ -298,6 +342,7 @@ module.exports = function({ types, template }) {
 		}
 		return types.callExpression(types.functionExpression(null, [], types.blockStatement(statements)), []);
 	}
+
 	return {
 		visitor: {
 			FunctionDeclaration(path) {
@@ -456,35 +501,65 @@ module.exports = function({ types, template }) {
 									});
 								} else if (block.isForStatement()) {
 									const explicitExits = pathsReachNodeTypes(parent, ["ReturnStatement", "ThrowStatement"]);
-									block.traverse({
-										Loop(path) {
-											path.skip();
-										},
+									const breaks = pathsReachNodeTypes(parent, ["BreakStatement", "ThrowStatement"]);
+									let breakIdentifier;
+									if (breaks.any) {
+										path.scope.push({ id: breakIdentifier = awaitPath.scope.generateUidIdentifier("interrupt") });
+									}
+									if (!exitIdentifier && explicitExits.any) {
+										path.scope.push({ id: exitIdentifier = awaitPath.scope.generateUidIdentifier("exit") });
+									}
+									block.get("body").traverse({
 										Function(path) {
 											path.skip();
 										},
+										ReturnStatement(path) {
+											if (!path.node._skip && exitIdentifier) {
+												path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument]));
+											}
+										},
+										BreakStatement(path) {
+											const replace = breakIdentifier ? types.returnStatement(types.assignmentExpression("=", breakIdentifier, types.numericLiteral(1))) : types.returnStatement();
+											replace._skip = true;
+											path.replaceWith(replace);
+										},
 										ContinueStatement(path) {
-										}
+											const replace = types.returnStatement();
+											replace._skip = true;
+											path.replaceWith(replace);
+										},
 									});
-									that.usedForHelper = true;
+									const forToIdentifiers = identifiersInForToLengthStatement(block);
 									relocatedBlocks.push({
 										relocate() {
-											const init = block.get("init");
-											if (init.node) {
-												block.insertBefore(init.node);
-											}
-											const forIdentifier = path.scope.generateUidIdentifier("for");
 											const body = block.node.body.type === "BlockStatement" ? block.node.body.body : [block.node.body];
-											const bodyFunction = types.functionExpression(null, [], types.blockStatement(body));
-											const testFunction = block.get("test") ? types.functionExpression(null, [], types.blockStatement([types.returnStatement(block.node.test)])) : voidExpression();
-											const updateFunction = block.get("update") ? types.functionExpression(null, [], types.blockStatement([types.expressionStatement(block.node.update)])) : voidExpression();
-											const loopCall = types.callExpression(types.identifier("__for"), [testFunction, updateFunction || voidExpression(), bodyFunction]);
-											let resultIdentifier = null;
-											if (explicitExits.any) {
-												resultIdentifier = path.scope.generateUidIdentifier("result");
-												block.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+											if (!breaks.any && !explicitExits.any && forToIdentifiers) {
+												// TODO: Validate that body doesn't reassign array or i
+												const loopCall = types.callExpression(types.identifier("__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], types.blockStatement(body))])
+												relocateTail(loopCall, null, block);
+												that.usedForToHelper = true;
+											} else {
+												const init = block.get("init");
+												if (init.node) {
+													block.insertBefore(init.node);
+												}
+												const forIdentifier = path.scope.generateUidIdentifier("for");
+												const bodyFunction = types.functionExpression(null, [], types.blockStatement(body));
+												let testExpression = block.node.test;
+												if (breakIdentifier) {
+													testExpression = types.logicalExpression("&&", types.unaryExpression("!", breakIdentifier), testExpression);
+												}
+												const testFunction = block.get("test") ? types.functionExpression(null, [], types.blockStatement([types.returnStatement(testExpression)])) : voidExpression();
+												const updateFunction = block.get("update") ? types.functionExpression(null, [], types.blockStatement([types.expressionStatement(block.node.update)])) : voidExpression();
+												const loopCall = types.callExpression(types.identifier("__for"), [testFunction, updateFunction || voidExpression(), bodyFunction]);
+												let resultIdentifier = null;
+												if (explicitExits.any) {
+													resultIdentifier = path.scope.generateUidIdentifier("result");
+													block.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+												}
+												relocateTail(loopCall, null, block, resultIdentifier, exitIdentifier, breakIdentifier);
+												that.usedForHelper = true;
 											}
-											relocateTail(loopCall, null, block, resultIdentifier);
 										},
 										path: parent,
 									});
@@ -520,6 +595,13 @@ module.exports = function({ types, template }) {
 						body.insertBefore(template(`function __await(value, then) {
 							return (value && value.then ? value : Promise.resolve(value)).then(then);
 						}`)());		
+					}
+					if (this.usedForToHelper) {
+						this.usedForHelper = true;
+						body.insertBefore(template(`function __forTo(array, body) {
+							var i = 0;
+							return __for(function() { return i < array.length; }, function() { i++; }, function() { return body(i); });
+						}`)());
 					}
 					if (this.usedForHelper) {
 						this.usedTryHelper = true;

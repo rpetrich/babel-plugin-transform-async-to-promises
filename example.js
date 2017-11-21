@@ -196,3 +196,15 @@ var awaitWithContinue = async function(list) {
 		console.log(result);
 	}
 }
+
+var whileLoop = async function() {
+	while (true) {
+		console.log(await foo);
+	}
+}
+
+var doWhile = async function() {
+	do {
+		console.log(await foo);
+	} while(false);
+}

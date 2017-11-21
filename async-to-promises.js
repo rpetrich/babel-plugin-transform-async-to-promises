@@ -138,6 +138,12 @@ module.exports = function({ types, template }) {
 		let result = true;
 		let insideIncompatble = 0;
 		path.traverse({
+			BreakStatement(path) {
+				if (path.node.label) {
+					result = false;
+					path.stop();
+				}
+			},
 			ContinueStatement(path) {
 				if (path.node.label) {
 					result = false;
@@ -147,7 +153,15 @@ module.exports = function({ types, template }) {
 			Function(path) {
 				path.skip();
 			},
-			Loop: {
+			ForOfStatement: {
+				enter(path) {
+					insideIncompatble++;
+				},
+				exit(path) {
+					insideIncompatble--;
+				}
+			},
+			ForInStatement: {
 				enter(path) {
 					insideIncompatble++;
 				},
@@ -499,7 +513,7 @@ module.exports = function({ types, template }) {
 										},
 										path: parent,
 									});
-								} else if (block.isForStatement()) {
+								} else if (block.isForStatement() || block.isWhileStatement() || block.isDoWhileStatement()) {
 									const explicitExits = pathsReachNodeTypes(parent, ["ReturnStatement", "ThrowStatement"]);
 									const breaks = pathsReachNodeTypes(parent, ["BreakStatement", "ThrowStatement"]);
 									let breakIdentifier;
@@ -533,7 +547,8 @@ module.exports = function({ types, template }) {
 									relocatedBlocks.push({
 										relocate() {
 											const body = block.node.body.type === "BlockStatement" ? block.node.body.body : [block.node.body];
-											if (!breaks.any && !explicitExits.any && forToIdentifiers) {
+											const isDoWhile = block.isDoWhileStatement();
+											if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
 												// TODO: Validate that body doesn't reassign array or i
 												const loopCall = types.callExpression(types.identifier("__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], types.blockStatement(body))])
 												relocateTail(loopCall, null, block);
@@ -549,16 +564,20 @@ module.exports = function({ types, template }) {
 												if (breakIdentifier) {
 													testExpression = types.logicalExpression("&&", types.unaryExpression("!", breakIdentifier), testExpression);
 												}
-												const testFunction = block.get("test") ? types.functionExpression(null, [], types.blockStatement([types.returnStatement(testExpression)])) : voidExpression();
-												const updateFunction = block.get("update") ? types.functionExpression(null, [], types.blockStatement([types.expressionStatement(block.node.update)])) : voidExpression();
-												const loopCall = types.callExpression(types.identifier("__for"), [testFunction, updateFunction || voidExpression(), bodyFunction]);
+												const testFunction = block.get("test").node ? types.functionExpression(null, [], types.blockStatement([types.returnStatement(testExpression)])) : voidExpression();
+												const updateFunction = block.get("update").node ? types.functionExpression(null, [], types.blockStatement([types.expressionStatement(block.node.update)])) : voidExpression();
+												const loopCall = isDoWhile ? types.callExpression(types.identifier("__do"), [bodyFunction, testFunction]) : types.callExpression(types.identifier("__for"), [testFunction, updateFunction, bodyFunction]);
 												let resultIdentifier = null;
 												if (explicitExits.any) {
 													resultIdentifier = path.scope.generateUidIdentifier("result");
 													block.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
 												}
 												relocateTail(loopCall, null, block, resultIdentifier, exitIdentifier, breakIdentifier);
-												that.usedForHelper = true;
+												if (isDoWhile) {
+													that.usedDoHelper = true;
+												} else {
+													that.usedForHelper = true;
+												}
 											}
 										},
 										path: parent,
@@ -617,6 +636,26 @@ module.exports = function({ types, template }) {
 									} else {
 										resolve();
 									}
+								}
+							});
+						}`)());		
+					}
+					if (this.usedDoHelper) {
+						this.usedTryHelper = true;
+						body.insertBefore(template(`function __do(body, test) {
+							return new Promise(function(resolve, reject) {
+								cycle();
+								function cycle() {
+									return __try(body).then(checkTestResult, reject);
+								}
+								function checkTestResult(value) {
+									__try(test).then(function(shouldContinue) {
+										if (shouldContinue) {
+											cycle();
+										} else {
+											resolve(value);
+										}
+									}, reject);
 								}
 							});
 						}`)());		

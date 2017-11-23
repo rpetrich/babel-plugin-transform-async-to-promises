@@ -311,7 +311,12 @@ module.exports = function({ types, template }) {
 					path.skip();
 				},
 				ReturnStatement(path) {
-					path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument]));
+					const parent = path.parentPath;
+					if (!(parent.isIfStatement() && parent.get("test").isIdentifier() && parent.get("test").node.name === exitIdentifier.name) &&
+						!(path.get("argument").isSequenceExpression() && path.get("argument.expressions.0").isAssignmentExpression() && path.get("argument.expressions.0.left").isIdentifier() && path.node.argument.expressions[0].left.name === exitIdentifier.name))
+					{
+						path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument]));
+					}
 				},
 			});
 		}

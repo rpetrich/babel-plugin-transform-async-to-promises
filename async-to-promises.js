@@ -613,7 +613,7 @@ module.exports = function({ types, template }) {
 					if (this.usedAwaitHelper) {
 						body.insertBefore(template(`function __await(value, then) {
 							return (value && value.then ? value : Promise.resolve(value)).then(then);
-						}`)());		
+						}`)());
 					}
 					if (this.usedForToHelper) {
 						this.usedForHelper = true;
@@ -626,15 +626,20 @@ module.exports = function({ types, template }) {
 						this.usedTryHelper = true;
 						body.insertBefore(template(`function __for(test, update, body) {
 							return new Promise(function(resolve, reject) {
+								var result;
 								cycle();
 								function cycle() {
 									__try(test).then(checkTestResult, reject);
 								}
+								function stashAndUpdate(value) {
+									result = value;
+									return update();
+								}
 								function checkTestResult(shouldContinue) {
 									if (shouldContinue) {
-										__try(body).then(update).then(cycle, reject);
+										__try(body).then(stashAndUpdate).then(cycle, reject);
 									} else {
-										resolve();
+										resolve(result);
 									}
 								}
 							});

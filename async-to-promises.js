@@ -298,8 +298,12 @@ module.exports = function({ types, template }) {
 
 	function relocateTail(awaitExpression, statementNode, target, temporary, exitIdentifier) {
 		const blocks = (statementNode ? [statementNode] : []).concat(borrowTail(target));
-		let ret = awaitAndContinue(awaitExpression, types.functionExpression(null, temporary ? [temporary] : [], types.blockStatement(blocks)));
-		target.replaceWith(types.returnStatement(ret));
+		if (blocks.length) {
+			let ret = awaitAndContinue(awaitExpression, types.functionExpression(null, temporary ? [temporary] : [], types.blockStatement(blocks)));
+			target.replaceWith(types.returnStatement(ret));
+		} else {
+			target.replaceWith(types.returnStatement(awaitExpression));
+		}
 		if (exitIdentifier) {
 			const body = target.get("argument.arguments.1.body");
 			body.traverse({

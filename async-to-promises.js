@@ -555,6 +555,10 @@ module.exports = function({ types, template }) {
 							testPath.replaceWith(functionize(testExpression));
 							rewriteFunctionBody(testPath, state);
 						}
+						const update = parent.get("update");
+						if (update.node) {
+							update.replaceWith(functionize(update.node));
+						}
 						relocatedBlocks.push({
 							relocate() {
 								const isDoWhile = parent.isDoWhileStatement();
@@ -571,7 +575,7 @@ module.exports = function({ types, template }) {
 									const forIdentifier = path.scope.generateUidIdentifier("for");
 									const bodyFunction = types.functionExpression(null, [], blockStatement(parent.node.body));
 									const testFunction = parent.get("test").node || voidExpression();
-									const updateFunction = parent.get("update").node ? functionize(parent.node.update) : voidExpression();
+									const updateFunction = parent.get("update").node || voidExpression();
 									const loopCall = isDoWhile ? types.callExpression(types.identifier("__do"), [bodyFunction, testFunction]) : types.callExpression(types.identifier("__for"), [testFunction, updateFunction, bodyFunction]);
 									let resultIdentifier = null;
 									if (explicitExits.any) {

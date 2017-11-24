@@ -234,3 +234,24 @@ var awaitPredicateSimple = async function() {
 		console.log("hi");
 	}
 }
+
+var forInAwaitValue = async function() {
+	for (var key in await foo) {
+		console.log(key);
+	}
+}
+
+var forInAwaitBody = async function() {
+	for (var key in foo) {
+		console.log(await foo[key]);
+	}
+}
+
+var forInAwaitWithReturn = async function() {
+	for (var key in foo) {
+		if (await foo[key]) {
+			return true;
+		}
+	}
+	return false;
+}

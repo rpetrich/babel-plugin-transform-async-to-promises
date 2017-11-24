@@ -155,14 +155,6 @@ module.exports = function({ types, template }) {
 					insideIncompatble--;
 				}
 			},
-			ForInStatement: {
-				enter(path) {
-					insideIncompatble++;
-				},
-				exit(path) {
-					insideIncompatble--;
-				}
-			},
 			SwitchStatement: {
 				enter(path) {
 					insideIncompatble++;
@@ -508,7 +500,7 @@ module.exports = function({ types, template }) {
 							},
 							path: parent,
 						});
-					} else if (parent.isForStatement() || parent.isWhileStatement() || parent.isDoWhileStatement()) {
+					} else if (parent.isForStatement() || parent.isWhileStatement() || parent.isDoWhileStatement() || parent.isForInStatement()) {
 						const breaks = pathsBreak(parent);
 						let breakIdentifier;
 						if (breaks.any) {
@@ -544,54 +536,89 @@ module.exports = function({ types, template }) {
 								path.replaceWith(replace);
 							},
 						});
-						const forToIdentifiers = identifiersInForToLengthStatement(parent);
-						let testExpression = parent.node.test;
-						if (breakIdentifier) {
-							const breakCheck = types.unaryExpression("!", breakIdentifier);
-							testExpression = testExpression ? types.logicalExpression("&&", breakCheck, testExpression) : breakCheck;
-						}
-						if (testExpression) {
-							const testPath = parent.get("test");
-							testPath.replaceWith(functionize(testExpression));
-							rewriteFunctionBody(testPath, state);
-						}
-						const update = parent.get("update");
-						if (update.node) {
-							update.replaceWith(functionize(update.node));
-						}
-						relocatedBlocks.push({
-							relocate() {
-								const isDoWhile = parent.isDoWhileStatement();
-								if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
-									// TODO: Validate that body doesn't reassign array or i
-									const loopCall = types.callExpression(types.identifier("__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
-									relocateTail(loopCall, null, parent);
-									state.usedForToHelper = true;
-								} else {
-									const init = parent.get("init");
-									if (init.node) {
-										parent.insertBefore(init.node);
-									}
-									const forIdentifier = path.scope.generateUidIdentifier("for");
-									const bodyFunction = types.functionExpression(null, [], blockStatement(parent.node.body));
-									const testFunction = parent.get("test").node || voidExpression();
-									const updateFunction = parent.get("update").node || voidExpression();
-									const loopCall = isDoWhile ? types.callExpression(types.identifier("__do"), [bodyFunction, testFunction]) : types.callExpression(types.identifier("__for"), [testFunction, updateFunction, bodyFunction]);
-									let resultIdentifier = null;
-									if (explicitExits.any) {
-										resultIdentifier = path.scope.generateUidIdentifier("result");
-										parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
-									}
-									relocateTail(loopCall, null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
-									if (isDoWhile) {
-										state.usedDoHelper = true;
-									} else {
-										state.usedForHelper = true;
-									}
+						if (parent.isForInStatement()) {
+							const right = parent.get("right");
+							if (awaitPath !== right) {
+								if (!explicitExits.all && explicitExits.any && !exitIdentifier) {
+									exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
+									path.scope.push({ id: exitIdentifier });
 								}
-							},
-							path: parent,
-						});
+								state.usedForInHelper = true;
+								relocatedBlocks.push({
+									relocate() {
+										const left = parent.get("left");
+										const loopIdentifier = left.isVariableDeclaration() ? left.node.declarations[0].id : left.node;
+										const params = [right.node, types.functionExpression(null, [loopIdentifier], blockStatement(parent.get("body").node))];
+										if (breakIdentifier) {
+											if (exitIdentifier) {
+												params.push(types.functionExpression(null, [], types.blockStatement([types.returnStatement(types.logicalExpression("||", breakIdentifier, exitIdentifier))])));
+											} else {
+												params.push(types.functionExpression(null, [], types.blockStatement([types.returnStatement(breakIdentifier)])));
+											}
+										} else if (exitIdentifier) {
+											params.push(types.functionExpression(null, [], types.blockStatement([types.returnStatement(exitIdentifier)])));
+										}
+										const loopCall = types.callExpression(types.identifier("__forIn"), params);
+										let resultIdentifier = null;
+										if (explicitExits.any) {
+											resultIdentifier = path.scope.generateUidIdentifier("result");
+											parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+										}
+										relocateTail(loopCall, null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
+									},
+									path: parent,
+								})
+							}
+						} else {
+							const forToIdentifiers = identifiersInForToLengthStatement(parent);
+							let testExpression = parent.node.test;
+							if (breakIdentifier) {
+								const breakCheck = types.unaryExpression("!", breakIdentifier);
+								testExpression = testExpression ? types.logicalExpression("&&", breakCheck, testExpression) : breakCheck;
+							}
+							if (testExpression) {
+								const testPath = parent.get("test");
+								testPath.replaceWith(functionize(testExpression));
+								rewriteFunctionBody(testPath, state);
+							}
+							const update = parent.get("update");
+							if (update.node) {
+								update.replaceWith(functionize(update.node));
+							}
+							relocatedBlocks.push({
+								relocate() {
+									const isDoWhile = parent.isDoWhileStatement();
+									if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
+										// TODO: Validate that body doesn't reassign array or i
+										const loopCall = types.callExpression(types.identifier("__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
+										relocateTail(loopCall, null, parent);
+										state.usedForToHelper = true;
+									} else {
+										const init = parent.get("init");
+										if (init.node) {
+											parent.insertBefore(init.node);
+										}
+										const forIdentifier = path.scope.generateUidIdentifier("for");
+										const bodyFunction = types.functionExpression(null, [], blockStatement(parent.node.body));
+										const testFunction = parent.get("test").node || voidExpression();
+										const updateFunction = parent.get("update").node || voidExpression();
+										const loopCall = isDoWhile ? types.callExpression(types.identifier("__do"), [bodyFunction, testFunction]) : types.callExpression(types.identifier("__for"), [testFunction, updateFunction, bodyFunction]);
+										let resultIdentifier = null;
+										if (explicitExits.any) {
+											resultIdentifier = path.scope.generateUidIdentifier("result");
+											parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+										}
+										relocateTail(loopCall, null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
+										if (isDoWhile) {
+											state.usedDoHelper = true;
+										} else {
+											state.usedForHelper = true;
+										}
+									}
+								},
+								path: parent,
+							});
+						}
 					}
 				}
 				if (processExpressions && parent.isStatement()) {
@@ -672,6 +699,16 @@ module.exports = function({ types, template }) {
 						body.insertBefore(template(`function __forTo(array, body) {
 							var i = 0;
 							return __for(function() { return i < array.length; }, function() { i++; }, function() { return body(i); });
+						}`)());
+					}
+					if (this.usedForInHelper) {
+						this.usedForHelper = true;
+						body.insertBefore(template(`function __forIn(target, body, check) {
+							var keys = [], i = 0;
+							for (var key in target) {
+								keys.push(key);
+							}
+							return __for(check ? function() { return i < keys.length && check(); } : function() { return i < keys.length; }, function() { i++; }, function() { return body(keys[i]); });
 						}`)());
 					}
 					if (this.usedForHelper) {

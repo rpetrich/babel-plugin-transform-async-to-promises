@@ -455,7 +455,6 @@ module.exports = function({ types, template }) {
 			let expressionToAwait = node.argument;
 			let processExpressions = true;
 			do {
-				let skipNode;
 				const parent = awaitPath.parentPath;
 				if (!relocatedBlocks.find(block => block.path === parent)) {
 					const explicitExits = pathsReturnOrThrow(parent);
@@ -554,9 +553,6 @@ module.exports = function({ types, template }) {
 						if (testExpression) {
 							const testPath = parent.get("test");
 							testPath.replaceWith(functionize(testExpression));
-							if (awaitPath === testPath) {
-								skipNode = true;
-							}
 							rewriteFunctionBody(testPath, state);
 						}
 						relocatedBlocks.push({
@@ -595,7 +591,7 @@ module.exports = function({ types, template }) {
 					}
 				}
 				if (processExpressions && parent.isStatement()) {
-					if (!skipNode) {
+					if (!awaitPath.isFunction()) {
 						const uid = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalAwaitPath.node.argument);
 						const originalExpression = originalAwaitPath.node;
 						originalAwaitPath.replaceWith(uid);

@@ -49,7 +49,7 @@ var binaryAndLogical = async function() {
 	return await left + !(await middle) && await right;
 }
 
-var insideIfBody = async function() {
+var beforeIfBody = async function() {
 	var foo = await bar;
 	if (foo) {
 		return 1;
@@ -198,8 +198,10 @@ var awaitWithContinue = async function(list) {
 }
 
 var whileLoop = async function() {
-	while (true) {
-		console.log(await foo);
+	let shouldContinue = true;
+	while (shouldContinue) {
+		shouldContinue = await foo;
+		console.log(shouldContinue);
 	}
 }
 
@@ -207,4 +209,28 @@ var doWhile = async function() {
 	do {
 		console.log(await foo);
 	} while(false);
+}
+
+var doWhileRet = async function() {
+	do {
+		if (await foo) {
+			return true;
+		}
+	} while(true);
+}
+
+var awaitPredicate = async function() {
+	while (await foo()) {
+		console.log("Got a foo!");
+		if (1) {
+			return true;
+		}
+	}
+	return false;
+}
+
+var awaitPredicateSimple = async function() {
+	while (await foo() && await bar()) {
+		console.log("hi");
+	}
 }

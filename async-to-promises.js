@@ -7,132 +7,126 @@ module.exports = function({ types, template }) {
 		return path;
 	}
 
-	function pathsReachNodeTypes(path, matchingNodeTypes) {
-		const match = { all: false, any: false }
-		if (!path || !path.node) {
-			return match;
+	function hasAncestor(path, parentPath) {
+		while (path) {
+			if (path === parentPath) {
+				return true;
+			}
 		}
-		if (matchingNodeTypes.indexOf(path.node.type) !== -1) {
-			match.all = true;
-			match.any = true;
-			return match;
-		}
-		const visitor = {
-			Conditional(path) {
-				path.skip();
-				const test = pathsReachNodeTypes(path.get("test"), matchingNodeTypes);
-				const consequent = pathsReachNodeTypes(path.get("consequent"), matchingNodeTypes);
-				const alternate = pathsReachNodeTypes(path.get("alternate"), matchingNodeTypes);
-				this.match.any = this.match.any || test.any || consequent.any || alternate.any;
-				if (test.all || (consequent.all && alternate.all)) {
-					this.match.all = true;
-					path.stop();
-				}
-			},
-			SwitchStatement(path) {
-				path.skip();
+		return false;
+	}
+
+	function pathsReachNodeTypes(matchingNodeTypes) {
+		function visit(path, result) {
+			if (matchingNodeTypes.indexOf(path.node.type) !== -1) {
+				result.any = true;
+				result.all = true;
+				return true;
+			}
+			if (path.isConditional()) {
+				const test = match(path.get("test"));
+				const consequent = match(path.get("consequent"));
+				const alternate = match(path.get("alternate"));
+				result.any = result.any || test.any || consequent.any || alternate.any;
+				return result.all = (test.all || (consequent.all && alternate.all));
+			}
+			if (path.isSwitchStatement()) {
 				// TODO: Support checking that all cases match or fallthrough
-				const discriminant = pathsReachNodeTypes(path.get("discriminant"), matchingNodeTypes);
-				this.match.any = this.match.any || discriminant.any;
-				if (discriminant.all) {
-					this.match.all = true;
-					path.stop();
-				}
-			},
-			DoWhileStatement(path) {
-				path.skip();
-				const body = pathsReachNodeTypes(path.get("body"), matchingNodeTypes);
-				const test = pathsReachNodeTypes(path.get("test"), matchingNodeTypes);
-				this.match.any = this.match.any || body.any || test.any;
-				if (body.all || test.all) {
-					this.match.all = true;
-					path.stop();
-				}
-			},
-			WhileStatement(path) {
-				path.skip();
+				const discriminant = match(path.get("discriminant"));
+				result.any = result.any || discriminant.any;
+				return result.all = discriminant.all;
+			}
+			if (path.isDoWhileStatement()) {
+				const body = match(path.get("body"));
+				const test = match(path.get("test"));
+				result.any = result.any || body.any || test.any;
+				return result.all = (body.all || test.all);
+			}
+			if (path.isWhileStatement()) {
 				// TODO: Support detecting break/return statements
-				const test = pathsReachNodeTypes(path.get("test"), matchingNodeTypes);
-				const body = pathsReachNodeTypes(path.get("body"), matchingNodeTypes);
-				this.match.any = this.match.any || test.any || body.any;
-				if (test.all) {
-					this.match.all = true;
-					path.stop();
-				}
-			},
-			ForXStatement(path) {
-				path.skip();
-				const right = pathsReachNodeTypes(path.get("right"), matchingNodeTypes);
-				const body = pathsReachNodeTypes(path.get("body"), matchingNodeTypes);
-				this.match.any = this.match.any || right.any || body.any;
-				if (right.all) {
-					this.match.all = true;
-					path.stop();
-				}
-			},
-			ForStatement(path) {
-				path.skip();
-				const init = pathsReachNodeTypes(path.get("init"), matchingNodeTypes);
-				const test = pathsReachNodeTypes(path.get("test"), matchingNodeTypes);
-				const body = pathsReachNodeTypes(path.get("body"), matchingNodeTypes);
-				const update = pathsReachNodeTypes(path.get("update"), matchingNodeTypes);
-				this.match.any = this.match.any || init.any || right.any || body.any || update.any;
-				if (init.all || test.all) {
-					this.match.all = true;
-					path.stop();
-				}
-			},
-			LogicalExpression(path) {
-				path.skip();
-				const left = pathsReachNodeTypes(path.get("left"), matchingNodeTypes);
-				const right = pathsReachNodeTypes(path.get("left"), matchingNodeTypes);
-				this.match.any = this.match.any || left.any || right.any;
-				if (left.all) {
-					this.match.all = true;
-					path.stop();
-				}
-			},
-			ReturnStatement(path) {
-				path.stop();
-			},
-			BreakStatement(path) {
-				path.stop();
-			},
-			ContinueStatement(path) {
-				path.stop();
-			},
-			ThrowStatement(path) {
+				const test = match(path.get("test"));
+				const body = match(path.get("body"));
+				result.any = result.any || test.any || body.any;
+				return result.all = test.all;
+			}
+			if (path.isForXStatement()) {
+				const right = match(path.get("right"));
+				const body = match(path.get("body"));
+				result.any = result.any || right.any || body.any;
+				return result.all = right.all;
+			}
+			if (path.isForStatement()) {
+				const init = match(path.get("init"));
+				const test = match(path.get("test"));
+				const body = match(path.get("body"));
+				const update = match(path.get("update"));
+				result.any = result.any || init.any || test.any || body.any || update.any;
+				return result.all = (init.all || test.all);
+			}
+			if (path.isLogicalExpression()) {
+				const left = match(path.get("left"));
+				const right = match(path.get("right"));
+				result.any = result.any || left.any || right.any;
+				return result.all = left.all;
+			}
+			if (path.isReturnStatement()) {
+				return true;
+			}
+			if (path.isBreakStatement()) {
+				return true;
+			}
+			if (path.isContinueStatement()) {
+				return true;
+			}
+			if (path.isThrowStatement()) {
 				// TODO: Handle throw statements correctly
-				path.stop();
-			},
-			TryStatement(path) {
-				path.skip();
+				return true;
+			}
+			if (path.isTryStatement()) {
 				const catchClause = path.get("handler");
 				if (catchClause.node) {
-					const handler = pathsReachNodeTypes(catchClause, matchingNodeTypes);
-					this.match.any = this.match.any || handler.any;
+					const handler = match(catchClause);
+					result.any = result.any || handler.any;
 					if (handler.all) {
-						this.match.all = true;
-						path.stop();
+						return result.all = true;
+					} else {
+						return false;
 					}
 				} else {
-					path.stop();
+					return true;
 				}
-			},
-			Function(path) {
-				path.skip();
+			}
+			if (path.isFunction()) {
+				return false;
+			}
+		}
+		const visitor = {
+			enter(path) {
+				switch (visit(path, this.match)) {
+					case true:
+						path.stop();
+						break;
+					case false:
+						path.skip();
+						break;
+				}
 			}
 		};
-		for (let nodeType of matchingNodeTypes) {
-			visitor[nodeType] = function(path) {
-				this.match.all = true;
-				this.match.any = true;
-				path.stop();
-			};
+		function match(path) {
+			if (!path || !path.node) {
+				return { all: false, any: false };
+			}
+			const match = { all: false, any: false };
+			if (typeof visit(path, match) === "undefined") {
+				path.traverse(visitor, { match });
+			}
+			return match;
 		}
-		path.traverse(visitor, {match});
 		return match;
 	}
+
+	const pathsReturnOrThrow = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement"]);
+	const pathsBreak = pathsReachNodeTypes(["BreakStatement"]);
 
 	function isCompatible(path) {
 		let result = true;
@@ -204,7 +198,7 @@ module.exports = function({ types, template }) {
 		if (statements.length === 1) {
 			if (statements[0].type === "ReturnStatement") {
 				const argument = statements[0].argument;
-				if (argument.type === "Identifier") {
+				if (argument && argument.type === "Identifier") {
 					return argument;
 				}
 			}
@@ -298,14 +292,21 @@ module.exports = function({ types, template }) {
 
 	function relocateTail(awaitExpression, statementNode, target, temporary, exitIdentifier) {
 		const blocks = (statementNode ? [statementNode] : []).concat(borrowTail(target));
+		let ret = awaitExpression;
+		let isIIFE = false;
 		if (blocks.length) {
-			let ret = awaitAndContinue(awaitExpression, types.functionExpression(null, temporary ? [temporary] : [], types.blockStatement(blocks)));
-			target.replaceWith(types.returnStatement(ret));
-		} else {
-			target.replaceWith(types.returnStatement(awaitExpression));
+			ret = awaitAndContinue(ret, types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks)));
+		} else if (ret.type === "CallExpression" && ret.arguments.length === 0 && ret.callee.type === "FunctionExpression" && ret.callee.params.length === 0) {
+			target.replaceWithMultiple(ret.callee.body.body);
+			isIIFE = true;
+			return;
 		}
-		if (exitIdentifier) {
-			const body = target.get("argument.arguments.1.body");
+		target.replaceWith(types.returnStatement(ret));
+		if (exitIdentifier && blocks.length) {
+			if (!isIIFE && target.node.argument.arguments.length < 2) {
+				return;
+			}
+			const body = isIIFE ? target : target.get("argument.arguments.1.body");
 			body.traverse({
 				Function(path) {
 					path.skip();
@@ -358,12 +359,261 @@ module.exports = function({ types, template }) {
 		}
 	}
 
+	function functionize(expression) {
+		return types.functionExpression(null, [], blockStatement([types.returnStatement(expression)]));
+	}
+
+	function blockStatement(statementOrStatements) {
+		if (statementOrStatements.length) {
+			return types.blockStatement(statementOrStatements);
+		} else if (statementOrStatements.type !== "BlockStatement") {
+			return types.blockStatement([statementOrStatements]);
+		} else {
+			return statementOrStatements;
+		}
+	}
+
 	function inlineEvaluated(statements) {
 		const returnIdentifier = identifierInSingleReturnStatement(statements);
 		if (returnIdentifier) {
 			return returnIdentifier;
 		}
-		return types.callExpression(types.functionExpression(null, [], types.blockStatement(statements)), []);
+		return types.callExpression(types.functionExpression(null, [], blockStatement(statements)), []);
+	}
+
+	function rewriteFunctionBody(path, state) {
+		const relocatedBlocks = [];
+		rewriteThisExpression(path, path);
+		let exitIdentifier;
+		for (;;) {
+			let awaitPath;
+			path.traverse({
+				Function(path) {
+					path.skip();
+				},
+				AwaitExpression(path) {
+					awaitPath = path;
+				}
+			});
+			if (!awaitPath) {
+				break;
+			}
+			const originalAwaitPath = awaitPath;
+			const node = awaitPath.node;
+			let expressionToAwait = node.argument;
+			let declarations = [];
+			let processExpressions = true;
+			do {
+				let skipNode;
+				const parent = awaitPath.parentPath;
+				if (processExpressions) {
+					if (parent.isVariableDeclarator()) {
+						const beforeDeclarations = [];
+						while (parent.key !== 0) {
+							const sibling = parent.getSibling(0);
+							beforeDeclarations.push(sibling.node);
+							sibling.remove();
+						}
+						if (beforeDeclarations.length) {
+							parent.parentPath.insertBefore(types.variableDeclaration(parent.parent.kind, beforeDeclarations));
+						}
+					} else if (parent.isLogicalExpression()) {
+						const left = parent.get("left");
+						if (awaitPath !== left) {
+							const leftNode = left.node;
+							const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
+							declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
+							left.replaceWith(leftIdentifier);
+							expressionToAwait = parent.node.operator === "||" ? types.conditionalExpression(leftIdentifier, types.numericLiteral(0), expressionToAwait) : types.conditionalExpression(leftIdentifier, expressionToAwait, types.numericLiteral(0));
+						}
+					} else if (parent.isBinaryExpression()) {
+						const left = parent.get("left");
+						if (awaitPath !== left) {
+							const leftNode = left.node;
+							const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
+							declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
+							left.replaceWith(leftIdentifier);
+						}
+					} else if (parent.isConditionalExpression()) {
+						const test = parent.get("test");
+						if (awaitPath !== test) {
+							const consequent = parent.get("consequent");
+							if (consequent !== awaitPath && consequent.isAwaitExpression()) {
+								expressionToAwait = types.conditionalExpression(test.node, consequent.node.argument, expressionToAwait);
+								parent.replaceWith(parent.node.alternate);
+							} else {
+								const testNode = test.node;
+								const testIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(testNode);
+								declarations.push(types.variableDeclarator(testIdentifier, testNode));
+								test.replaceWith(testIdentifier);
+								expressionToAwait = consequent !== awaitPath ? types.conditionalExpression(testIdentifier, types.numericLiteral(0), expressionToAwait) : types.conditionalExpression(testIdentifier, expressionToAwait, types.numericLiteral(0));
+							}
+						}
+					}
+				}
+				if (!relocatedBlocks.find(block => block.path === parent)) {
+					const explicitExits = pathsReturnOrThrow(parent);
+					if (parent.isIfStatement()) {
+						if (awaitPath !== parent.get("test")) {
+							if (!explicitExits.all && explicitExits.any && !exitIdentifier) {
+								exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
+								path.scope.push({ id: exitIdentifier });
+							}
+							relocatedBlocks.push({
+								relocate() {
+									let resultIdentifier = null;
+									if (!explicitExits.all && explicitExits.any) {
+										resultIdentifier = path.scope.generateUidIdentifier("result");
+										parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+									}
+									relocateTail(inlineEvaluated([parent.node]), null, parent, resultIdentifier);
+								},
+								path: parent,
+							});
+						}
+					} else if (parent.isTryStatement()) {
+						relocatedBlocks.push({
+							relocate() {
+								const temporary = explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
+								const success = explicitExits.all ? types.returnStatement(temporary) : null;
+								let evalBlock = tryHelper(parent.node.block);
+								state.usedTryHelper = true;
+								let finallyFunction;
+								if (parent.node.finalizer) {
+									state.usedFinallyHelper = true;
+									let finallyArgs = [];
+									let finallyBody = parent.node.finalizer.body;
+									if (!pathsReturnOrThrow(parent.get("finalizer")).all) {
+										const resultIdentifier = path.scope.generateUidIdentifier("result");
+										const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
+										finallyArgs = [wasThrownIdentifier, resultIdentifier];
+										finallyBody = finallyBody.concat(types.ifStatement(wasThrownIdentifier, types.throwStatement(resultIdentifier), types.returnStatement(resultIdentifier)));
+									}
+									finallyFunction = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
+								}
+								if (parent.node.handler) {
+									const catchFunction = types.functionExpression(null, [parent.node.handler.param], parent.node.handler.body);
+									evalBlock = types.callExpression(types.memberExpression(evalBlock, types.identifier("then")), [voidExpression(), catchFunction]);
+								}
+								relocateTail(evalBlock, success, parent, temporary)
+								if (finallyFunction) {
+									const returnArgument = parent.get("argument");
+									returnArgument.replaceWith(types.callExpression(types.identifier("__finally"), [returnArgument.node, finallyFunction]));
+								}
+							},
+							path: parent,
+						});
+					} else if (parent.isForStatement() || parent.isWhileStatement() || parent.isDoWhileStatement()) {
+						const breaks = pathsBreak(parent);
+						let breakIdentifier;
+						if (breaks.any) {
+							path.scope.push({ id: breakIdentifier = awaitPath.scope.generateUidIdentifier("interrupt") });
+						}
+						if (!exitIdentifier && explicitExits.any) {
+							path.scope.push({ id: exitIdentifier = awaitPath.scope.generateUidIdentifier("exit") });
+						}
+						parent.get("body").traverse({
+							Function(path) {
+								path.skip();
+							},
+							ReturnStatement(path) {
+								if (!path.node._skip && exitIdentifier) {
+									path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument]));
+								}
+							},
+							BreakStatement(path) {
+								const replace = types.returnStatement();
+								replace._skip = true;
+								if (breakIdentifier) {
+									path.replaceWithMultiple([
+										types.expressionStatement(types.assignmentExpression("=", breakIdentifier, types.numericLiteral(1))),
+										replace,
+									]);
+								} else {
+									path.replaceWith(replace);
+								}
+							},
+							ContinueStatement(path) {
+								const replace = types.returnStatement();
+								replace._skip = true;
+								path.replaceWith(replace);
+							},
+						});
+						const forToIdentifiers = identifiersInForToLengthStatement(parent);
+						let testExpression = parent.node.test;
+						if (breakIdentifier) {
+							const breakCheck = types.unaryExpression("!", breakIdentifier);
+							testExpression = testExpression ? types.logicalExpression("&&", breakCheck, testExpression) : breakCheck;
+						}
+						if (testExpression) {
+							const testPath = parent.get("test");
+							testPath.replaceWith(functionize(testExpression));
+							if (awaitPath === testPath) {
+								skipNode = true;
+								if (declarations.length) {
+									testPath.get("body.body.0").insertBefore(types.variableDeclaration("var", declarations));
+								}
+							}
+							rewriteFunctionBody(testPath, state);
+						}
+						relocatedBlocks.push({
+							relocate() {
+								const isDoWhile = parent.isDoWhileStatement();
+								if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
+									// TODO: Validate that body doesn't reassign array or i
+									const loopCall = types.callExpression(types.identifier("__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
+									relocateTail(loopCall, null, parent);
+									state.usedForToHelper = true;
+								} else {
+									const init = parent.get("init");
+									if (init.node) {
+										parent.insertBefore(init.node);
+									}
+									const forIdentifier = path.scope.generateUidIdentifier("for");
+									const bodyFunction = types.functionExpression(null, [], blockStatement(parent.node.body));
+									const testFunction = parent.get("test").node || voidExpression();
+									const updateFunction = parent.get("update").node ? functionize(parent.node.update) : voidExpression();
+									const loopCall = isDoWhile ? types.callExpression(types.identifier("__do"), [bodyFunction, testFunction]) : types.callExpression(types.identifier("__for"), [testFunction, updateFunction, bodyFunction]);
+									let resultIdentifier = null;
+									if (explicitExits.any) {
+										resultIdentifier = path.scope.generateUidIdentifier("result");
+										parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+									}
+									relocateTail(loopCall, null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
+									if (isDoWhile) {
+										state.usedDoHelper = true;
+									} else {
+										state.usedForHelper = true;
+									}
+								}
+							},
+							path: parent,
+						});
+					}
+				}
+				if (processExpressions && parent.isStatement()) {
+					if (!skipNode) {
+						const uid = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalAwaitPath.node.argument);
+						originalAwaitPath.replaceWith(uid);
+						if (declarations.length) {
+							parent.insertBefore(types.variableDeclaration("var", declarations));
+						}
+						relocatedBlocks.push({
+							relocate() {
+								relocateTail(expressionToAwait, parent.node, parent, uid, exitIdentifier);
+							},
+							path: parent,
+						});
+					}
+					processExpressions = false;
+				}
+				awaitPath = parent;
+			} while (awaitPath !== path);
+			state.usedAwaitHelper = true;
+		}
+		for (const block of relocatedBlocks) {
+			block.relocate();
+		}
 	}
 
 	return {
@@ -378,228 +628,15 @@ module.exports = function({ types, template }) {
 			ArrowFunctionExpression(path) {
 				const node = path.node;
 				if (node.async && isCompatible(path.get("body"))) {
-					const body = path.get("body").isBlockStatement() ? path.node.body : types.blockStatement([types.returnStatement(path.node.body)]);
+					const body = path.get("body").isBlockStatement() ? path.node.body : blockStatement([types.returnStatement(path.node.body)]);
 					path.replaceWith(types.functionExpression(null, node.params, body, false, node.async));
 					rewriteThisExpression(path, path.parentPath);
 				}
 			},
 			FunctionExpression(path) {
 				if (path.node.async && isCompatible(path.get("body"))) {
+					rewriteFunctionBody(path, this);
 					this.usedAsyncHelper = true;
-					const that = this;
-					const relocatedBlocks = [];
-					rewriteThisExpression(path, path);
-					for (;;) {
-						let awaitPath;
-						path.traverse({
-							Function(path) {
-								path.skip();
-							},
-							AwaitExpression(path) {
-								awaitPath = path;
-							}
-						});
-						if (!awaitPath) {
-							break;
-						}
-						let parent = awaitPath.parentPath;
-						const node = awaitPath.node;
-						const uid = awaitPath.scope.generateUidIdentifierBasedOnNode(awaitPath.node.argument);
-						awaitPath.replaceWith(uid);
-						const statement = statementForPath(awaitPath);
-						let expressionToAwait = node.argument;
-						const declarations = [];
-						while (parent !== statement) {
-							if (parent.isVariableDeclarator()) {
-								const beforeDeclarations = [];
-								while (parent.key !== 0) {
-									const sibling = parent.getSibling(0);
-									beforeDeclarations.push(sibling.node);
-									sibling.remove();
-								}
-								if (beforeDeclarations.length) {
-									parent.parentPath.insertBefore(types.variableDeclaration(parent.parent.kind, beforeDeclarations));
-								}
-							} else if (parent.isLogicalExpression()) {
-								const left = parent.get("left");
-								if (awaitPath !== left) {
-									const leftNode = left.node;
-									const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
-									declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
-									left.replaceWith(leftIdentifier);
-									expressionToAwait = parent.node.operator === "||" ? types.conditionalExpression(leftIdentifier, types.numericLiteral(0), expressionToAwait) : types.conditionalExpression(leftIdentifier, expressionToAwait, types.numericLiteral(0));
-								}
-							} else if (parent.isBinaryExpression()) {
-								const left = parent.get("left");
-								if (awaitPath !== left) {
-									const leftNode = left.node;
-									const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
-									declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
-									left.replaceWith(leftIdentifier);
-								}
-							} else if (parent.isConditionalExpression()) {
-								const test = parent.get("test");
-								if (awaitPath !== test) {
-									const consequent = parent.get("consequent");
-									if (consequent !== awaitPath && consequent.isAwaitExpression()) {
-										expressionToAwait = types.conditionalExpression(test.node, consequent.node.argument, expressionToAwait);
-										parent.replaceWith(parent.node.alternate);
-									} else {
-										const testNode = test.node;
-										const testIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(testNode);
-										declarations.push(types.variableDeclarator(testIdentifier, testNode));
-										test.replaceWith(testIdentifier);
-										expressionToAwait = consequent !== awaitPath ? types.conditionalExpression(testIdentifier, types.numericLiteral(0), expressionToAwait) : types.conditionalExpression(testIdentifier, expressionToAwait, types.numericLiteral(0));
-									}
-								}
-							}
-							awaitPath = parent;
-							parent = parent.parentPath;
-						}
-						if (declarations.length) {
-							const node = statement.node;
-							statement.insertBefore(types.variableDeclaration("var", declarations));
-						}
-						that.usedAwaitHelper = true;
-						let exitIdentifier;
-						while (parent !== path && parent) {
-							const index = relocatedBlocks.findIndex(block => block.path === parent);
-							if (index !== -1) {
-								if (!exitIdentifier) {
-									exitIdentifier = relocatedBlocks[index].identifier;
-								}
-							} else {
-								const block = parent;
-								if (block.isIfStatement()) {
-									const explicitExits = pathsReachNodeTypes(parent, ["ReturnStatement", "ThrowStatement"]);
-									if (!explicitExits.all) {
-										if (!exitIdentifier && explicitExits.any) {
-											exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
-											path.scope.push({ id: exitIdentifier });
-										}
-										relocatedBlocks.push({
-											relocate() {
-												let resultIdentifier = null;
-												if (explicitExits.any) {
-													resultIdentifier = path.scope.generateUidIdentifier("result");
-													block.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
-												}
-												relocateTail(inlineEvaluated([block.node]), null, block, resultIdentifier);
-											},
-											path: parent,
-										});
-									}
-								} else if (block.isTryStatement()) {
-									const explicitExits = pathsReachNodeTypes(parent, ["ReturnStatement", "ThrowStatement"]);
-									relocatedBlocks.push({
-										relocate() {
-											const temporary = explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
-											const success = explicitExits.all ? types.returnStatement(temporary) : null;
-											let evalBlock = tryHelper(block.node.block);
-											that.usedTryHelper = true;
-											let finallyFunction;
-											if (block.node.finalizer) {
-												that.usedFinallyHelper = true;
-												let finallyArgs = [];
-												let finallyBody = block.node.finalizer.body;
-												if (!pathsReachNodeTypes(block.get("finalizer"), ["ReturnStatement", "ThrowStatement"]).all) {
-													const resultIdentifier = path.scope.generateUidIdentifier("result");
-													const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
-													finallyArgs = [wasThrownIdentifier, resultIdentifier];
-													finallyBody = finallyBody.concat(types.ifStatement(wasThrownIdentifier, types.throwStatement(resultIdentifier), types.returnStatement(resultIdentifier)));
-												}
-												finallyFunction = types.functionExpression(null, finallyArgs, types.blockStatement(finallyBody));
-											}
-											if (block.node.handler) {
-												const catchFunction = types.functionExpression(null, [block.node.handler.param], block.node.handler.body);
-												evalBlock = types.callExpression(types.memberExpression(evalBlock, types.identifier("then")), [voidExpression(), catchFunction]);
-											}
-											relocateTail(evalBlock, success, block, temporary)
-											if (finallyFunction) {
-												const returnArgument = block.get("argument");
-												returnArgument.replaceWith(types.callExpression(types.identifier("__finally"), [returnArgument.node, finallyFunction]));
-											}
-										},
-										path: parent,
-									});
-								} else if (block.isForStatement() || block.isWhileStatement() || block.isDoWhileStatement()) {
-									const explicitExits = pathsReachNodeTypes(parent, ["ReturnStatement", "ThrowStatement"]);
-									const breaks = pathsReachNodeTypes(parent, ["BreakStatement", "ThrowStatement"]);
-									let breakIdentifier;
-									if (breaks.any) {
-										path.scope.push({ id: breakIdentifier = awaitPath.scope.generateUidIdentifier("interrupt") });
-									}
-									if (!exitIdentifier && explicitExits.any) {
-										path.scope.push({ id: exitIdentifier = awaitPath.scope.generateUidIdentifier("exit") });
-									}
-									block.get("body").traverse({
-										Function(path) {
-											path.skip();
-										},
-										ReturnStatement(path) {
-											if (!path.node._skip && exitIdentifier) {
-												path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument]));
-											}
-										},
-										BreakStatement(path) {
-											const replace = breakIdentifier ? types.returnStatement(types.assignmentExpression("=", breakIdentifier, types.numericLiteral(1))) : types.returnStatement();
-											replace._skip = true;
-											path.replaceWith(replace);
-										},
-										ContinueStatement(path) {
-											const replace = types.returnStatement();
-											replace._skip = true;
-											path.replaceWith(replace);
-										},
-									});
-									const forToIdentifiers = identifiersInForToLengthStatement(block);
-									relocatedBlocks.push({
-										relocate() {
-											const body = block.node.body.type === "BlockStatement" ? block.node.body.body : [block.node.body];
-											const isDoWhile = block.isDoWhileStatement();
-											if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
-												// TODO: Validate that body doesn't reassign array or i
-												const loopCall = types.callExpression(types.identifier("__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], types.blockStatement(body))])
-												relocateTail(loopCall, null, block);
-												that.usedForToHelper = true;
-											} else {
-												const init = block.get("init");
-												if (init.node) {
-													block.insertBefore(init.node);
-												}
-												const forIdentifier = path.scope.generateUidIdentifier("for");
-												const bodyFunction = types.functionExpression(null, [], types.blockStatement(body));
-												let testExpression = block.node.test;
-												if (breakIdentifier) {
-													testExpression = types.logicalExpression("&&", types.unaryExpression("!", breakIdentifier), testExpression);
-												}
-												const testFunction = block.get("test").node ? types.functionExpression(null, [], types.blockStatement([types.returnStatement(testExpression)])) : voidExpression();
-												const updateFunction = block.get("update").node ? types.functionExpression(null, [], types.blockStatement([types.expressionStatement(block.node.update)])) : voidExpression();
-												const loopCall = isDoWhile ? types.callExpression(types.identifier("__do"), [bodyFunction, testFunction]) : types.callExpression(types.identifier("__for"), [testFunction, updateFunction, bodyFunction]);
-												let resultIdentifier = null;
-												if (explicitExits.any) {
-													resultIdentifier = path.scope.generateUidIdentifier("result");
-													block.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
-												}
-												relocateTail(loopCall, null, block, resultIdentifier, exitIdentifier, breakIdentifier);
-												if (isDoWhile) {
-													that.usedDoHelper = true;
-												} else {
-													that.usedForHelper = true;
-												}
-											}
-										},
-										path: parent,
-									});
-								}
-							}
-							parent = parent.parentPath;
-						}
-						relocateTail(expressionToAwait, statement.node, statement, uid, exitIdentifier);
-					}
-					for (const block of relocatedBlocks) {
-						block.relocate();
-					}
 					path.replaceWith(types.callExpression(types.identifier("__async"), [
 						types.functionExpression(null, path.node.params, path.node.body)
 					]));

@@ -381,6 +381,58 @@ module.exports = function({ types, template }) {
 		return types.callExpression(types.functionExpression(null, [], blockStatement(statements)), []);
 	}
 
+	function extractDeclarations(awaitPath) {
+		const declarations = [];
+		do {
+			const parent = awaitPath.parentPath;
+			if (parent.isVariableDeclarator()) {
+				const beforeDeclarations = [];
+				while (parent.key !== 0) {
+					const sibling = parent.getSibling(0);
+					beforeDeclarations.push(sibling.node);
+					sibling.remove();
+				}
+				if (beforeDeclarations.length) {
+					parent.parentPath.insertBefore(types.variableDeclaration(parent.parent.kind, beforeDeclarations));
+				}
+			} else if (parent.isLogicalExpression()) {
+				const left = parent.get("left");
+				if (awaitPath !== left) {
+					const leftNode = left.node;
+					const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
+					declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
+					left.replaceWith(leftIdentifier);
+					awaitPath.replaceWith(parent.node.operator === "||" ? types.conditionalExpression(leftIdentifier, types.numericLiteral(0), awaitPath.node) : types.conditionalExpression(leftIdentifier, awaitPath.node, types.numericLiteral(0)));
+				}
+			} else if (parent.isBinaryExpression()) {
+				const left = parent.get("left");
+				if (awaitPath !== left) {
+					const leftNode = left.node;
+					const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
+					declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
+					left.replaceWith(leftIdentifier);
+				}
+			} else if (parent.isConditionalExpression()) {
+				const test = parent.get("test");
+				if (awaitPath !== test) {
+					const consequent = parent.get("consequent");
+					if (consequent !== awaitPath && consequent.isAwaitExpression()) {
+						awaitPath.replaceWith(types.conditionalExpression(test.node, consequent.node.argument, awaitPath.node));
+						parent.replaceWith(parent.node.alternate);
+					} else {
+						const testNode = test.node;
+						const testIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(testNode);
+						declarations.push(types.variableDeclarator(testIdentifier, testNode));
+						test.replaceWith(testIdentifier);
+						awaitPath.replaceWith(consequent !== awaitPath ? types.conditionalExpression(testIdentifier, types.numericLiteral(0), awaitPath.node) : types.conditionalExpression(testIdentifier, awaitPath.node, types.numericLiteral(0)));
+					}
+				}
+			}
+			awaitPath = parent;
+		} while (!awaitPath.isStatement());
+		return declarations;
+	}
+
 	function rewriteFunctionBody(path, state) {
 		const relocatedBlocks = [];
 		rewriteThisExpression(path, path);
@@ -401,56 +453,10 @@ module.exports = function({ types, template }) {
 			const originalAwaitPath = awaitPath;
 			const node = awaitPath.node;
 			let expressionToAwait = node.argument;
-			let declarations = [];
 			let processExpressions = true;
 			do {
 				let skipNode;
 				const parent = awaitPath.parentPath;
-				if (processExpressions) {
-					if (parent.isVariableDeclarator()) {
-						const beforeDeclarations = [];
-						while (parent.key !== 0) {
-							const sibling = parent.getSibling(0);
-							beforeDeclarations.push(sibling.node);
-							sibling.remove();
-						}
-						if (beforeDeclarations.length) {
-							parent.parentPath.insertBefore(types.variableDeclaration(parent.parent.kind, beforeDeclarations));
-						}
-					} else if (parent.isLogicalExpression()) {
-						const left = parent.get("left");
-						if (awaitPath !== left) {
-							const leftNode = left.node;
-							const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
-							declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
-							left.replaceWith(leftIdentifier);
-							expressionToAwait = parent.node.operator === "||" ? types.conditionalExpression(leftIdentifier, types.numericLiteral(0), expressionToAwait) : types.conditionalExpression(leftIdentifier, expressionToAwait, types.numericLiteral(0));
-						}
-					} else if (parent.isBinaryExpression()) {
-						const left = parent.get("left");
-						if (awaitPath !== left) {
-							const leftNode = left.node;
-							const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
-							declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
-							left.replaceWith(leftIdentifier);
-						}
-					} else if (parent.isConditionalExpression()) {
-						const test = parent.get("test");
-						if (awaitPath !== test) {
-							const consequent = parent.get("consequent");
-							if (consequent !== awaitPath && consequent.isAwaitExpression()) {
-								expressionToAwait = types.conditionalExpression(test.node, consequent.node.argument, expressionToAwait);
-								parent.replaceWith(parent.node.alternate);
-							} else {
-								const testNode = test.node;
-								const testIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(testNode);
-								declarations.push(types.variableDeclarator(testIdentifier, testNode));
-								test.replaceWith(testIdentifier);
-								expressionToAwait = consequent !== awaitPath ? types.conditionalExpression(testIdentifier, types.numericLiteral(0), expressionToAwait) : types.conditionalExpression(testIdentifier, expressionToAwait, types.numericLiteral(0));
-							}
-						}
-					}
-				}
 				if (!relocatedBlocks.find(block => block.path === parent)) {
 					const explicitExits = pathsReturnOrThrow(parent);
 					if (parent.isIfStatement()) {
@@ -550,9 +556,6 @@ module.exports = function({ types, template }) {
 							testPath.replaceWith(functionize(testExpression));
 							if (awaitPath === testPath) {
 								skipNode = true;
-								if (declarations.length) {
-									testPath.get("body.body.0").insertBefore(types.variableDeclaration("var", declarations));
-								}
 							}
 							rewriteFunctionBody(testPath, state);
 						}
@@ -594,13 +597,16 @@ module.exports = function({ types, template }) {
 				if (processExpressions && parent.isStatement()) {
 					if (!skipNode) {
 						const uid = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalAwaitPath.node.argument);
+						const originalExpression = originalAwaitPath.node;
 						originalAwaitPath.replaceWith(uid);
+						const declarations = extractDeclarations(originalAwaitPath);
 						if (declarations.length) {
 							parent.insertBefore(types.variableDeclaration("var", declarations));
 						}
+						const currentAwaitPath = awaitPath;
 						relocatedBlocks.push({
 							relocate() {
-								relocateTail(expressionToAwait, parent.node, parent, uid, exitIdentifier);
+								relocateTail(originalExpression.argument, parent.node, parent, uid, exitIdentifier);
 							},
 							path: parent,
 						});

@@ -515,7 +515,7 @@ module.exports = function({ types, template }) {
 							},
 							ReturnStatement(path) {
 								if (!path.node._skip && exitIdentifier) {
-									path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument]));
+									path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument || voidExpression()]));
 								}
 							},
 							BreakStatement(path) {

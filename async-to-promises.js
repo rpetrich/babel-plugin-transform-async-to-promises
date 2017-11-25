@@ -147,22 +147,6 @@ module.exports = function({ types, template }) {
 			Function(path) {
 				path.skip();
 			},
-			ForOfStatement: {
-				enter(path) {
-					insideIncompatble++;
-				},
-				exit(path) {
-					insideIncompatble--;
-				}
-			},
-			SwitchStatement: {
-				enter(path) {
-					insideIncompatble++;
-				},
-				exit(path) {
-					insideIncompatble++;
-				}
-			},
 			AwaitExpression(path) {
 				if (insideIncompatble) {
 					result = false;
@@ -500,7 +484,7 @@ module.exports = function({ types, template }) {
 							},
 							path: parent,
 						});
-					} else if (parent.isForStatement() || parent.isWhileStatement() || parent.isDoWhileStatement() || parent.isForInStatement()) {
+					} else if (parent.isForStatement() || parent.isWhileStatement() || parent.isDoWhileStatement() || parent.isForInStatement() || parent.isForOfStatement()) {
 						const breaks = pathsBreak(parent);
 						let breakIdentifier;
 						if (breaks.any) {
@@ -536,14 +520,16 @@ module.exports = function({ types, template }) {
 								path.replaceWith(replace);
 							},
 						});
-						if (parent.isForInStatement()) {
+						const isForIn = parent.isForInStatement();
+						const isForOf = parent.isForOfStatement();
+						if (isForIn || isForOf) {
 							const right = parent.get("right");
 							if (awaitPath !== right) {
 								if (!explicitExits.all && explicitExits.any && !exitIdentifier) {
 									exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
 									path.scope.push({ id: exitIdentifier });
 								}
-								state.usedForInHelper = true;
+								state[isForIn ? "usedForInHelper" : "usedForOfHelper"] = true;
 								relocatedBlocks.push({
 									relocate() {
 										const left = parent.get("left");
@@ -558,7 +544,7 @@ module.exports = function({ types, template }) {
 										} else if (exitIdentifier) {
 											params.push(types.functionExpression(null, [], types.blockStatement([types.returnStatement(exitIdentifier)])));
 										}
-										const loopCall = types.callExpression(types.identifier("__forIn"), params);
+										const loopCall = types.callExpression(types.identifier(isForIn ? "__forIn" : "__forOf"), params);
 										let resultIdentifier = null;
 										if (explicitExits.any) {
 											resultIdentifier = path.scope.generateUidIdentifier("result");
@@ -615,6 +601,26 @@ module.exports = function({ types, template }) {
 											state.usedForHelper = true;
 										}
 									}
+								},
+								path: parent,
+							});
+						}
+					} else if (parent.isSwitchStatement()) {
+						// TODO: Support more complex switch statements
+						const discriminant = parent.get("discriminant");
+						if (awaitPath !== discriminant) {
+							state.usedSwitchHelper = true;
+							relocatedBlocks.push({
+								relocate() {
+									const cases = parent.node.cases.map(switchCase => {
+										const arguments = [types.functionExpression(null, [], types.blockStatement(switchCase.consequent))];
+										if (switchCase.test) {
+											arguments.push(functionize(switchCase.test));
+										}
+										return types.arrayExpression(arguments);
+									});
+									const switchCall = types.callExpression(types.identifier("__switch"), [discriminant.node, types.arrayExpression(cases)]);
+									relocateTail(switchCall, null, parent);
 								},
 								path: parent,
 							});
@@ -711,6 +717,48 @@ module.exports = function({ types, template }) {
 							return __for(check ? function() { return i < keys.length && check(); } : function() { return i < keys.length; }, function() { i++; }, function() { return body(keys[i]); });
 						}`)());
 					}
+					if (this.usedForOfHelper) {
+						this.usedForHelper = true;
+						body.insertBefore(template(`function __forOf(target, body, check) {
+							if (target.length) {
+								var values = [];
+								for (var value of target) {
+									values.push(value);
+								}
+								target = values;
+							}
+							var i = 0;
+							return __for(check ? function() { return i < target.length && check(); } : function() { return i < target.length; }, function() { i++; }, function() { return body(target[i]); });
+						}`)());
+					}
+					if (this.usedSwitchHelper) {
+						this.usedTryHelper = true;
+						body.insertBefore(template(`function __switch(discriminant, cases) {
+							return new Promise(function(resolve, reject) {
+								var i = -1;
+								function next() {
+									if (++i === cases.length) {
+										resolve();
+									} else if (cases[i].length < 2) {
+										testMatched();
+									} else {
+										__try(cases[i][1]).then(checkTest).catch(reject);
+									}
+								}
+								function checkTest(test) {
+									if (test !== discriminant) {
+										next();
+									} else {
+										testMatched();
+									}
+								}
+								function testMatched() {
+									__try(cases[i][0]).then(resolve, reject);
+								}
+								next();
+							});
+						}`)());
+					}
 					if (this.usedForHelper) {
 						this.usedTryHelper = true;
 						body.insertBefore(template(`function __for(test, update, body) {
@@ -732,7 +780,7 @@ module.exports = function({ types, template }) {
 									}
 								}
 							});
-						}`)());		
+						}`)());
 					}
 					if (this.usedDoHelper) {
 						this.usedTryHelper = true;

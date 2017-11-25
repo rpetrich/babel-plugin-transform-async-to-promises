@@ -255,3 +255,35 @@ var forInAwaitWithReturn = async function() {
 	}
 	return false;
 }
+
+var awaitDiscriminant = async function() {
+	switch (await foo) {
+		case 1:
+			console.log("1");
+			break;
+		case 2:
+			console.log("2");
+			break;
+		default:
+			console.log("some other thing");
+			break;
+	}
+}
+
+var awaitBody = async function() {
+	switch (foo) {
+		case true:
+			return foo;
+		default:
+			return await bar;
+	}
+}
+
+var awaitCase = async function() {
+	switch (await foo) {
+		case await bar:
+			return "foobar";
+		default:
+			return "not fubar";
+	}
+}

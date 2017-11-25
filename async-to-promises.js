@@ -753,29 +753,39 @@ module.exports = function({ types, template }) {
 						body.insertBefore(template(`function __switch(discriminant, cases) {
 							return new Promise(function(resolve, reject) {
 								var i = -1;
-								function next() {
+								function nextCase() {
 									if (++i === cases.length) {
 										resolve();
 									} else {
 										var test = cases[i][0];
 										if (test) {
-											__try(test).then(checkTest, reject);
+											__try(test).then(checkCaseTest, reject);
 										} else {
-											testMatched();
+											dispatchCaseBody();
 										}
 									}
 								}
-								function checkTest(test) {
+								function checkCaseTest(test) {
 									if (test !== discriminant) {
-										next();
+										nextCase();
 									} else {
-										testMatched();
+										dispatchCaseBody();
 									}
 								}
-								function testMatched() {
-									__try(cases[i][1]).then(resolve, reject);
+								function dispatchCaseBody() {
+									__try(cases[i][1]).then(checkFallthrough, reject);
 								}
-								next();
+								function checkFallthrough(result) {
+									var fallthroughCheck = cases[i][2];
+									if (!fallthroughCheck || fallthroughCheck()) {
+										resolve(result);
+									} else if (++i === cases.length) {
+										resolve();
+									} else {
+										dispatchCaseBody();
+									}
+								}
+								nextCase();
 							});
 						}`)());
 					}

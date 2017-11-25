@@ -31,10 +31,29 @@ module.exports = function({ types, template }) {
 				return result.all = (test.all || (consequent.all && alternate.all));
 			}
 			if (path.isSwitchStatement()) {
-				// TODO: Support checking that all cases match or fallthrough
 				const discriminant = match(path.get("discriminant"));
-				result.any = result.any || discriminant.any;
-				return result.all = discriminant.all;
+				const cases = path.node.cases.map((switchCase, i) => path.get("cases." + i));
+				const caseMatches = cases.map((switchCase, i) => {
+					const result = { all: false, any: false };
+					for (;;) {
+						const caseMatch = match(switchCase);
+						result.any = result.any || caseMatch.any;
+						if (caseMatch.all) {
+							result.all = true;
+							break;
+						}
+						if (pathsBreakReturnOrThrow(switchCase).all) {
+							break;
+						}
+						if (++i === cases.length) {
+							break;
+						}
+						switchCase = cases[i];
+					}
+					return result;
+				});
+				result.any = result.any || discriminant.any || caseMatches.some(caseMatch => caseMatch.any);
+				return result.all = discriminant.all || (cases.some(switchCase => !switchCase.node.test) && caseMatches.every(caseMatch => caseMatch.all));
 			}
 			if (path.isDoWhileStatement()) {
 				const body = match(path.get("body"));
@@ -127,6 +146,7 @@ module.exports = function({ types, template }) {
 
 	const pathsReturnOrThrow = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement"]);
 	const pathsBreak = pathsReachNodeTypes(["BreakStatement"]);
+	const pathsBreakReturnOrThrow = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement", "BreakStatement"]);
 
 	function isCompatible(path) {
 		let result = true;

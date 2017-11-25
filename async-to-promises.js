@@ -633,11 +633,8 @@ module.exports = function({ types, template }) {
 							relocatedBlocks.push({
 								relocate() {
 									const cases = parent.node.cases.map(switchCase => {
-										const arguments = [types.functionExpression(null, [], types.blockStatement(switchCase.consequent))];
-										if (switchCase.test) {
-											arguments.push(functionize(switchCase.test));
-										}
-										return types.arrayExpression(arguments);
+										const args = [switchCase.test ? functionize(switchCase.test) : voidExpression(), types.functionExpression(null, [], types.blockStatement(switchCase.consequent))];
+										return types.arrayExpression(args);
 									});
 									const switchCall = types.callExpression(types.identifier("__switch"), [discriminant.node, types.arrayExpression(cases)]);
 									relocateTail(switchCall, null, parent);
@@ -759,10 +756,13 @@ module.exports = function({ types, template }) {
 								function next() {
 									if (++i === cases.length) {
 										resolve();
-									} else if (cases[i].length < 2) {
-										testMatched();
 									} else {
-										__try(cases[i][1]).then(checkTest).catch(reject);
+										var test = cases[i][0];
+										if (test) {
+											__try(test).then(checkTest, reject);
+										} else {
+											testMatched();
+										}
 									}
 								}
 								function checkTest(test) {
@@ -773,7 +773,7 @@ module.exports = function({ types, template }) {
 									}
 								}
 								function testMatched() {
-									__try(cases[i][0]).then(resolve, reject);
+									__try(cases[i][1]).then(resolve, reject);
 								}
 								next();
 							});

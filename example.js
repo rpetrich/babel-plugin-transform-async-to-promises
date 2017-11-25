@@ -272,6 +272,7 @@ var awaitDiscriminant = async function() {
 
 var awaitBody = async function() {
 	switch (foo) {
+		case false:
 		case true:
 			return foo;
 		default:

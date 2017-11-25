@@ -632,8 +632,23 @@ module.exports = function({ types, template }) {
 							state.usedSwitchHelper = true;
 							relocatedBlocks.push({
 								relocate() {
-									const cases = parent.node.cases.map(switchCase => {
-										const args = [switchCase.test ? functionize(switchCase.test) : voidExpression(), types.functionExpression(null, [], types.blockStatement(switchCase.consequent))];
+									const cases = parent.node.cases.map((switchCase, i) => {
+										const args = [];
+										if (switchCase.test) {
+											args.push(functionize(switchCase.test));
+										} else if (switchCase.consequent.length) {
+											// TODO: Handle when default case isn't the last case
+											args.push(voidExpression());
+										}
+										if (switchCase.consequent.length) {
+											args.push(types.functionExpression(null, [], types.blockStatement(switchCase.consequent)));
+											const caseExits = pathsBreakReturnOrThrow(parent.get("cases." + i));
+											if (!caseExits.any) {
+												args.push(types.functionExpression(null, [], types.blockStatement([types.returnStatement(types.booleanLiteral(false))])));
+											} else if (!caseExits.all) {
+												// TODO: Handle when fallthrough occurs only part of the time
+											}
+										}
 										return types.arrayExpression(args);
 									});
 									const switchCall = types.callExpression(types.identifier("__switch"), [discriminant.node, types.arrayExpression(cases)]);
@@ -773,7 +788,14 @@ module.exports = function({ types, template }) {
 									}
 								}
 								function dispatchCaseBody() {
-									__try(cases[i][1]).then(checkFallthrough, reject);
+									for (;;) {
+										var body = cases[i][1];
+										if (body) {
+											return __try(body).then(checkFallthrough, reject);
+										} else if (++i === cases.length) {
+											return resolve();
+										}
+									}
 								}
 								function checkFallthrough(result) {
 									var fallthroughCheck = cases[i][2];

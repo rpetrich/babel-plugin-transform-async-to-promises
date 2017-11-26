@@ -630,12 +630,22 @@ module.exports = function({ types, template }) {
 						const discriminant = parent.get("discriminant");
 						if (awaitPath !== discriminant) {
 							state.usedSwitchHelper = true;
+							let defaultIndex;
+							parent.node.cases.forEach((switchCase, i) => {
+								if (switchCase.test) {
+									const test = parent.get(`cases.${i}.test`);
+									test.replaceWith(functionize(switchCase.test));
+									rewriteFunctionBody(test, state);
+								} else {
+									defaultIndex = i;
+								}
+							});
 							relocatedBlocks.push({
 								relocate() {
 									const cases = parent.node.cases.map((switchCase, i) => {
 										const args = [];
 										if (switchCase.test) {
-											args.push(functionize(switchCase.test));
+											args.push(switchCase.test);
 										} else if (switchCase.consequent.length) {
 											// TODO: Handle when default case isn't the last case
 											args.push(voidExpression());
@@ -660,7 +670,7 @@ module.exports = function({ types, template }) {
 					}
 				}
 				if (processExpressions && parent.isStatement()) {
-					if (!awaitPath.isFunction()) {
+					if (!awaitPath.isFunction() && !awaitPath.isSwitchCase()) {
 						const uid = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalAwaitPath.node.argument);
 						const originalExpression = originalAwaitPath.node;
 						originalAwaitPath.replaceWith(uid);

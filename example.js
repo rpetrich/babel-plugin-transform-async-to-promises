@@ -282,6 +282,8 @@ var awaitBody = async function() {
 
 var awaitCase = async function() {
 	switch (await foo) {
+		case true:
+			return "foo";
 		case await bar:
 			return "foobar";
 		default:

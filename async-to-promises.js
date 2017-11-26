@@ -647,7 +647,6 @@ module.exports = function({ types, template }) {
 										if (switchCase.test) {
 											args.push(switchCase.test);
 										} else if (switchCase.consequent.length) {
-											// TODO: Handle when default case isn't the last case
 											args.push(voidExpression());
 										}
 										if (switchCase.consequent.length) {
@@ -778,15 +777,22 @@ module.exports = function({ types, template }) {
 						body.insertBefore(template(`function __switch(discriminant, cases) {
 							return new Promise(function(resolve, reject) {
 								var i = -1;
+								var defaultIndex = -1;
 								function nextCase() {
 									if (++i === cases.length) {
-										resolve();
+										if (defaultIndex !== -1) {
+											i = defaultIndex;
+											dispatchCaseBody();
+										} else {
+											resolve();
+										}
 									} else {
 										var test = cases[i][0];
 										if (test) {
 											__try(test).then(checkCaseTest, reject);
 										} else {
-											dispatchCaseBody();
+											defaultIndex = i;
+											nextCase();
 										}
 									}
 								}

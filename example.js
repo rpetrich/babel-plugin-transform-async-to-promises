@@ -14,7 +14,7 @@ var callChain = async function() {
 	return await foo(await bar(), await baz());
 }
 
-var argumentStash = async function() {
+var argumentStash = async function(fn) {
 	return fn(1, foo(), await bar(), baz());
 }
 

@@ -391,6 +391,12 @@ module.exports = function({ types, template }) {
 				}
 			});
 		}
+		if (path.isIdentifier()) {
+			const binding = path.scope.getBinding(path.node.name);
+			if (binding) {
+				return binding.constant;
+			}
+		}
 		return false;
 	}
 
@@ -441,14 +447,37 @@ module.exports = function({ types, template }) {
 					}
 				}
 			} else if (parent.isCallExpression()) {
-				for (const arg of parent.get("arguments")) {
-					if (arg === awaitPath) {
-						break;
+				const callee = parent.get("callee");
+				if (callee !== awaitPath) {
+					if (!isExpressionOfLiterals(callee)) {
+						if (callee.isMemberExpression()) {
+							const object = callee.get("object");
+							if (!isExpressionOfLiterals(object)) {
+								const objectIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(object.node);
+								declarations.push(types.variableDeclarator(objectIdentifier, object.node));
+								object.replaceWith(objectIdentifier);
+							}
+							const property = callee.get("property");
+							if (callee.node.computed && !isExpressionOfLiterals(property)) {
+								const propertyIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(property.node);
+								declarations.push(types.variableDeclarator(propertyIdentifier, property.node));
+								property.replaceWith(propertyIdentifier);
+							}
+						} else {
+							const calleeIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(callee.node);
+							declarations.push(types.variableDeclarator(calleeIdentifier, callee.node));
+							callee.replaceWith(calleeIdentifier);
+						}
 					}
-					if (!isExpressionOfLiterals(arg)) {
-						const argIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(arg.node);
-						declarations.push(types.variableDeclarator(argIdentifier, arg.node));
-						arg.replaceWith(argIdentifier);
+					for (const arg of parent.get("arguments")) {
+						if (arg === awaitPath) {
+							break;
+						}
+						if (!isExpressionOfLiterals(arg)) {
+							const argIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(arg.node);
+							declarations.push(types.variableDeclarator(argIdentifier, arg.node));
+							arg.replaceWith(argIdentifier);
+						}
 					}
 				}
 			} else if (parent.isArrayExpression()) {

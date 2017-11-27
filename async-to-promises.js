@@ -365,6 +365,35 @@ module.exports = function({ types, template }) {
 		return types.callExpression(types.functionExpression(null, [], blockStatement(statements)), []);
 	}
 
+	function isExpressionOfLiterals(path) {
+		if (path.isIdentifier() && path.node.name === "undefined") {
+			return true;
+		}
+		if (path.isBooleanLiteral()) {
+			return true;
+		}
+		if (path.isNumericLiteral()) {
+			return true;
+		}
+		if (path.isStringLiteral()) {
+			return true;
+		}
+		if (path.isArrayExpression()) {
+			return path.get("elements").every(path => isExpressionOfLiterals(path));
+		}
+		if (path.isObjectExpression()) {
+			return path.get("properties").every(path => {
+				if (!path.isObjectProperty()) {
+					return true;
+				}
+				if (isExpressionOfLiterals(path.get("value")) && (!path.node.computed || isExpressionOfLiterals(path.get("key")))) {
+					return true;
+				}
+			});
+		}
+		return false;
+	}
+
 	function extractDeclarations(awaitPath, awaitExpression) {
 		const declarations = [];
 		do {
@@ -416,18 +445,22 @@ module.exports = function({ types, template }) {
 					if (arg === awaitPath) {
 						break;
 					}
-					const argIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(arg.node);
-					declarations.push(types.variableDeclarator(argIdentifier, arg.node));
-					arg.replaceWith(argIdentifier);
+					if (!isExpressionOfLiterals(arg)) {
+						const argIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(arg.node);
+						declarations.push(types.variableDeclarator(argIdentifier, arg.node));
+						arg.replaceWith(argIdentifier);
+					}
 				}
 			} else if (parent.isArrayExpression()) {
 				for (const element of parent.get("elements")) {
 					if (element === awaitPath) {
 						break;
 					}
-					const elementIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(element.node);
-					declarations.push(types.variableDeclarator(elementIdentifier, element.node));
-					element.replaceWith(elementIdentifier);
+					if (!isExpressionOfLiterals(element)) {
+						const elementIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(element.node);
+						declarations.push(types.variableDeclarator(elementIdentifier, element.node));
+						element.replaceWith(elementIdentifier);
+					}
 				}
 			} else if (parent.isObjectExpression()) {
 				for (const prop of parent.get("properties")) {
@@ -436,13 +469,17 @@ module.exports = function({ types, template }) {
 					}
 					if (prop.isObjectProperty()) {
 						if (prop.computed) {
-							const keyIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(prop.node.key);
-							declarations.push(types.variableDeclarator(keyIdentifier, prop.node.key));
-							prop.get("key").replaceWith(keyIdentifier);
+							if (!isExpressionOfLiterals(prop.get("key"))) {
+								const keyIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(prop.node.key);
+								declarations.push(types.variableDeclarator(keyIdentifier, prop.node.key));
+								prop.get("key").replaceWith(keyIdentifier);
+							}
 						}
-						const propIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(prop.node.value);
-						declarations.push(types.variableDeclarator(propIdentifier, prop.node.value));
-						prop.get("value").replaceWith(propIdentifier);
+						if (!isExpressionOfLiterals(prop.get("value"))) {
+							const propIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(prop.node.value);
+							declarations.push(types.variableDeclarator(propIdentifier, prop.node.value));
+							prop.get("value").replaceWith(propIdentifier);
+						}
 					}
 				}
 			}

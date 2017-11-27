@@ -15,15 +15,18 @@ var callChain = async function() {
 }
 
 var argumentStash = async function() {
-	return fn(foo(), await bar(), baz());
+	return fn(1, foo(), await bar(), baz());
 }
 
 var arrayExpressionStash = async function() {
-	return [foo(), await bar(), baz()];
+	return [1, foo(), await bar(), baz()];
 }
 
 var objectExpressionStash = async function() {
 	return {
+		one: 1,
+		array: [1, 2, 3],
+		obj: { one: 1 },
 		foo: foo(),
 		bar: await bar(),
 		baz: baz(),

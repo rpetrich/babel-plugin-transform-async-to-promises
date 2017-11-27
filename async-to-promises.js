@@ -411,6 +411,15 @@ module.exports = function({ types, template }) {
 						awaitExpression = consequent !== awaitPath ? types.conditionalExpression(testIdentifier, types.numericLiteral(0), awaitExpression) : types.conditionalExpression(testIdentifier, awaitExpression, types.numericLiteral(0));
 					}
 				}
+			} else if (parent.isCallExpression()) {
+				for (const arg of parent.get("arguments")) {
+					if (arg === awaitPath) {
+						break;
+					}
+					const argIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(arg.node);
+					declarations.push(types.variableDeclarator(argIdentifier, arg.node));
+					arg.replaceWith(argIdentifier);
+				}
 			}
 			awaitPath = parent;
 		} while (!awaitPath.isStatement());

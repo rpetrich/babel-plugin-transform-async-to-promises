@@ -449,6 +449,16 @@ module.exports = function({ types, template }) {
 			} else if (parent.isCallExpression()) {
 				const callee = parent.get("callee");
 				if (callee !== awaitPath) {
+					for (const arg of parent.get("arguments")) {
+						if (arg === awaitPath) {
+							break;
+						}
+						if (!isExpressionOfLiterals(arg)) {
+							const argIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(arg.node);
+							declarations.push(types.variableDeclarator(argIdentifier, arg.node));
+							arg.replaceWith(argIdentifier);
+						}
+					}
 					if (!isExpressionOfLiterals(callee)) {
 						if (callee.isMemberExpression()) {
 							const object = callee.get("object");
@@ -463,20 +473,11 @@ module.exports = function({ types, template }) {
 								declarations.push(types.variableDeclarator(propertyIdentifier, property.node));
 								property.replaceWith(propertyIdentifier);
 							}
+							parent.replaceWith(types.callExpression(types.memberExpression(callee.node, types.identifier("call")), [object.node].concat(parent.node.arguments)));
 						} else {
 							const calleeIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(callee.node);
 							declarations.push(types.variableDeclarator(calleeIdentifier, callee.node));
 							callee.replaceWith(calleeIdentifier);
-						}
-					}
-					for (const arg of parent.get("arguments")) {
-						if (arg === awaitPath) {
-							break;
-						}
-						if (!isExpressionOfLiterals(arg)) {
-							const argIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(arg.node);
-							declarations.push(types.variableDeclarator(argIdentifier, arg.node));
-							arg.replaceWith(argIdentifier);
 						}
 					}
 				}

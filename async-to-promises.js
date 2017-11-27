@@ -981,7 +981,7 @@ module.exports = function({ types, template }) {
 								}
 								function stashAndUpdate(value) {
 									result = value;
-									return update();
+									return update && update();
 								}
 								function checkTestResult(shouldContinue) {
 									if (shouldContinue) {

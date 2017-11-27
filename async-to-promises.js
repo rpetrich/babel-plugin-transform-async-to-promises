@@ -600,7 +600,7 @@ module.exports = function({ types, template }) {
 								}
 								if (parent.node.handler) {
 									const catchFunction = types.functionExpression(null, [parent.node.handler.param], parent.node.handler.body);
-									evalBlock = types.callExpression(types.memberExpression(evalBlock, types.identifier("then")), [voidExpression(), catchFunction]);
+									evalBlock = types.callExpression(types.memberExpression(evalBlock, types.identifier("catch")), [catchFunction]);
 								}
 								relocateTail(state, evalBlock, success, parent, temporary)
 								if (finallyFunction) {

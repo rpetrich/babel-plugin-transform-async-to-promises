@@ -10,6 +10,10 @@ async function awaitPassthrough() {
 	return await fetch("http://www.google.com/");
 }
 
+var callChain = async function() {
+	return await foo(await bar(), await baz());
+}
+
 var single = async function() {
 	var f = await foo();
 	return f + 1;

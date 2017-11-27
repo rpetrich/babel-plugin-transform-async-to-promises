@@ -294,14 +294,17 @@ module.exports = function({ types, template }) {
 		const blocks = statementNode ? [statementNode].concat(tail) : tail;
 		let ret;
 		if (blocks.length) {
-			ret = awaitAndContinue(awaitExpression, types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks)));
+			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
+			target.replaceWith(types.returnStatement(awaitAndContinue(awaitExpression, fn)));
+			if (!isPassthroughContinuation(fn)) {
+				return target.get("argument.arguments.1");
+			}
 		} else if (pathsReturnOrThrow(target).any) {
-			ret = awaitExpression;
+			target.replaceWith(types.returnStatement(awaitExpression));
 		} else {
 			state.usedEmptyHelper = true;
-			ret = awaitAndContinue(awaitExpression, types.identifier("__empty"));
+			target.replaceWith(types.returnStatement(awaitAndContinue(awaitExpression, types.identifier("__empty"))));
 		}
-		target.replaceWith(types.returnStatement(ret));
 	}
 
 	function tryHelper(blockStatement) {
@@ -719,12 +722,10 @@ module.exports = function({ types, template }) {
 						if (declarations.length) {
 							parent.insertBefore(types.variableDeclaration("var", declarations));
 						}
-						relocatedBlocks.push({
-							relocate() {
-								relocateTail(state, awaitExpression, parent.node, parent, uid);
-							},
-							path: parent,
-						});
+						const tail = relocateTail(state, awaitExpression, parent.node, parent, uid);
+						if (tail) {
+							rewriteFunctionBody(tail, state);
+						}
 					}
 					processExpressions = false;
 				}

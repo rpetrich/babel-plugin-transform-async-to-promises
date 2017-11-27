@@ -18,6 +18,18 @@ var argumentStash = async function() {
 	return fn(foo(), await bar(), baz());
 }
 
+var arrayExpressionStash = async function() {
+	return [foo(), await bar(), baz()];
+}
+
+var objectExpressionStash = async function() {
+	return {
+		foo: foo(),
+		bar: await bar(),
+		baz: baz(),
+	};
+}
+
 var single = async function() {
 	var f = await foo();
 	return f + 1;

@@ -420,6 +420,31 @@ module.exports = function({ types, template }) {
 					declarations.push(types.variableDeclarator(argIdentifier, arg.node));
 					arg.replaceWith(argIdentifier);
 				}
+			} else if (parent.isArrayExpression()) {
+				for (const element of parent.get("elements")) {
+					if (element === awaitPath) {
+						break;
+					}
+					const elementIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(element.node);
+					declarations.push(types.variableDeclarator(elementIdentifier, element.node));
+					element.replaceWith(elementIdentifier);
+				}
+			} else if (parent.isObjectExpression()) {
+				for (const prop of parent.get("properties")) {
+					if (prop === awaitPath) {
+						break;
+					}
+					if (prop.isObjectProperty()) {
+						if (prop.computed) {
+							const keyIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(prop.node.key);
+							declarations.push(types.variableDeclarator(keyIdentifier, prop.node.key));
+							prop.get("key").replaceWith(keyIdentifier);
+						}
+						const propIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(prop.node.value);
+						declarations.push(types.variableDeclarator(propIdentifier, prop.node.value));
+						prop.get("value").replaceWith(propIdentifier);
+					}
+				}
 			}
 			awaitPath = parent;
 		} while (!awaitPath.isStatement());

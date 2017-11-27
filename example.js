@@ -58,7 +58,7 @@ var beforeIfBody = async function() {
 	}
 }
 
-var insideIfBody = async function() {
+var insideIfBodySet = async function() {
 	var result;
 	if (foo) {
 		result = await bar;
@@ -66,6 +66,14 @@ var insideIfBody = async function() {
 		result = await baz;
 	}
 	return result;
+}
+
+var insideIfBodyReturn = async function() {
+	if (foo) {
+		return await bar;
+	} else {
+		return await baz;
+	}
 }
 
 var insideIfConditional = async function() {
@@ -158,8 +166,9 @@ var catchAndLog = async function(value) {
 }
 
 var finallyExample = async function(value) {
+	// TODO: Make this actually return the result of foo()
 	try {
-		await foo()
+		return await foo()
 	} finally {
 		console.log("finished foo, might rethrow");
 	}
@@ -167,7 +176,7 @@ var finallyExample = async function(value) {
 
 var finallySuppressedExample = async function(value) {
 	try {
-		await test();
+		return await test();
 	} finally {
 		return "Ignored";
 	}
@@ -229,8 +238,14 @@ var awaitPredicate = async function() {
 	return false;
 }
 
-var awaitPredicateSimple = async function() {
+var awaitPredicateBinary = async function() {
 	while (await foo() && await bar()) {
+		console.log("hi");
+	}
+}
+
+var awaitPredicateConditional = async function() {
+	while (await foo() ? await bar() : await baz()) {
 		console.log("hi");
 	}
 }
@@ -243,7 +258,7 @@ var forInAwaitValue = async function() {
 
 var forInAwaitBody = async function() {
 	for (var key in foo) {
-		console.log(await foo[key]);
+		await foo[key];
 	}
 }
 
@@ -280,13 +295,54 @@ var awaitBody = async function() {
 	}
 }
 
+var awaitBodyIndirect = async function() {
+	switch (foo) {
+		case false:
+		case true:
+			return foo;
+		default:
+			await bar();
+			return;
+	}
+}
+
 var awaitCase = async function() {
-	switch (await foo) {
+	switch (foo) {
 		case true:
 			return "foo";
 		case await bar:
 			return "foobar";
 		default:
 			return "not fubar";
+	}
+}
+
+var awaitNothing = async function() {
+	switch (await foo) {
+		case true:
+			return "foo";
+		case bar:
+			return "foobar";
+		default:
+			return "not fubar";
+	}
+}
+
+var awaitComplex = async function(foo, bar) {
+	switch (foo) {
+		default:
+		case 0:
+		case 1:
+			return false;
+		case await bar:
+			if (foo) {
+				break;
+			}
+			if (foo === false) {
+				return false;
+			}
+		case 2:
+			console.log("implicit break");
+		return true;
 	}
 }

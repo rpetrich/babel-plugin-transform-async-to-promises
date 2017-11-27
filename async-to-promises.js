@@ -102,18 +102,18 @@ module.exports = function({ types, template }) {
 				return true;
 			}
 			if (path.isTryStatement()) {
-				const catchClause = path.get("handler");
-				if (catchClause.node) {
-					const handler = match(catchClause);
-					result.any = result.any || handler.any;
-					if (handler.all) {
-						return result.all = true;
-					} else {
-						return false;
-					}
-				} else {
-					return true;
+				const bodyMatch = match(path.get("body"));
+				const finalizer = path.get("finalizer");
+				const finalizerMatch = match(finalizer);
+				const handler = path.get("handler");
+				const handlerMatch = match(handler);
+				result.any = result.any || handlerMatch.any || bodyMatch.any || finalizerMatch.any;
+				if (finalizerMatch.all) {
+					return result.all = true;
+				} else if (!finalizer.node) {
+					return result.all = handlerMatch.all && bodyMatch.all;
 				}
+				return false;
 			}
 			if (path.isFunction()) {
 				return false;
@@ -239,8 +239,8 @@ module.exports = function({ types, template }) {
 	}
 
 	function isPassthroughContinuation(continuation) {
-		if (!continuation) {
-			return true;
+		if (!continuation || continuation.type !== "FunctionExpression") {
+			return false;
 		}
 		if (continuation.params.length === 1) {
 			const returnIdentifier = identifierInSingleReturnStatement(continuation.body.body);
@@ -286,37 +286,22 @@ module.exports = function({ types, template }) {
 		return dest;
 	}
 
-	function relocateTail(awaitExpression, statementNode, target, temporary, exitIdentifier) {
-		const blocks = (statementNode ? [statementNode] : []).concat(borrowTail(target));
-		let ret = awaitExpression;
-		let isIIFE = false;
+	function relocateTail(state, awaitExpression, statementNode, target, temporary) {
+		const tail = borrowTail(target);
+		if (statementNode && statementNode.type === "ExpressionStatement" && statementNode.expression.type === "Identifier") {
+			statementNode = null;
+		}
+		const blocks = statementNode ? [statementNode].concat(tail) : tail;
+		let ret;
 		if (blocks.length) {
-			ret = awaitAndContinue(ret, types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks)));
-		} else if (ret.type === "CallExpression" && ret.arguments.length === 0 && ret.callee.type === "FunctionExpression" && ret.callee.params.length === 0) {
-			target.replaceWithMultiple(ret.callee.body.body);
-			isIIFE = true;
-			return;
+			ret = awaitAndContinue(awaitExpression, types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks)));
+		} else if (pathsReturnOrThrow(target).any) {
+			ret = awaitExpression;
+		} else {
+			state.usedEmptyHelper = true;
+			ret = awaitAndContinue(awaitExpression, types.identifier("__empty"));
 		}
 		target.replaceWith(types.returnStatement(ret));
-		if (exitIdentifier && blocks.length) {
-			if (!isIIFE && target.node.argument.arguments.length < 2) {
-				return;
-			}
-			const body = isIIFE ? target : target.get("argument.arguments.1.body");
-			body.traverse({
-				Function(path) {
-					path.skip();
-				},
-				ReturnStatement(path) {
-					const parent = path.parentPath;
-					if (!(parent.isIfStatement() && parent.get("test").isIdentifier() && parent.get("test").node.name === exitIdentifier.name) &&
-						!(path.get("argument").isSequenceExpression() && path.get("argument.expressions.0").isAssignmentExpression() && path.get("argument.expressions.0.left").isIdentifier() && path.node.argument.expressions[0].left.name === exitIdentifier.name))
-					{
-						path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument]));
-					}
-				},
-			});
-		}
 	}
 
 	function tryHelper(blockStatement) {
@@ -360,7 +345,7 @@ module.exports = function({ types, template }) {
 	}
 
 	function blockStatement(statementOrStatements) {
-		if (statementOrStatements.length) {
+		if ("length" in statementOrStatements) {
 			return types.blockStatement(statementOrStatements);
 		} else if (statementOrStatements.type !== "BlockStatement") {
 			return types.blockStatement([statementOrStatements]);
@@ -377,7 +362,7 @@ module.exports = function({ types, template }) {
 		return types.callExpression(types.functionExpression(null, [], blockStatement(statements)), []);
 	}
 
-	function extractDeclarations(awaitPath) {
+	function extractDeclarations(awaitPath, awaitExpression) {
 		const declarations = [];
 		do {
 			const parent = awaitPath.parentPath;
@@ -398,7 +383,7 @@ module.exports = function({ types, template }) {
 					const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
 					declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
 					left.replaceWith(leftIdentifier);
-					awaitPath.replaceWith(parent.node.operator === "||" ? types.conditionalExpression(leftIdentifier, types.numericLiteral(0), awaitPath.node) : types.conditionalExpression(leftIdentifier, awaitPath.node, types.numericLiteral(0)));
+					awaitExpression = parent.node.operator === "||" ? types.conditionalExpression(leftIdentifier, types.numericLiteral(0), awaitExpression) : types.conditionalExpression(leftIdentifier, awaitExpression, types.numericLiteral(0));
 				}
 			} else if (parent.isBinaryExpression()) {
 				const left = parent.get("left");
@@ -412,41 +397,56 @@ module.exports = function({ types, template }) {
 				const test = parent.get("test");
 				if (awaitPath !== test) {
 					const consequent = parent.get("consequent");
+					const testNode = test.node;
+					const testIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(testNode);
+					declarations.push(types.variableDeclarator(testIdentifier, testNode));
+					test.replaceWith(testIdentifier);
 					if (consequent !== awaitPath && consequent.isAwaitExpression()) {
-						awaitPath.replaceWith(types.conditionalExpression(test.node, consequent.node.argument, awaitPath.node));
+						awaitExpression = types.conditionalExpression(testIdentifier, consequent.node.argument, awaitExpression);
 						parent.replaceWith(parent.node.alternate);
 					} else {
-						const testNode = test.node;
-						const testIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(testNode);
-						declarations.push(types.variableDeclarator(testIdentifier, testNode));
-						test.replaceWith(testIdentifier);
-						awaitPath.replaceWith(consequent !== awaitPath ? types.conditionalExpression(testIdentifier, types.numericLiteral(0), awaitPath.node) : types.conditionalExpression(testIdentifier, awaitPath.node, types.numericLiteral(0)));
+						awaitExpression = consequent !== awaitPath ? types.conditionalExpression(testIdentifier, types.numericLiteral(0), awaitExpression) : types.conditionalExpression(testIdentifier, awaitExpression, types.numericLiteral(0));
 					}
 				}
 			}
 			awaitPath = parent;
 		} while (!awaitPath.isStatement());
-		return declarations;
+		return { declarations, awaitExpression };
+	}
+
+	function findLastAwaitPath(path) {
+		let result = (path.node && path.node.type === "AwaitExpression") ? path : null;
+		path.traverse({
+			Function(path) {
+				path.skip();
+			},
+			AwaitExpression(path) {
+				result = path;
+			},
+		});
+		return result;
+	}
+
+	function buildBreakExitCheck(exitIdentifier, breakIdentifier) {
+		if (breakIdentifier) {
+			if (exitIdentifier) {
+				return types.functionExpression(null, [], types.blockStatement([types.returnStatement(types.logicalExpression("||", breakIdentifier, exitIdentifier))]));
+			} else {
+				return types.functionExpression(null, [], types.blockStatement([types.returnStatement(breakIdentifier)]));
+			}
+		} else if (exitIdentifier) {
+			return types.functionExpression(null, [], types.blockStatement([types.returnStatement(exitIdentifier)]));
+		}
 	}
 
 	function rewriteFunctionBody(path, state) {
 		const relocatedBlocks = [];
 		rewriteThisExpression(path, path);
 		let exitIdentifier;
-		for (;;) {
-			let awaitPath;
-			path.traverse({
-				Function(path) {
-					path.skip();
-				},
-				AwaitExpression(path) {
-					awaitPath = path;
-				}
-			});
-			if (!awaitPath) {
-				break;
-			}
+		let awaitPath;
+		while (awaitPath = findLastAwaitPath(path)) {
 			const originalAwaitPath = awaitPath;
+			const originalExpression = awaitPath.node;
 			const node = awaitPath.node;
 			let expressionToAwait = node.argument;
 			let processExpressions = true;
@@ -467,7 +467,9 @@ module.exports = function({ types, template }) {
 										resultIdentifier = path.scope.generateUidIdentifier("result");
 										parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
 									}
-									relocateTail(inlineEvaluated([parent.node]), null, parent, resultIdentifier);
+									if (!explicitExits.all) {
+										relocateTail(state, inlineEvaluated([parent.node]), null, parent);
+									}
 								},
 								path: parent,
 							});
@@ -496,7 +498,7 @@ module.exports = function({ types, template }) {
 									const catchFunction = types.functionExpression(null, [parent.node.handler.param], parent.node.handler.body);
 									evalBlock = types.callExpression(types.memberExpression(evalBlock, types.identifier("then")), [voidExpression(), catchFunction]);
 								}
-								relocateTail(evalBlock, success, parent, temporary)
+								relocateTail(state, evalBlock, success, parent, temporary)
 								if (finallyFunction) {
 									const returnArgument = parent.get("argument");
 									returnArgument.replaceWith(types.callExpression(types.identifier("__finally"), [returnArgument.node, finallyFunction]));
@@ -555,14 +557,9 @@ module.exports = function({ types, template }) {
 										const left = parent.get("left");
 										const loopIdentifier = left.isVariableDeclaration() ? left.node.declarations[0].id : left.node;
 										const params = [right.node, types.functionExpression(null, [loopIdentifier], blockStatement(parent.get("body").node))];
-										if (breakIdentifier) {
-											if (exitIdentifier) {
-												params.push(types.functionExpression(null, [], types.blockStatement([types.returnStatement(types.logicalExpression("||", breakIdentifier, exitIdentifier))])));
-											} else {
-												params.push(types.functionExpression(null, [], types.blockStatement([types.returnStatement(breakIdentifier)])));
-											}
-										} else if (exitIdentifier) {
-											params.push(types.functionExpression(null, [], types.blockStatement([types.returnStatement(exitIdentifier)])));
+										const exitCheck = buildBreakExitCheck(exitIdentifier, breakIdentifier);
+										if (exitCheck) {
+											params.push(exitCheck);
 										}
 										const loopCall = types.callExpression(types.identifier(isForIn ? "__forIn" : "__forOf"), params);
 										let resultIdentifier = null;
@@ -570,7 +567,7 @@ module.exports = function({ types, template }) {
 											resultIdentifier = path.scope.generateUidIdentifier("result");
 											parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
 										}
-										relocateTail(loopCall, null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
+										relocateTail(state, loopCall, null, parent, resultIdentifier);
 									},
 									path: parent,
 								})
@@ -580,7 +577,11 @@ module.exports = function({ types, template }) {
 							let testExpression = parent.node.test;
 							if (breakIdentifier) {
 								const breakCheck = types.unaryExpression("!", breakIdentifier);
-								testExpression = testExpression ? types.logicalExpression("&&", breakCheck, testExpression) : breakCheck;
+								testExpression = testExpression && (testExpression.type != "BooleanLiteral" || !testExpression.value) ? types.logicalExpression("&&", breakCheck, testExpression) : breakCheck;
+							}
+							if (exitIdentifier) {
+								const exitCheck = types.unaryExpression("!", exitIdentifier);
+								testExpression = testExpression && (testExpression.type != "BooleanLiteral" || !testExpression.value) ? types.logicalExpression("&&", exitCheck, testExpression) : exitCheck;
 							}
 							if (testExpression) {
 								const testPath = parent.get("test");
@@ -597,7 +598,7 @@ module.exports = function({ types, template }) {
 									if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
 										// TODO: Validate that body doesn't reassign array or i
 										const loopCall = types.callExpression(types.identifier("__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
-										relocateTail(loopCall, null, parent);
+										relocateTail(state, loopCall, null, parent);
 										state.usedForToHelper = true;
 									} else {
 										const init = parent.get("init");
@@ -614,7 +615,7 @@ module.exports = function({ types, template }) {
 											resultIdentifier = path.scope.generateUidIdentifier("result");
 											parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
 										}
-										relocateTail(loopCall, null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
+										relocateTail(state, loopCall, null, parent, resultIdentifier);
 										if (isDoWhile) {
 											state.usedDoHelper = true;
 										} else {
@@ -628,18 +629,23 @@ module.exports = function({ types, template }) {
 					} else if (parent.isSwitchStatement()) {
 						// TODO: Support more complex switch statements
 						const discriminant = parent.get("discriminant");
-						if (awaitPath !== discriminant) {
+						const testPaths = parent.node.cases.map((_, i) => parent.get(`cases.${i}.test`));
+						if (awaitPath !== discriminant && !(explicitExits.all && !testPaths.some(testPath => findLastAwaitPath(testPath)))) {
 							state.usedSwitchHelper = true;
 							let defaultIndex;
-							parent.node.cases.forEach((switchCase, i) => {
-								if (switchCase.test) {
-									const test = parent.get(`cases.${i}.test`);
-									test.replaceWith(functionize(switchCase.test));
-									rewriteFunctionBody(test, state);
+							testPaths.forEach((testPath, i) => {
+								if (testPath.node) {
+									testPath.replaceWith(functionize(testPath.node));
+									rewriteFunctionBody(testPath, state);
 								} else {
 									defaultIndex = i;
 								}
 							});
+							let breakIdentifier;
+							if (!explicitExits.all && explicitExits.any && !exitIdentifier) {
+								exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
+								path.scope.push({ id: exitIdentifier });
+							}
 							relocatedBlocks.push({
 								relocate() {
 									const cases = parent.node.cases.map((switchCase, i) => {
@@ -651,36 +657,71 @@ module.exports = function({ types, template }) {
 										}
 										if (switchCase.consequent.length) {
 											args.push(types.functionExpression(null, [], types.blockStatement(switchCase.consequent)));
-											const caseExits = pathsBreakReturnOrThrow(parent.get("cases." + i));
-											if (!caseExits.any) {
-												args.push(types.functionExpression(null, [], types.blockStatement([types.returnStatement(types.booleanLiteral(false))])));
-											} else if (!caseExits.all) {
-												// TODO: Handle when fallthrough occurs only part of the time
+											const casePath = parent.get(`cases.${i}`);
+											const caseExits = pathsReturnOrThrow(casePath);
+											const caseBreaks = pathsBreak(casePath);
+											const useBreakIdentifier = !caseBreaks.all && caseBreaks.any;
+											if (useBreakIdentifier && !breakIdentifier) {
+												breakIdentifier = parent.scope.generateUidIdentifier("break");
+												path.scope.push({ id: breakIdentifier });
+											}
+											if (caseExits.any || caseBreaks.any) {
+												casePath.traverse({
+													Function(path) {
+														path.skip();
+													},
+													BreakStatement(path) {
+														if (useBreakIdentifier) {
+															path.insertBefore(types.expressionStatement(types.assignmentExpression("=", breakIdentifier, types.numericLiteral(1))));
+														}
+														const replace = types.returnStatement();
+														replace._skip = true;
+														path.replaceWith(replace);
+													},
+													ReturnStatement(path) {
+														if (exitIdentifier && !path.node._skip) {
+															path.insertBefore(types.expressionStatement(types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1))));
+														}
+													},
+												});
+											}
+											if (!caseExits.any && !caseBreaks.any) {
+												args.push(types.identifier("__empty"));
+												state.usedEmptyHelper = true;
+											} else if (!(caseExits.all || caseBreaks.all)) {
+												const breakCheck = buildBreakExitCheck(caseExits.any ? exitIdentifier : null, useBreakIdentifier ? breakIdentifier : null);
+												if (breakCheck) {
+													args.push(breakCheck);
+												}
 											}
 										}
 										return types.arrayExpression(args);
 									});
+									let resultIdentifier;
+									if (!explicitExits.all && explicitExits.any) {
+										resultIdentifier = path.scope.generateUidIdentifier("result");
+										parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+									}
 									const switchCall = types.callExpression(types.identifier("__switch"), [discriminant.node, types.arrayExpression(cases)]);
-									relocateTail(switchCall, null, parent);
+									relocateTail(state, switchCall, null, parent, resultIdentifier);
 								},
 								path: parent,
 							});
 						}
 					}
 				}
-				if (processExpressions && parent.isStatement()) {
-					if (!awaitPath.isFunction() && !awaitPath.isSwitchCase()) {
-						const uid = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalAwaitPath.node.argument);
-						const originalExpression = originalAwaitPath.node;
+				if (processExpressions && (parent.isStatement() || (parent.isSwitchCase() && awaitPath.node != parent.node.test))) {
+					if (!awaitPath.isFunction() && !awaitPath.isSwitchCase() && awaitPath.node) {
+						const originalArgument = originalAwaitPath.node.argument;
+						const uid = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalArgument);
 						originalAwaitPath.replaceWith(uid);
-						const declarations = extractDeclarations(originalAwaitPath);
+						const { declarations, awaitExpression } = extractDeclarations(originalAwaitPath, originalArgument);
 						if (declarations.length) {
 							parent.insertBefore(types.variableDeclaration("var", declarations));
 						}
-						const currentAwaitPath = awaitPath;
 						relocatedBlocks.push({
 							relocate() {
-								relocateTail(originalExpression.argument, parent.node, parent, uid, exitIdentifier);
+								relocateTail(state, awaitExpression, parent.node, parent, uid);
 							},
 							path: parent,
 						});
@@ -879,6 +920,10 @@ module.exports = function({ types, template }) {
 						body.insertBefore(template(`function __finally(promise, finalizer) {
 							return promise.then(finalizer.bind(null, false), finalizer.bind(null, true));
 						}`)());		
+					}
+					if (this.usedEmptyHelper) {
+						body.insertBefore(template(`function __empty() {
+						}`)());
 					}
 					path.stop();
 				}

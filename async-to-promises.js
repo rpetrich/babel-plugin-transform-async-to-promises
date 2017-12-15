@@ -286,6 +286,12 @@ module.exports = function({ types, template }) {
 		return dest;
 	}
 
+	function returnStatement(argument) {
+		const result = types.returnStatement(argument);
+		result._skip = true;
+		return result;
+	}
+
 	function relocateTail(state, awaitExpression, statementNode, target, temporary) {
 		const tail = borrowTail(target);
 		if (statementNode && statementNode.type === "ExpressionStatement" && statementNode.expression.type === "Identifier") {
@@ -295,15 +301,15 @@ module.exports = function({ types, template }) {
 		let ret;
 		if (blocks.length) {
 			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
-			target.replaceWith(types.returnStatement(awaitAndContinue(awaitExpression, fn)));
+			target.replaceWith(returnStatement(awaitAndContinue(awaitExpression, fn)));
 			if (!isPassthroughContinuation(fn)) {
 				return target.get("argument.arguments.1");
 			}
 		} else if (pathsReturnOrThrow(target).any) {
-			target.replaceWith(types.returnStatement(awaitExpression));
+			target.replaceWith(returnStatement(awaitExpression));
 		} else {
 			state.usedEmptyHelper = true;
-			target.replaceWith(types.returnStatement(awaitAndContinue(awaitExpression, types.identifier("__empty"))));
+			target.replaceWith(returnStatement(awaitAndContinue(awaitExpression, types.identifier("__empty"))));
 		}
 	}
 
@@ -344,7 +350,7 @@ module.exports = function({ types, template }) {
 	}
 
 	function functionize(expression) {
-		return types.functionExpression(null, [], blockStatement([types.returnStatement(expression)]));
+		return types.functionExpression(null, [], blockStatement([returnStatement(expression)]));
 	}
 
 	function blockStatement(statementOrStatements) {
@@ -534,13 +540,41 @@ module.exports = function({ types, template }) {
 	function buildBreakExitCheck(exitIdentifier, breakIdentifier) {
 		if (breakIdentifier) {
 			if (exitIdentifier) {
-				return types.functionExpression(null, [], types.blockStatement([types.returnStatement(types.logicalExpression("||", breakIdentifier, exitIdentifier))]));
+				return types.functionExpression(null, [], types.blockStatement([returnStatement(types.logicalExpression("||", breakIdentifier, exitIdentifier))]));
 			} else {
-				return types.functionExpression(null, [], types.blockStatement([types.returnStatement(breakIdentifier)]));
+				return types.functionExpression(null, [], types.blockStatement([returnStatement(breakIdentifier)]));
 			}
 		} else if (exitIdentifier) {
-			return types.functionExpression(null, [], types.blockStatement([types.returnStatement(exitIdentifier)]));
+			return types.functionExpression(null, [], types.blockStatement([returnStatement(exitIdentifier)]));
 		}
+	}
+
+	function replaceReturnsAndBreaks(path, exitIdentifier, breakIdentifier) {
+		path.traverse({
+			Function(path) {
+				path.skip();
+			},
+			ReturnStatement(path) {
+				if (!path.node._skip && exitIdentifier) {
+					path.node._skip = true;
+					path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument || voidExpression()]));
+				}
+			},
+			BreakStatement(path) {
+				const replace = returnStatement();
+				if (breakIdentifier) {
+					path.replaceWithMultiple([
+						types.expressionStatement(types.assignmentExpression("=", breakIdentifier, types.numericLiteral(1))),
+						replace,
+					]);
+				} else {
+					path.replaceWith(replace);
+				}
+			},
+			ContinueStatement(path) {
+				path.replaceWith(returnStatement());
+			},
+		});
 	}
 
 	function rewriteFunctionBody(path, state) {
@@ -564,15 +598,17 @@ module.exports = function({ types, template }) {
 								exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
 								path.scope.push({ id: exitIdentifier });
 							}
+							replaceReturnsAndBreaks(parent.get("consequent"), exitIdentifier);
+							replaceReturnsAndBreaks(parent.get("alternate"), exitIdentifier);
 							relocatedBlocks.push({
 								relocate() {
 									let resultIdentifier = null;
 									if (!explicitExits.all && explicitExits.any) {
 										resultIdentifier = path.scope.generateUidIdentifier("result");
-										parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+										parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 									}
 									if (!explicitExits.all) {
-										relocateTail(state, inlineEvaluated([parent.node]), null, parent);
+										relocateTail(state, inlineEvaluated([parent.node]), null, parent, resultIdentifier);
 									}
 								},
 								path: parent,
@@ -582,7 +618,7 @@ module.exports = function({ types, template }) {
 						relocatedBlocks.push({
 							relocate() {
 								const temporary = explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
-								const success = explicitExits.all ? types.returnStatement(temporary) : null;
+								const success = explicitExits.all ? returnStatement(temporary) : null;
 								let evalBlock = tryHelper(parent.node.block);
 								state.usedTryHelper = true;
 								let finallyFunction;
@@ -594,7 +630,7 @@ module.exports = function({ types, template }) {
 										const resultIdentifier = path.scope.generateUidIdentifier("result");
 										const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
 										finallyArgs = [wasThrownIdentifier, resultIdentifier];
-										finallyBody = finallyBody.concat(types.ifStatement(wasThrownIdentifier, types.throwStatement(resultIdentifier), types.returnStatement(resultIdentifier)));
+										finallyBody = finallyBody.concat(types.ifStatement(wasThrownIdentifier, types.throwStatement(resultIdentifier), returnStatement(resultIdentifier)));
 									}
 									finallyFunction = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
 								}
@@ -619,33 +655,7 @@ module.exports = function({ types, template }) {
 						if (!exitIdentifier && explicitExits.any) {
 							path.scope.push({ id: exitIdentifier = awaitPath.scope.generateUidIdentifier("exit") });
 						}
-						parent.get("body").traverse({
-							Function(path) {
-								path.skip();
-							},
-							ReturnStatement(path) {
-								if (!path.node._skip && exitIdentifier) {
-									path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument || voidExpression()]));
-								}
-							},
-							BreakStatement(path) {
-								const replace = types.returnStatement();
-								replace._skip = true;
-								if (breakIdentifier) {
-									path.replaceWithMultiple([
-										types.expressionStatement(types.assignmentExpression("=", breakIdentifier, types.numericLiteral(1))),
-										replace,
-									]);
-								} else {
-									path.replaceWith(replace);
-								}
-							},
-							ContinueStatement(path) {
-								const replace = types.returnStatement();
-								replace._skip = true;
-								path.replaceWith(replace);
-							},
-						});
+						replaceReturnsAndBreaks(parent.get("body"), exitIdentifier, breakIdentifier);
 						const isForIn = parent.isForInStatement();
 						const isForOf = parent.isForOfStatement();
 						if (isForIn || isForOf) {
@@ -669,7 +679,7 @@ module.exports = function({ types, template }) {
 										let resultIdentifier = null;
 										if (explicitExits.any) {
 											resultIdentifier = path.scope.generateUidIdentifier("result");
-											parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+											parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 										}
 										relocateTail(state, loopCall, null, parent, resultIdentifier);
 									},
@@ -717,7 +727,7 @@ module.exports = function({ types, template }) {
 										let resultIdentifier = null;
 										if (explicitExits.any) {
 											resultIdentifier = path.scope.generateUidIdentifier("result");
-											parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+											parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 										}
 										relocateTail(state, loopCall, null, parent, resultIdentifier);
 										if (isDoWhile) {
@@ -778,9 +788,7 @@ module.exports = function({ types, template }) {
 														if (useBreakIdentifier) {
 															path.insertBefore(types.expressionStatement(types.assignmentExpression("=", breakIdentifier, types.numericLiteral(1))));
 														}
-														const replace = types.returnStatement();
-														replace._skip = true;
-														path.replaceWith(replace);
+														path.replaceWith(returnStatement());
 													},
 													ReturnStatement(path) {
 														if (exitIdentifier && !path.node._skip) {
@@ -804,7 +812,7 @@ module.exports = function({ types, template }) {
 									let resultIdentifier;
 									if (!explicitExits.all && explicitExits.any) {
 										resultIdentifier = path.scope.generateUidIdentifier("result");
-										parent.insertAfter(types.ifStatement(exitIdentifier, types.returnStatement(resultIdentifier)));
+										parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 									}
 									const switchCall = types.callExpression(types.identifier("__switch"), [discriminant.node, types.arrayExpression(cases)]);
 									relocateTail(state, switchCall, null, parent, resultIdentifier);
@@ -815,7 +823,7 @@ module.exports = function({ types, template }) {
 					}
 				}
 				if (processExpressions && (parent.isStatement() || (parent.isSwitchCase() && awaitPath.node != parent.node.test))) {
-					if (!awaitPath.isFunction() && !awaitPath.isSwitchCase() && awaitPath.node) {
+					if (!awaitPath.isFunction() && !awaitPath.isSwitchCase()) {
 						const originalArgument = originalAwaitPath.node.argument;
 						const uid = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalArgument);
 						originalAwaitPath.replaceWith(uid);
@@ -823,10 +831,15 @@ module.exports = function({ types, template }) {
 						if (declarations.length) {
 							parent.insertBefore(types.variableDeclaration("var", declarations));
 						}
-						const tail = relocateTail(state, awaitExpression, parent.node, parent, uid);
-						if (tail) {
-							rewriteFunctionBody(tail, state);
-						}
+						relocatedBlocks.push({
+							relocate() {
+								const tail = relocateTail(state, awaitExpression, parent.node, parent, uid);
+								if (tail) {
+									rewriteFunctionBody(tail, state);
+								}
+							},
+							path: parent,
+						});
 					}
 					processExpressions = false;
 				}
@@ -851,7 +864,7 @@ module.exports = function({ types, template }) {
 			ArrowFunctionExpression(path) {
 				const node = path.node;
 				if (node.async && isCompatible(path.get("body"))) {
-					const body = path.get("body").isBlockStatement() ? path.node.body : blockStatement([types.returnStatement(path.node.body)]);
+					const body = path.get("body").isBlockStatement() ? path.node.body : blockStatement([returnStatement(path.node.body)]);
 					path.replaceWith(types.functionExpression(null, node.params, body, false, node.async));
 					rewriteThisExpression(path, path.parentPath);
 				}

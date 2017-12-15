@@ -183,7 +183,7 @@ compiledTest("if body returns", {
 
 compiledTest("if body assignments", {
 	input: `async function(foo, bar, baz) { var result; if (foo()) { result = await bar(); } else { result = await baz(); }; return result; }`,
-	output: `__async(function(foo,bar,baz){var _exit;var result;return __await(function(){if(foo()){return __await(bar(),function(_bar){result=_bar;});}else{return __await(baz(),function(_baz){result=_baz;});}}(),function(){if(_exit)return _result;;return result;});});`,
+	output: `__async(function(foo,bar,baz){var result;return __await(function(){if(foo()){return __await(bar(),function(_bar){result=_bar;});}else{return __await(baz(),function(_baz){result=_baz;});}}(),function(){;return result;});});`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 1, async _ => 0)).toBe(0),
@@ -228,8 +228,7 @@ compiledTest("ternary predicate", {
 
 compiledTest("return in consequent", {
 	input: `async function(foo, bar) { if (foo) { var baz = await bar(); if (baz) { return baz; } }; return 0; }`,
-	// TODO: Fix this test
-	output: `_`,
+	output: `__async(function(foo,bar){var _exit;return __await(function(){if(foo){return __await(bar(),function(_bar){var baz=_bar;if(baz){return _exit=1,baz;}});}}(),function(_result){if(_exit)return _result;;return 0;});});`,
 	cases: {
 		"inner if": async f => expect(await f(true, async _ => 1)).toBe(1),
 		"outer if": async f => expect(await f(true, async _ => 0)).toBe(0),
@@ -291,7 +290,8 @@ compiledTest("catch and ignore", {
 
 compiledTest("catch and await", {
 	input: `async function(foo, bar) { try { return await foo(); } catch(e) { await bar(); } }`,
-	output: `__async(function(foo,bar){return __try(foo).catch(function(e){return __await(bar(),__empty);});});`,
+	// TODO: Figure out why __try(function(){return foo();}) isn't being simplified to __try(foo)
+	output: `__async(function(foo,bar){return __try(function(){return foo();}).catch(function(e){return __await(bar(),__empty);});});`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", async _ => false)).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; }, async _ => false)).toBe(undefined),
@@ -337,7 +337,7 @@ compiledTest("finally suppress original return", {
 compiledTest("for to length iteration", {
 	input: `async function(list) { var result = 0; for (var i = 0; i < list.length; i++) { result += await list[i](); } return result;}`,
 	// input: `async function(list) { for (var i = 0; i < list.length; i++) { await list[i](); }}`,
-	output: `__async(function(list){var _exit;var i=0;return __await(__for(function(){return!_exit&&i<list.length;},function(){return i++;},function(){return _exit=1,__await(list[i](),__empty);}),function(_result){if(_exit)return _result;});});`,
+	output: `__async(function(list){var result=0;return __await(__forTo(list,function(i){return __await(list[i](),function(_list$i){result+=_list$i;});}),function(){return result;});});`,
 	cases: {
 		zero: async f => expect(await f([])).toBe(0),
 		one: async f => expect(await f([async _ => 1])).toBe(1),
@@ -348,7 +348,7 @@ compiledTest("for to length iteration", {
 
 compiledTest("for to length with break", {
 	input: `async function(list) { for (var i = 0; i < list.length; i++) { if (await list[i]()) { break; } }}`,
-	output: `__async(function(list){var _exit;var i=0;return __await(__for(function(){return!_exit&&i<list.length;},function(){return i++;},function(){return _exit=1,__await(list[i](),function(_list$i){if(_list$i){break;}});}),function(_result){if(_exit)return _result;});});`,
+	output: `__async(function(list){var _interrupt;var i=0;return __for(function(){return!_interrupt&&i<list.length;},function(){return i++;},function(){return __await(list[i](),function(_list$i){if(_list$i){_interrupt=1;return;}});});});`,
 	cases: {
 		none: async f => expect(await f([])).toBe(undefined),
 		single: async f => {
@@ -375,7 +375,7 @@ compiledTest("for to length with break", {
 
 compiledTest("for to length with continue", {
 	input: `async function(list) { for (var i = 0; i < list.length; i++) { if (await list[i]()) { continue; } return false; } return true; }`,
-	output: `__async(function(list){var _exit;var i=0;return __await(__for(function(){return!_exit&&i<list.length;},function(){return i++;},function(){return _exit=1,__await(list[i](),function(_list$i){if(_list$i){continue;}return false;});}),function(_result){if(_exit)return _result;return true;});});`,
+	output: `__async(function(list){var _exit;var i=0;return __await(__for(function(){return!_exit&&i<list.length;},function(){return i++;},function(){return __await(list[i](),function(_list$i){if(_list$i){return;}return _exit=1,false;});}),function(_result){if(_exit)return _result;return true;});});`,
 	cases: {
 		none: async f => expect(await f([])).toBe(true),
 		"single true": async f => expect(await f([async _ => false])).toBe(false),
@@ -386,7 +386,7 @@ compiledTest("for to length with continue", {
 
 compiledTest("while loop", {
 	input: `async function(foo, log) { let shouldContinue = true; while (shouldContinue) { shouldContinue = await foo(); } }`,
-	output: `__async(function(list){var _exit;let shouldContinue=true;return __await(__for(function(){return!_exit&&shouldContinue;},void 0,function(){return _exit=1,__await(foo,function(_foo){shouldContinue=_foo;console.log(shouldContinue);});}),function(_result){if(_exit)return _result;});});`,
+	output: `__async(function(foo,log){let shouldContinue=true;return __for(function(){return shouldContinue;},void 0,function(){return __await(foo(),function(_foo){shouldContinue=_foo;});});});`,
 	cases: {
 		one: async f => {
 			var count = 0;

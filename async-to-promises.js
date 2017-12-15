@@ -760,6 +760,7 @@ module.exports = function({ types, template }) {
 								exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
 								path.scope.push({ id: exitIdentifier });
 							}
+							replaceReturnsAndBreaks(parent, exitIdentifier);
 							relocatedBlocks.push({
 								relocate() {
 									const cases = parent.node.cases.map((switchCase, i) => {

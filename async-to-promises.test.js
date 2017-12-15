@@ -385,8 +385,8 @@ compiledTest("for to length with continue", {
 });
 
 compiledTest("while loop", {
-	input: `async function(foo, log) { let shouldContinue = true; while (shouldContinue) { shouldContinue = await foo(); } }`,
-	output: `__async(function(foo,log){let shouldContinue=true;return __for(function(){return shouldContinue;},void 0,function(){return __await(foo(),function(_foo){shouldContinue=_foo;});});});`,
+	input: `async function(foo) { let shouldContinue = true; while (shouldContinue) { shouldContinue = await foo(); } }`,
+	output: `__async(function(foo){let shouldContinue=true;return __for(function(){return shouldContinue;},void 0,function(){return __await(foo(),function(_foo){shouldContinue=_foo;});});});`,
 	cases: {
 		one: async f => {
 			var count = 0;
@@ -401,6 +401,72 @@ compiledTest("while loop", {
 		seven: async f => {
 			var count = 0;
 			expect(await f(async _ => { ++count; return count < 7; })).toBe(undefined);
+			expect(count).toBe(7);
+		},
+	},
+});
+
+compiledTest("while predicate", {
+	input: `async function(foo) { var count = 0; while(await foo()) { count++; } return count }`,
+	output: `__async(function(foo){var count=0;return __await(__for(function(){return foo();},void 0,function(){count++;}),function(){return count;});});`,
+	cases: {
+		one: async f => {
+			var count = 0;
+			expect(await f(async _ => { ++count })).toBe(0);
+			expect(count).toBe(1);
+		},
+		two: async f => {
+			var count = 0;
+			expect(await f(async _ => { ++count; return count < 2; })).toBe(1);
+			expect(count).toBe(2);
+		},
+		seven: async f => {
+			var count = 0;
+			expect(await f(async _ => { ++count; return count < 7; })).toBe(6);
+			expect(count).toBe(7);
+		},
+	},
+});
+
+compiledTest("do while loop", {
+	input: `async function(foo) { let shouldContinue; do { shouldContinue = await foo(); } while(shouldContinue); }`,
+	output: `__async(function(foo){let shouldContinue;return __do(function(){return __await(foo(),function(_foo){shouldContinue=_foo;});},function(){return shouldContinue;});});`,
+	cases: {
+		one: async f => {
+			var count = 0;
+			expect(await f(async _ => { ++count })).toBe(undefined);
+			expect(count).toBe(1);
+		},
+		two: async f => {
+			var count = 0;
+			expect(await f(async _ => { ++count; return count < 2; })).toBe(undefined);
+			expect(count).toBe(2);
+		},
+		seven: async f => {
+			var count = 0;
+			expect(await f(async _ => { ++count; return count < 7; })).toBe(undefined);
+			expect(count).toBe(7);
+		},
+	},
+});
+
+compiledTest("do while return loop", {
+	input: `async function(foo) { let shouldContinue; do { if (!await foo()) return true; } while(true); }`,
+	output: `__async(function(foo){var _exit;let shouldContinue;return __await(__do(function(){return __await(foo(),function(_foo){if(!_foo)return _exit=1,true;});},function(){return!_exit;}),function(_result){if(_exit)return _result;});});`,
+	cases: {
+		one: async f => {
+			var count = 0;
+			expect(await f(async _ => { ++count })).toBe(true);
+			expect(count).toBe(1);
+		},
+		two: async f => {
+			var count = 0;
+			expect(await f(async _ => { ++count; return count < 2; })).toBe(true);
+			expect(count).toBe(2);
+		},
+		seven: async f => {
+			var count = 0;
+			expect(await f(async _ => { ++count; return count < 7; })).toBe(true);
 			expect(count).toBe(7);
 		},
 	},

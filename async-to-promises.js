@@ -1,3 +1,5 @@
+const errorOnIncompatible = true;
+
 module.exports = function({ types, template }) {
 
 	function statementForPath(path) {
@@ -155,28 +157,29 @@ module.exports = function({ types, template }) {
 
 	function isCompatible(path) {
 		let result = true;
-		let insideIncompatble = 0;
 		path.traverse({
 			BreakStatement(path) {
-				if (path.node.label) {
+				const label = path.node.label;
+				if (label) {
+					if (errorOnIncompatible) {
+						throw path.buildCodeFrameError("transform-async-to-promises doesn't support break statements containing a label!");
+					}
 					result = false;
 					path.stop();
 				}
 			},
 			ContinueStatement(path) {
-				if (path.node.label) {
+				const label = path.node.label;
+				if (label) {
+					if (errorOnIncompatible) {
+						throw path.buildCodeFrameError("transform-async-to-promises doesn't support continue statements containing a label!");
+					}
 					result = false;
 					path.stop();
 				}
 			},
 			Function(path) {
 				path.skip();
-			},
-			AwaitExpression(path) {
-				if (insideIncompatble) {
-					result = false;
-					path.stop();
-				}
 			}
 		});
 		return result;

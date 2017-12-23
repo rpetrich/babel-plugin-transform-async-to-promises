@@ -627,7 +627,7 @@ module.exports = function({ types, template }) {
 										const resultIdentifier = path.scope.generateUidIdentifier("result");
 										const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
 										finallyArgs = [wasThrownIdentifier, resultIdentifier];
-										finallyBody = finallyBody.concat(types.ifStatement(wasThrownIdentifier, types.throwStatement(resultIdentifier), returnStatement(resultIdentifier)));
+										finallyBody = finallyBody.concat(returnStatement(types.callExpression(helperReference(state, "__rethrow"), [wasThrownIdentifier, resultIdentifier])));
 									}
 									finallyFunction = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
 								}
@@ -1031,7 +1031,14 @@ module.exports = function({ types, template }) {
 						if (usedHelpers["__finally"]) {
 							body.insertBefore(template(`function __finally(promise, finalizer) {
 								return promise.then(finalizer.bind(null, false), finalizer.bind(null, true));
-							}`)());		
+							}`)());
+						}
+						if (usedHelpers["__rethrow"]) {
+							body.insertBefore(template(`function __rethrow(thrown, value) {
+								if (thrown)
+									throw value;
+								return value;
+							}`)());
 						}
 						if (usedHelpers["__empty"]) {
 							body.insertBefore(template(`function __empty() {

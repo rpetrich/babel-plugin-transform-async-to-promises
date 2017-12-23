@@ -21,6 +21,7 @@ module.exports = function({ types, template }) {
 			if (matchingNodeTypes.indexOf(path.node.type) !== -1) {
 				result.any = true;
 				result.all = true;
+				result.hasBreak = result.hasBreak || path.isBreakStatement();
 				return true;
 			}
 			if (path.isConditional()) {
@@ -28,16 +29,18 @@ module.exports = function({ types, template }) {
 				const consequent = match(path.get("consequent"));
 				const alternate = match(path.get("alternate"));
 				result.any = result.any || test.any || consequent.any || alternate.any;
-				return result.all = (test.all || (consequent.all && alternate.all));
+				result.hasBreak = result.hasBreak || consequent.hasBreak || alternate.hasBreak;
+				return (result.all = (test.all || (consequent.all && alternate.all && !result.hasBreak)));
 			}
 			if (path.isSwitchStatement()) {
 				const discriminant = match(path.get("discriminant"));
 				const cases = path.node.cases.map((switchCase, i) => path.get("cases." + i));
 				const caseMatches = cases.map((switchCase, i) => {
-					const result = { all: false, any: false };
+					const result = { all: false, any: false, hasBreak: false };
 					for (;;) {
 						const caseMatch = match(switchCase);
 						result.any = result.any || caseMatch.any;
+						result.hasBreak = result.hasBreak || caseMatch.hasBreak;
 						if (caseMatch.all) {
 							result.all = true;
 							break;
@@ -53,7 +56,8 @@ module.exports = function({ types, template }) {
 					return result;
 				});
 				result.any = result.any || discriminant.any || caseMatches.some(caseMatch => caseMatch.any);
-				return result.all = discriminant.all || (cases.some(switchCase => !switchCase.node.test) && caseMatches.every(caseMatch => caseMatch.all));
+				result.hasBreak = result.hasBreak || caseMatches.some(caseMatch => caseMatch.hasBreak);
+				return result.all = discriminant.all || (cases.some(switchCase => !switchCase.node.test) && caseMatches.every(caseMatch => caseMatch.all && !caseMatch.hasBreak));
 			}
 			if (path.isDoWhileStatement()) {
 				const body = match(path.get("body"));
@@ -92,7 +96,7 @@ module.exports = function({ types, template }) {
 				return true;
 			}
 			if (path.isBreakStatement()) {
-				return true;
+				return result.hasBreak = true;
 			}
 			if (path.isContinueStatement()) {
 				return true;
@@ -108,6 +112,7 @@ module.exports = function({ types, template }) {
 				const handler = path.get("handler");
 				const handlerMatch = match(handler);
 				result.any = result.any || blockMatch.any || handlerMatch.any || finalizerMatch.any;
+				result.hasBreak = result.hasBreak || blockMatch.hasBreak || finalizerMatch.hasBreak || handler.hasBreak;
 				if (finalizerMatch.all) {
 					return result.all = true;
 				} else if (!finalizer.node) {
@@ -133,9 +138,9 @@ module.exports = function({ types, template }) {
 		};
 		function match(path) {
 			if (!path || !path.node) {
-				return { all: false, any: false };
+				return { all: false, any: false, hasBreak: false };
 			}
-			const match = { all: false, any: false };
+			const match = { all: false, any: false, hasBreak: false };
 			if (typeof visit(path, match) === "undefined") {
 				path.traverse(visitor, { match });
 			}
@@ -576,10 +581,9 @@ module.exports = function({ types, template }) {
 		});
 	}
 
-	function rewriteFunctionBody(path, state) {
+	function rewriteFunctionBody(path, state, exitIdentifier, breakIdentifier) {
 		const relocatedBlocks = [];
 		rewriteThisExpression(path, path);
-		let exitIdentifier;
 		let awaitPath;
 		while (awaitPath = findLastAwaitPath(path)) {
 			const originalAwaitPath = awaitPath;
@@ -597,8 +601,8 @@ module.exports = function({ types, template }) {
 								exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
 								path.scope.push({ id: exitIdentifier });
 							}
-							replaceReturnsAndBreaks(parent.get("consequent"), exitIdentifier);
-							replaceReturnsAndBreaks(parent.get("alternate"), exitIdentifier);
+							replaceReturnsAndBreaks(parent.get("consequent"), exitIdentifier, breakIdentifier);
+							replaceReturnsAndBreaks(parent.get("alternate"), exitIdentifier, breakIdentifier);
 							relocatedBlocks.push({
 								relocate() {
 									let resultIdentifier = null;
@@ -697,7 +701,7 @@ module.exports = function({ types, template }) {
 							if (testExpression) {
 								const testPath = parent.get("test");
 								testPath.replaceWith(functionize(testExpression));
-								rewriteFunctionBody(testPath, state);
+								rewriteFunctionBody(testPath, state, exitIdentifier);
 							}
 							const update = parent.get("update");
 							if (update.node) {
@@ -736,21 +740,20 @@ module.exports = function({ types, template }) {
 						const discriminant = parent.get("discriminant");
 						const testPaths = parent.node.cases.map((_, i) => parent.get(`cases.${i}.test`));
 						if (awaitPath !== discriminant && !(explicitExits.all && !testPaths.some(testPath => findLastAwaitPath(testPath)))) {
-							let defaultIndex;
-							testPaths.forEach((testPath, i) => {
-								if (testPath.node) {
-									testPath.replaceWith(functionize(testPath.node));
-									rewriteFunctionBody(testPath, state);
-								} else {
-									defaultIndex = i;
-								}
-							});
 							let breakIdentifier;
 							if (!explicitExits.all && explicitExits.any && !exitIdentifier) {
 								exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
 								path.scope.push({ id: exitIdentifier });
 							}
-							replaceReturnsAndBreaks(parent, exitIdentifier);
+							let defaultIndex;
+							testPaths.forEach((testPath, i) => {
+								if (testPath.node) {
+									testPath.replaceWith(functionize(testPath.node));
+									rewriteFunctionBody(testPath, state, exitIdentifier);
+								} else {
+									defaultIndex = i;
+								}
+							});
 							relocatedBlocks.push({
 								relocate() {
 									const cases = parent.node.cases.map((switchCase, i) => {
@@ -776,10 +779,10 @@ module.exports = function({ types, template }) {
 														path.skip();
 													},
 													BreakStatement(path) {
+														path.replaceWith(returnStatement());
 														if (useBreakIdentifier) {
 															path.insertBefore(types.expressionStatement(types.assignmentExpression("=", breakIdentifier, types.numericLiteral(1))));
 														}
-														path.replaceWith(returnStatement());
 													},
 													ReturnStatement(path) {
 														if (exitIdentifier && !path.node._skip) {
@@ -825,7 +828,7 @@ module.exports = function({ types, template }) {
 							relocate() {
 								const tail = relocateTail(state, awaitExpression, parent.node, parent, uid);
 								if (tail) {
-									rewriteFunctionBody(tail, state);
+									rewriteFunctionBody(tail, state, exitIdentifier);
 								}
 							},
 							path: parent,

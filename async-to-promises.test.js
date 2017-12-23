@@ -508,3 +508,96 @@ compiledTest("for in await value with return", {
 		},
 	},
 });
+
+compiledTest("await for discriminant", {
+	input: `async function(foo) { switch (await foo()) { case 1: return true; default: return false; } }`,
+	output: `__async(function(foo){return __await(foo(),function(_foo){switch(_foo){case 1:return true;default:return false;}});});`,
+	cases: {
+		true: async f => {
+			expect(await f(async () => 1)).toBe(true);
+		},
+		false: async f => {
+			expect(await f(async () => 0)).toBe(false);
+		},
+	},
+});
+
+compiledTest("await for body", {
+	input: `async function(foo, bar) { switch (foo()) { case 1: return await bar(); default: return false; } }`,
+	output: `__async(function(foo,bar){switch(foo()){case 1:return bar();default:return false;}});`,
+	cases: {
+		zero: async f => {
+			expect(await f(() => 1, async () => 0)).toBe(0);
+		},
+		one: async f => {
+			expect(await f(() => 1, async () => 1)).toBe(1);
+		},
+		false: async f => {
+			expect(await f(() => 0)).toBe(false);
+		},
+	},
+});
+
+compiledTest("await for body indirect", {
+	input: `async function(foo, bar) { switch (foo()) { case 1: var result = await bar(); return result; default: return false; } }`,
+	output: `__async(function(foo,bar){switch(foo()){case 1:return __await(bar(),function(_bar){var result=_bar;return result;});default:return false;}});`,
+	cases: {
+		zero: async f => {
+			expect(await f(() => 1, async () => 0)).toBe(0);
+		},
+		one: async f => {
+			expect(await f(() => 1, async () => 1)).toBe(1);
+		},
+		false: async f => {
+			expect(await f(() => 0)).toBe(false);
+		},
+	},
+});
+
+compiledTest("await case", {
+	input: `async function(foo, bar) { switch (await foo()) { case await bar(): return true; default: return false; } }`,
+	output: `__async(function(foo,bar){return __await(foo(),function(_foo){return __switch(_foo,[[function(){return bar();},function(){return true;}],[void 0,function(){return false;}]]);});});`,
+	cases: {
+		true: async f => {
+			expect(await f(async () => 1, async () => 1)).toBe(true);
+		},
+		false: async f => {
+			expect(await f(async () => 1, async () => 0)).toBe(false);
+		},
+	},
+});
+
+compiledTest("await break", {
+	input: `async function(foo, bar) { var result; switch (await foo()) { case await bar(): result = true; break; default: result = false; break; } return result; }`,
+	output: `__async(function(foo,bar){var result;return __await(foo(),function(_foo){return __await(__switch(_foo,[[function(){return bar();},function(){result=true;return;}],[void 0,function(){result=false;return;}]]),function(){return result;});});});`,
+	cases: {
+		true: async f => {
+			expect(await f(async () => 1, async () => 1)).toBe(true);
+		},
+		false: async f => {
+			expect(await f(async () => 1, async () => 0)).toBe(false);
+		},
+	},
+});
+
+compiledTest("await complex switch", {
+	input: `async function(foo, bar) { switch (foo) { case 1: case 2: return 0; case await bar(): if (foo) break; if (foo === 0) return 1; default: return 2; } return 3; }`,
+	output: `__async(function(foo,bar){var _exit,_break;return __await(__switch(foo,[[function(){return 1;}],[function(){return 2;},function(){_exit=1;return 0;}],[function(){return bar();},function(){if(foo){_break=1;return;}if(foo===0){_exit=1;return 1;}},function(){return _break||_exit;}],[void 0,function(){_exit=1;return 2;}]]),function(_result){if(_exit)return _result;return 3;});});`,
+	cases: {
+		fallthrough: async f => {
+			expect(await f(1)).toBe(0);
+		},
+		direct: async f => {
+			expect(await f(2)).toBe(0);
+		},
+		break: async f => {
+			expect(await f(3, async () => 3)).toBe(3);
+		},
+		return: async f => {
+			expect(await f(0, async () => 0)).toBe(1);
+		},
+		default: async f => {
+			expect(await f(0, async () => 2)).toBe(2);
+		},
+	},
+});

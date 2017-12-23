@@ -471,3 +471,40 @@ compiledTest("do while return loop", {
 		},
 	},
 });
+
+compiledTest("for in await object", {
+	input: `async function(foo) { var keys = []; for (var key in await foo()) { keys.push(key); }; return keys.sort(); }`,
+	output: `__async(function(foo){var keys=[];return __await(foo(),function(_foo){for(var key in _foo){keys.push(key);};return keys.sort();});});`,
+	cases: {
+		two: async f => {
+			var obj = { bar: 0, baz: 0 };
+			expect(JSON.stringify(await f(async _ => obj))).toBe(`["bar","baz"]`);
+		},
+	},
+});
+
+compiledTest("for in await value", {
+	input: `async function(foo) { var values = []; for (var key in foo) { values.push(await foo[key]()); }; return values.sort(); }`,
+	output: `__async(function(foo){var values=[];return __await(__forIn(foo,function(key){return __await(foo[key](),function(_foo$key){values.push.call(values,_foo$key);});}),function(){;return values.sort();});});`,
+	cases: {
+		two: async f => {
+			var obj = { bar: async _ => 0, baz: async _ => 1 };
+			expect(JSON.stringify(await f(obj))).toBe(`[0,1]`);
+		},
+	},
+});
+
+compiledTest("for in await value with return", {
+	input: `async function(foo) { for (var key in foo) { if (await foo[key]()) return true }; return false }`,
+	output: `__async(function(foo){var _exit;return __await(__forIn(foo,function(key){return __await(foo[key](),function(_foo$key){if(_foo$key)return _exit=1,true;});},function(){return _exit;}),function(_result){if(_exit)return _result;;return false;});});`,
+	cases: {
+		true: async f => {
+			var obj = { foo: async _ => 0, bar: async _ => 1, baz: async _ => 0 };
+			expect(await f(obj)).toBe(true);
+		},
+		false: async f => {
+			var obj = { foo: async _ => 0, bar: async _ => 0, baz: async _ => 0 };
+			expect(await f(obj)).toBe(false);
+		},
+	},
+});

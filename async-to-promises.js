@@ -102,16 +102,16 @@ module.exports = function({ types, template }) {
 				return true;
 			}
 			if (path.isTryStatement()) {
-				const bodyMatch = match(path.get("body"));
+				const blockMatch = match(path.get("block"));
 				const finalizer = path.get("finalizer");
 				const finalizerMatch = match(finalizer);
 				const handler = path.get("handler");
 				const handlerMatch = match(handler);
-				result.any = result.any || handlerMatch.any || bodyMatch.any || finalizerMatch.any;
+				result.any = result.any || blockMatch.any || handlerMatch.any || finalizerMatch.any;
 				if (finalizerMatch.all) {
 					return result.all = true;
 				} else if (!finalizer.node) {
-					return result.all = handlerMatch.all && bodyMatch.all;
+					return result.all = handlerMatch.all && blockMatch.all;
 				}
 				return false;
 			}

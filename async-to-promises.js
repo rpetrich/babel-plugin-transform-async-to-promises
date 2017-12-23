@@ -632,7 +632,8 @@ module.exports = function({ types, template }) {
 									finallyFunction = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
 								}
 								if (parent.node.handler) {
-									const catchFunction = types.functionExpression(null, [parent.node.handler.param], parent.node.handler.body);
+									const catchClause = parent.node.handler;
+									const catchFunction = catchClause.body.body.length ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(state, "__empty");
 									evalBlock = types.callExpression(types.memberExpression(evalBlock, types.identifier("catch")), [catchFunction]);
 								}
 								relocateTail(state, evalBlock, success, parent, temporary);

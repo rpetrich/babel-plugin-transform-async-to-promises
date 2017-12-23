@@ -909,7 +909,7 @@ module.exports = function({ types, template }) {
 								for (var key in target) {
 									keys.push(key);
 								}
-								return __for(check ? function() { return i < keys.length && check(); } : function() { return i < keys.length; }, function() { i++; }, function() { return body(keys[i]); });
+								return __for(check ? function() { return i < keys.length && !check(); } : function() { return i < keys.length; }, function() { i++; }, function() { return body(keys[i]); });
 							}`)());
 						}
 						if (usedHelpers["__forOf"]) {
@@ -923,7 +923,7 @@ module.exports = function({ types, template }) {
 									target = values;
 								}
 								var i = 0;
-								return __for(check ? function() { return i < target.length && check(); } : function() { return i < target.length; }, function() { i++; }, function() { return body(target[i]); });
+								return __for(check ? function() { return i < target.length && !check(); } : function() { return i < target.length; }, function() { i++; }, function() { return body(target[i]); });
 							}`)());
 						}
 						if (usedHelpers["__switch"]) {

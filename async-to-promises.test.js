@@ -281,7 +281,7 @@ compiledTest("catch and recover via return", {
 
 compiledTest("catch and ignore", {
 	input: `async function(foo) { try { return await foo(); } catch(e) { } }`,
-	output: `__async(function(foo){return __await(__try(foo).catch(function(e){}),__empty);});`,
+	output: `__async(function(foo){return __try(foo).catch(__empty);});`,
 	cases: {
 		success: async f => expect(await f(async _ => "success")).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; })).toBe(undefined),
@@ -309,7 +309,7 @@ compiledTest("catch and recover via variable", {
 
 compiledTest("finally passthrough", {
 	input: `async function(value, log) { try { return await value(); } finally { log("finished value(), might rethrow"); } }`,
-	output: `__async(function(value,log){return __finally(__await(__try(value),__empty),function(_wasThrown,_result){log(\"finished value(), might rethrow\");if(_wasThrown)throw _result;else return _result;});});`,
+	output: `__async(function(value,log){return __finally(__try(value),function(_wasThrown,_result){log(\"finished value(), might rethrow\");return __rethrow(_wasThrown,_result);});});`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", _ => undefined)).toBe("success"),
 		throw: async f => {

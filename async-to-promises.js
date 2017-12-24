@@ -251,17 +251,18 @@ module.exports = function({ types, template }) {
 
 	function awaitAndContinue(state, target, continuation, catchContinuation) {
 		let args;
+		const useCallHelper = target.type === "CallExpression" && target.arguments.length === 0;
 		if (!catchContinuation) {
 			if (isPassthroughContinuation(continuation)) {
 				return target;
 			}
-			args = [target, continuation];
+			args = [useCallHelper ? target.callee : target, continuation];
 		} else if (isPassthroughContinuation(continuation)) {
-			args = [target, voidExpression(), catchContinuation];
+			args = [useCallHelper ? target.callee : target, voidExpression(), catchContinuation];
 		} else {
-			args = [target, continuation, catchContinuation];
+			args = [useCallHelper ? target.callee : target, continuation, catchContinuation];
 		}
-		return types.callExpression(helperReference(state, "__await"), args);
+		return types.callExpression(helperReference(state, useCallHelper ? "__call" : "__await"), args);
 	}
 
 	function voidExpression(arg) {
@@ -316,11 +317,11 @@ module.exports = function({ types, template }) {
 			if (statement.type === "ReturnStatement") {
 				const argument = statement.argument;
 				if (argument.type === "CallExpression" && argument.arguments.length === 0 && argument.callee.type === "Identifier") {
-					return types.callExpression(helperReference(state, "__try"), [argument.callee]);
+					return types.callExpression(helperReference(state, "__call"), [argument.callee]);
 				}
 			}
 		}
-		return types.callExpression(helperReference(state, "__try"), [types.functionExpression(null, [], blockStatement)])
+		return types.callExpression(helperReference(state, "__call"), [types.functionExpression(null, [], blockStatement)])
 	}
 
 	function rewriteThisExpression(rewritePath, targetPath) {
@@ -889,8 +890,8 @@ module.exports = function({ types, template }) {
 							}`)());		
 						}
 						if (usedHelpers["__await"]) {
-							body.insertBefore(template(`function __await(value, then) {
-								return (value && value.then ? value : Promise.resolve(value)).then(then);
+							body.insertBefore(template(`function __await(value, then, recover) {
+								return (value && value.then ? value : Promise.resolve(value)).then(then, recover);
 							}`)());
 						}
 						if (usedHelpers["__forTo"]) {
@@ -925,7 +926,7 @@ module.exports = function({ types, template }) {
 							}`)());
 						}
 						if (usedHelpers["__switch"]) {
-							usedHelpers["__try"] = true;
+							usedHelpers["__call"] = true;
 							body.insertBefore(template(`function __switch(discriminant, cases) {
 								return new Promise(function(resolve, reject) {
 									var i = -1;
@@ -941,7 +942,7 @@ module.exports = function({ types, template }) {
 										} else {
 											var test = cases[i][0];
 											if (test) {
-												__try(test).then(checkCaseTest, reject);
+												__call(test, checkCaseTest, reject);
 											} else {
 												defaultIndex = i;
 												nextCase();
@@ -959,7 +960,7 @@ module.exports = function({ types, template }) {
 										for (;;) {
 											var body = cases[i][1];
 											if (body) {
-												return __try(body).then(checkFallthrough, reject);
+												return __call(body, checkFallthrough, reject);
 											} else if (++i === cases.length) {
 												return resolve();
 											}
@@ -980,13 +981,13 @@ module.exports = function({ types, template }) {
 							}`)());
 						}
 						if (usedHelpers["__for"]) {
-							usedHelpers["__try"] = true;
+							usedHelpers["__call"] = true;
 							body.insertBefore(template(`function __for(test, update, body) {
 								return new Promise(function(resolve, reject) {
 									var result;
 									cycle();
 									function cycle() {
-										__try(test).then(checkTestResult, reject);
+										__call(test, checkTestResult, reject);
 									}
 									function stashAndUpdate(value) {
 										result = value;
@@ -994,7 +995,7 @@ module.exports = function({ types, template }) {
 									}
 									function checkTestResult(shouldContinue) {
 										if (shouldContinue) {
-											__try(body).then(stashAndUpdate).then(cycle, reject);
+											__call(body, stashAndUpdate).then(cycle, reject);
 										} else {
 											resolve(result);
 										}
@@ -1003,15 +1004,15 @@ module.exports = function({ types, template }) {
 							}`)());
 						}
 						if (usedHelpers["__do"]) {
-							usedHelpers["__try"] = true;
+							usedHelpers["__call"] = true;
 							body.insertBefore(template(`function __do(body, test) {
 								return new Promise(function(resolve, reject) {
 									cycle();
 									function cycle() {
-										return __try(body).then(checkTestResult, reject);
+										return __call(body, checkTestResult, reject);
 									}
 									function checkTestResult(value) {
-										__try(test).then(function(shouldContinue) {
+										__call(test, function(shouldContinue) {
 											if (shouldContinue) {
 												cycle();
 											} else {
@@ -1022,9 +1023,9 @@ module.exports = function({ types, template }) {
 								});
 							}`)());		
 						}
-						if (usedHelpers["__try"]) {
-							body.insertBefore(template(`function __try(body) {
-								return new Promise(function (resolve) { resolve(body()); });
+						if (usedHelpers["__call"]) {
+							body.insertBefore(template(`function __call(body, then, recover) {
+								return (new Promise(function (resolve) { resolve(body()); })).then(then, recover);
 							}`)());		
 						}
 						if (usedHelpers["__finally"]) {

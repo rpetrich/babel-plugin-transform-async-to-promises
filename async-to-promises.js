@@ -175,19 +175,6 @@ module.exports = function({ types, template }) {
 		return result;
 	}
 
-	function firstAwait(path) {
-		let result;
-		path.traverse({
-			Function(path) {
-				path.skip();
-			},
-			AwaitExpression(path) {
-				result = path;
-			}
-		})
-		return result;
-	}
-
 	function identifierInSingleReturnStatement(statements) {
 		if (statements.length === 1) {
 			if (statements[0].type === "ReturnStatement") {
@@ -291,37 +278,45 @@ module.exports = function({ types, template }) {
 		return result;
 	}
 
-	function relocateTail(state, awaitExpression, statementNode, target, temporary) {
+	function relocateTail(state, awaitExpression, statementNode, target, temporary, exitIdentifier, breakIdentifier) {
 		const tail = borrowTail(target);
 		if (statementNode && statementNode.type === "ExpressionStatement" && statementNode.expression.type === "Identifier") {
 			statementNode = null;
 		}
 		const blocks = statementNode ? [statementNode].concat(tail) : tail;
-		let ret;
 		if (blocks.length) {
 			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
 			target.replaceWith(returnStatement(awaitAndContinue(state, awaitExpression, fn)));
-			if (!isPassthroughContinuation(fn)) {
-				return target.get("argument.arguments.1");
-			}
 		} else if (pathsReturnOrThrow(target).any) {
 			target.replaceWith(returnStatement(awaitExpression));
+			return target.get("argument");
 		} else {
 			target.replaceWith(returnStatement(awaitAndContinue(state, awaitExpression, helperReference(state, "__empty"))));
 		}
+		const argument = target.get("argument");
+		if (argument.isCallExpression()) {
+			argument.node.arguments.forEach((_, i) => {
+				const awaitArgument = target.get(`argument.arguments.${i}`);
+				if (awaitArgument && awaitArgument.isFunction()) {
+					rewriteFunctionBody(awaitArgument, state, exitIdentifier, breakIdentifier);
+				}
+			});
+			return target.get("argument.arguments.0");
+		}
 	}
 
-	function tryHelper(state, blockStatement) {
+	function tryHelper(state, blockStatement, catchFunction) {
+		const catchArgs = catchFunction ? [voidExpression(), catchFunction] : [];
 		if (blockStatement.body.length === 1) {
 			const statement = blockStatement.body[0];
 			if (statement.type === "ReturnStatement") {
 				const argument = statement.argument;
 				if (argument.type === "CallExpression" && argument.arguments.length === 0 && argument.callee.type === "Identifier") {
-					return types.callExpression(helperReference(state, "__call"), [argument.callee]);
+					return types.callExpression(helperReference(state, "__call"), [argument.callee].concat(catchArgs));
 				}
 			}
 		}
-		return types.callExpression(helperReference(state, "__call"), [types.functionExpression(null, [], blockStatement)])
+		return types.callExpression(helperReference(state, "__call"), [types.functionExpression(null, [], blockStatement)].concat(catchArgs));
 	}
 
 	function rewriteThisExpression(rewritePath, targetPath) {
@@ -523,7 +518,7 @@ module.exports = function({ types, template }) {
 	}
 
 	function findLastAwaitPath(path) {
-		let result = (path.node && path.node.type === "AwaitExpression") ? path : null;
+		let result = path.isAwaitExpression() ? path : null;
 		path.traverse({
 			Function(path) {
 				path.skip();
@@ -576,10 +571,10 @@ module.exports = function({ types, template }) {
 	}
 
 	function rewriteFunctionBody(path, state, exitIdentifier, breakIdentifier) {
-		const relocatedBlocks = [];
 		rewriteThisExpression(path, path);
 		let awaitPath;
 		while (awaitPath = findLastAwaitPath(path)) {
+			const relocatedBlocks = [];
 			const originalAwaitPath = awaitPath;
 			const originalExpression = awaitPath.node;
 			const node = awaitPath.node;
@@ -605,7 +600,7 @@ module.exports = function({ types, template }) {
 										parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 									}
 									if (!explicitExits.all) {
-										relocateTail(state, inlineEvaluated([parent.node]), null, parent, resultIdentifier);
+										relocateTail(state, inlineEvaluated([parent.node]), null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
 									}
 								},
 								path: parent,
@@ -616,7 +611,6 @@ module.exports = function({ types, template }) {
 							relocate() {
 								const temporary = explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
 								const success = explicitExits.all ? returnStatement(temporary) : null;
-								let evalBlock = tryHelper(state, parent.node.block);
 								let finallyFunction;
 								if (parent.node.finalizer) {
 									let finallyArgs = [];
@@ -629,15 +623,23 @@ module.exports = function({ types, template }) {
 									}
 									finallyFunction = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
 								}
+								let catchExpression;
+								let rewriteCatch;
 								if (parent.node.handler) {
 									const catchClause = parent.node.handler;
-									const catchFunction = catchClause.body.body.length ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(state, "__empty");
-									evalBlock = types.callExpression(types.memberExpression(evalBlock, types.identifier("catch")), [catchFunction]);
+									rewriteCatch = catchClause.body.body.length;
+									catchExpression = rewriteCatch ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(state, "__empty");
 								}
-								relocateTail(state, evalBlock, success, parent, temporary);
+								const evalBlock = tryHelper(state, parent.node.block, catchExpression);
+								const evalPath = relocateTail(state, evalBlock, success, parent, temporary, exitIdentifier, breakIdentifier);
+								if (evalPath.isCallExpression()) {
+									rewriteFunctionBody(evalPath.get("arguments.0"), state, exitIdentifier, breakIdentifier);
+									if (rewriteCatch) {
+										rewriteFunctionBody(evalPath.get("arguments.2"), state, exitIdentifier, breakIdentifier);
+									}
+								}
 								if (finallyFunction) {
-									const returnArgument = parent.get("argument");
-									returnArgument.replaceWith(types.callExpression(helperReference(state, "__finally"), [returnArgument.node, finallyFunction]));
+									parent.get("argument").replaceWith(types.callExpression(helperReference(state, "__finally"), [parent.node.argument, finallyFunction]));
 								}
 							},
 							path: parent,
@@ -677,7 +679,7 @@ module.exports = function({ types, template }) {
 											resultIdentifier = path.scope.generateUidIdentifier("result");
 											parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 										}
-										relocateTail(state, loopCall, null, label ? parent.parentPath : parent, resultIdentifier);
+										relocateTail(state, loopCall, null, label ? parent.parentPath : parent, resultIdentifier, exitIdentifier, breakIdentifier);
 									},
 									path: parent,
 								})
@@ -708,7 +710,7 @@ module.exports = function({ types, template }) {
 									if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
 										// TODO: Validate that body doesn't reassign array or i
 										const loopCall = types.callExpression(helperReference(state, "__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
-										relocateTail(state, loopCall, null, parent);
+										relocateTail(state, loopCall, null, parent, undefined, exitIdentifier, breakIdentifier);
 									} else {
 										const init = parent.get("init");
 										if (init.node) {
@@ -724,7 +726,7 @@ module.exports = function({ types, template }) {
 											resultIdentifier = path.scope.generateUidIdentifier("result");
 											parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 										}
-										relocateTail(state, loopCall, null, parent, resultIdentifier);
+										relocateTail(state, loopCall, null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
 									}
 								},
 								path: parent,
@@ -804,7 +806,7 @@ module.exports = function({ types, template }) {
 										parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 									}
 									const switchCall = types.callExpression(helperReference(state, "__switch"), [discriminant.node, types.arrayExpression(cases)]);
-									relocateTail(state, switchCall, null, label ? parent.parentPath : parent, resultIdentifier);
+									relocateTail(state, switchCall, null, label ? parent.parentPath : parent, resultIdentifier, exitIdentifier, breakIdentifier);
 								},
 								path: parent,
 							});
@@ -822,10 +824,7 @@ module.exports = function({ types, template }) {
 						}
 						relocatedBlocks.push({
 							relocate() {
-								const tail = relocateTail(state, awaitExpression, parent.node, parent, uid);
-								if (tail) {
-									rewriteFunctionBody(tail, state, exitIdentifier);
-								}
+								relocateTail(state, awaitExpression, parent.node, parent, uid, exitIdentifier, breakIdentifier);
 							},
 							path: parent,
 						});
@@ -834,9 +833,9 @@ module.exports = function({ types, template }) {
 				}
 				awaitPath = parent;
 			} while (awaitPath !== path);
-		}
-		for (const block of relocatedBlocks) {
-			block.relocate();
+			for (const block of relocatedBlocks) {
+				block.relocate();
+			}
 		}
 	}
 

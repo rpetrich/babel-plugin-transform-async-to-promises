@@ -26,8 +26,21 @@ function compiledTest(name, { input, output, cases }) {
 		const ast = babylon.parse(code, { allowReturnOutsideFunction: true });
 		const result = babel.transformFromAst(ast, code, { plugins: [pluginUnderTest], compact: true });
 		if (logCompiled){
-			console.log(extractJustFunction(result));
+			console.log(name + " input", input);
+			console.log(name + " output", extractJustFunction(result));
 		}
+		let fn;
+		test("syntax", () => {
+			const code = testInput ? code : result.code;
+			try {
+				fn = new Function(code);
+			} catch (e) {
+				if (e instanceof SyntaxError) {
+					e.message += "\n" + code;
+				}
+				throw e;
+			}
+		});
 		if (verifyCompiled) {
 			test("output", () => {
 				expect(extractJustFunction(result)).toBe(output);
@@ -36,7 +49,9 @@ function compiledTest(name, { input, output, cases }) {
 		for (let key in cases) {
 			if (cases.hasOwnProperty(key)) {
 				test(key, async () => {
-					return cases[key]((new Function(testInput ? code : result.code))());
+					if (fn) {
+						return cases[key](fn());
+					}
 				});
 			}
 		}

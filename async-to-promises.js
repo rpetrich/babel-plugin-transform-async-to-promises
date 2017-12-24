@@ -473,7 +473,7 @@ module.exports = function({ types, template }) {
 								property.replaceWith(propertyIdentifier);
 							}
 							parent.replaceWith(types.callExpression(types.memberExpression(callee.node, types.identifier("call")), [object.node].concat(parent.node.arguments)));
-						} else {
+						} else if (!callee.isIdentifier() || !/^__/.test(callee.node.name)) {
 							const calleeIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(callee.node);
 							declarations.push(types.variableDeclarator(calleeIdentifier, callee.node));
 							callee.replaceWith(calleeIdentifier);

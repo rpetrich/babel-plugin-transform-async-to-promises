@@ -473,7 +473,7 @@ module.exports = function({ types, template }) {
 								property.replaceWith(propertyIdentifier);
 							}
 							parent.replaceWith(types.callExpression(types.memberExpression(callee.node, types.identifier("call")), [object.node].concat(parent.node.arguments)));
-						} else if (!callee.isIdentifier() || !/^__/.test(callee.node.name)) {
+						} else if (!callee.isIdentifier() || !(/^__/.test(callee.node.name) || awaitPath.scope.getBinding(callee.node.name).constant)) {
 							const calleeIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(callee.node);
 							declarations.push(types.variableDeclarator(calleeIdentifier, callee.node));
 							callee.replaceWith(calleeIdentifier);
@@ -816,15 +816,28 @@ module.exports = function({ types, template }) {
 				if (processExpressions && (parent.isStatement() || (parent.isSwitchCase() && awaitPath.node != parent.node.test))) {
 					if (!awaitPath.isFunction() && !awaitPath.isSwitchCase()) {
 						const originalArgument = originalAwaitPath.node.argument;
-						const uid = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalArgument);
-						originalAwaitPath.replaceWith(uid);
+						const reusingExisting = originalAwaitPath.parentPath.isVariableDeclarator();
+						let resultIdentifier;
+						if (reusingExisting) {
+							resultIdentifier = originalAwaitPath.parent.id;
+						} else {
+							resultIdentifier = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalArgument);
+						}
+						originalAwaitPath.replaceWith(resultIdentifier);
 						const { declarations, awaitExpression } = extractDeclarations(originalAwaitPath, originalArgument);
 						if (declarations.length) {
 							parent.insertBefore(types.variableDeclaration("var", declarations));
 						}
 						relocatedBlocks.push({
 							relocate() {
-								relocateTail(state, awaitExpression, parent.node, parent, uid, exitIdentifier, breakIdentifier);
+								if (reusingExisting) {
+									if (parent.node.declarations.length === 1) {
+										parent.replaceWith(types.emptyStatement());
+									} else {
+										originalAwaitPath.parentPath.remove();
+									}
+								}
+								relocateTail(state, awaitExpression, parent.node, parent, resultIdentifier, exitIdentifier, breakIdentifier);
 							},
 							path: parent,
 						});

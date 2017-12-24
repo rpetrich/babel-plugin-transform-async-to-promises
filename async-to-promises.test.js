@@ -198,7 +198,8 @@ compiledTest("if body returns", {
 
 compiledTest("if body assignments", {
 	input: `async function(foo, bar, baz) { var result; if (foo()) { result = await bar(); } else { result = await baz(); }; return result; }`,
-	output: `__async(function(foo,bar,baz){var result;return __call(function(){if(foo()){return __call(bar,function(_bar){result=_bar;});}else{return __call(baz,function(_baz){result=_baz;});}},function(){;return result;});});`,
+	// TODO: Fix unnecessary _exit dance caused by split rewriting passes
+	output: `__async(function(foo,bar,baz){var result;return __call(function(){var _exit;return __call(function(){if(foo()){return __call(bar,function(_bar){result=_bar;});}else{return __call(baz,function(_baz){result=_baz;});}},function(_result){if(_exit)return _result;});},function(){;return result;});});`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 1, async _ => 0)).toBe(0),
@@ -287,7 +288,7 @@ compiledTest("compound variable declarator", {
 
 compiledTest("catch and recover via return", {
 	input: `async function(foo) { try { return await foo(); } catch(e) { return "fallback"; } }`,
-	output: `__async(function(foo){return __call(foo).catch(function(e){return"fallback";});});`,
+	output: `__async(function(foo){return __call(foo,void 0,function(e){return"fallback";});});`,
 	cases: {
 		success: async f => expect(await f(async _ => "success")).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; })).toBe("fallback"),
@@ -296,7 +297,7 @@ compiledTest("catch and recover via return", {
 
 compiledTest("catch and ignore", {
 	input: `async function(foo) { try { return await foo(); } catch(e) { } }`,
-	output: `__async(function(foo){return __call(foo).catch(__empty);});`,
+	output: `__async(function(foo){return __call(foo,void 0,__empty);});`,
 	cases: {
 		success: async f => expect(await f(async _ => "success")).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; })).toBe(undefined),
@@ -306,7 +307,7 @@ compiledTest("catch and ignore", {
 compiledTest("catch and await", {
 	input: `async function(foo, bar) { try { return await foo(); } catch(e) { await bar(); } }`,
 	// TODO: Figure out why __call(function(){return foo();}) isn't being simplified to __call(foo)
-	output: `__async(function(foo,bar){return __call(function(){return foo();}).catch(function(e){return __call(bar,__empty);});});`,
+	output: `__async(function(foo,bar){return __call(function(){return foo();},void 0,function(e){return __call(bar,__empty);});});`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", async _ => false)).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; }, async _ => false)).toBe(undefined),
@@ -315,7 +316,7 @@ compiledTest("catch and await", {
 
 compiledTest("catch and recover via variable", {
 	input: `async function(value, log) { var result; try { result = await value(); } catch (e) { result = "an error"; }; log("result:", result); return result; }`,
-	output: `__async(function(value,log){var result;return __await(__call(function(){return __call(value,function(_value){result=_value;});}).catch(function(e){result="an error";}),function(){;log("result:",result);return result;});});`,
+	output: `__async(function(value,log){var result;return __await(__call(function(){return __call(value,function(_value){result=_value;});},void 0,function(e){result="an error";}),function(){;log("result:",result);return result;});});`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", async _ => false)).toBe("success"),
 		recover: async f => expect(await f(async _ => { throw "test"; }, async _ => false)).toBe("an error"),

@@ -243,17 +243,25 @@ module.exports = function({ types, template }) {
 	}
 
 	function awaitAndContinue(state, target, continuation, catchContinuation) {
+		let useCallHelper = false;
+		while (target.type === "CallExpression" && target.arguments.length === 0 && target.callee.type !== "MemberExpression") {
+			target = target.callee;
+			useCallHelper = true;
+		}
 		let args;
-		const useCallHelper = target.type === "CallExpression" && target.arguments.length === 0;
 		if (!catchContinuation) {
 			if (isPassthroughContinuation(continuation)) {
-				return target;
+				if (useCallHelper) {
+					return types.callExpression(target, []);
+				} else {
+					return target;
+				}
 			}
-			args = [useCallHelper ? target.callee : target, continuation];
+			args = [target, continuation];
 		} else if (isPassthroughContinuation(continuation)) {
-			args = [useCallHelper ? target.callee : target, voidExpression(), catchContinuation];
+			args = [target, voidExpression(), catchContinuation];
 		} else {
-			args = [useCallHelper ? target.callee : target, continuation, catchContinuation];
+			args = [target, continuation, catchContinuation];
 		}
 		return types.callExpression(helperReference(state, useCallHelper ? "__call" : "__await"), args);
 	}

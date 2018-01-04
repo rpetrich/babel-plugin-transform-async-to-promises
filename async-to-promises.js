@@ -354,7 +354,7 @@ module.exports = function({ types, template }) {
 
 	function blockStatement(statementOrStatements) {
 		if ("length" in statementOrStatements) {
-			return types.blockStatement(statementOrStatements);
+			return types.blockStatement(statementOrStatements.filter(statement => statement.type !== "EmptyStatement"));
 		} else if (statementOrStatements.type !== "BlockStatement") {
 			return types.blockStatement([statementOrStatements]);
 		} else {

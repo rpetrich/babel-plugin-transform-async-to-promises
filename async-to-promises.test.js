@@ -22,16 +22,16 @@ function extractJustFunction(result) {
 
 function compiledTest(name, { input, output, cases }) {
 	describe(name, () => {
-		const code = "return " + input;
-		const ast = babylon.parse(code, { allowReturnOutsideFunction: true });
-		const result = babel.transformFromAst(ast, code, { plugins: [pluginUnderTest], compact: true });
+		const inputReturned = "return " + input;
+		const ast = babylon.parse(inputReturned, { allowReturnOutsideFunction: true });
+		const result = babel.transformFromAst(ast, inputReturned, { plugins: [pluginUnderTest], compact: true });
 		if (logCompiled){
 			console.log(name + " input", input);
 			console.log(name + " output", extractJustFunction(result));
 		}
 		let fn;
 		test("syntax", () => {
-			const code = testInput ? code : result.code;
+			const code = testInput ? inputReturned : result.code;
 			try {
 				fn = new Function(code);
 			} catch (e) {

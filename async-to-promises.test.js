@@ -554,12 +554,28 @@ compiledTest("await for body", {
 	},
 });
 
-compiledTest("await for body indirect", {
+compiledTest("await for body indirect optimized", {
 	input: `async function(foo, bar) { switch (foo()) { case 1: var result = await bar(); return result; default: return false; } }`,
-	output: `__async(function(foo,bar){switch(foo()){case 1:return __call(bar,function(result){;return result;});default:return false;}});`,
+	output: `__async(function(foo,bar){switch(foo()){case 1:return bar();default:return false;}});`,
 	cases: {
 		zero: async f => {
 			expect(await f(() => 1, async () => 0)).toBe(0);
+		},
+		one: async f => {
+			expect(await f(() => 1, async () => 1)).toBe(1);
+		},
+		false: async f => {
+			expect(await f(() => 0)).toBe(false);
+		},
+	},
+});
+
+compiledTest("await for body indirect unoptimized", {
+	input: `async function(foo, bar) { switch (foo()) { case 1: var result = await bar(); return result || null; default: return false; } }`,
+	output: `__async(function(foo,bar){switch(foo()){case 1:return __call(bar,function(result){;return result||null;});default:return false;}});`,
+	cases: {
+		zero: async f => {
+			expect(await f(() => 1, async () => 0)).toBe(null);
 		},
 		one: async f => {
 			expect(await f(() => 1, async () => 1)).toBe(1);

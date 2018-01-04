@@ -176,11 +176,17 @@ module.exports = function({ types, template }) {
 	}
 
 	function identifierInSingleReturnStatement(statements) {
+		statements = statements.filter(statement => statement.type !== "EmptyStatement");
 		if (statements.length === 1) {
 			if (statements[0].type === "ReturnStatement") {
-				const argument = statements[0].argument;
-				if (argument && argument.type === "Identifier") {
-					return argument;
+				let argument = statements[0].argument;
+				if (argument) {
+					while (argument.type === "AwaitExpression") {
+						argument = argument.argument;
+					}
+					if (argument.type === "Identifier") {
+						return argument;
+					}
 				}
 			}
 		}

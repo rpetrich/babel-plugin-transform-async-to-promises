@@ -250,7 +250,7 @@ module.exports = function({ types, template }) {
 		}
 		let args;
 		if (!catchContinuation) {
-			if (isPassthroughContinuation(continuation)) {
+			if (!continuation || isPassthroughContinuation(continuation)) {
 				if (useCallHelper) {
 					return types.callExpression(target, []);
 				} else {
@@ -258,10 +258,10 @@ module.exports = function({ types, template }) {
 				}
 			}
 			args = [target, continuation];
-		} else if (isPassthroughContinuation(continuation)) {
+		} else if (!continuation || isPassthroughContinuation(continuation)) {
 			args = [target, voidExpression(), catchContinuation];
 		} else {
-			args = [target, continuation, catchContinuation];
+			args = [target, continuation || voidExpression(), catchContinuation];
 		}
 		return types.callExpression(helperReference(state, useCallHelper ? "__call" : "__await"), args);
 	}
@@ -321,12 +321,18 @@ module.exports = function({ types, template }) {
 
 	function tryHelper(state, blockStatement, catchFunction) {
 		const catchArgs = catchFunction ? [voidExpression(), catchFunction] : [];
-		if (blockStatement.body.length === 1) {
-			const statement = blockStatement.body[0];
+		const body = blockStatement.body.filter(statement => statement.type !== "EmptyStatement");
+		if (body.length === 1) {
+			const statement = body[0];
 			if (statement.type === "ReturnStatement") {
-				const argument = statement.argument;
-				if (argument.type === "CallExpression" && argument.arguments.length === 0 && argument.callee.type === "Identifier") {
-					return types.callExpression(helperReference(state, "__call"), [argument.callee].concat(catchArgs));
+				let argument = statement.argument;
+				while (argument.type === "AwaitExpression") {
+					argument = argument.argument;
+				}
+				if (argument.type === "CallExpression" && argument.arguments.length === 0) {
+					if (argument.callee.type === "Identifier" || argument.callee.type === "FunctionExpression") {
+						return types.callExpression(helperReference(state, "__call"), [argument.callee].concat(catchArgs));
+					}
 				}
 			}
 		}
@@ -585,6 +591,9 @@ module.exports = function({ types, template }) {
 	}
 
 	function rewriteFunctionBody(path, state, exitIdentifier, breakIdentifier) {
+		if (!path || !path.isFunction()) {
+			return;
+		}
 		rewriteThisExpression(path, path);
 		let awaitPath;
 		while (awaitPath = findLastAwaitPath(path)) {
@@ -646,7 +655,7 @@ module.exports = function({ types, template }) {
 								}
 								const evalBlock = tryHelper(state, parent.node.block, catchExpression);
 								const evalPath = relocateTail(state, evalBlock, success, parent, temporary, exitIdentifier, breakIdentifier);
-								if (evalPath.isCallExpression()) {
+								if (evalPath && evalPath.isCallExpression()) {
 									rewriteFunctionBody(evalPath.get("arguments.0"), state, exitIdentifier, breakIdentifier);
 									if (rewriteCatch) {
 										rewriteFunctionBody(evalPath.get("arguments.2"), state, exitIdentifier, breakIdentifier);

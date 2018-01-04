@@ -326,8 +326,7 @@ compiledTest("catch and ignore", {
 
 compiledTest("catch and await", {
 	input: `async function(foo, bar) { try { return await foo(); } catch(e) { await bar(); } }`,
-	// TODO: Figure out why __call(function(){return foo();}) isn't being simplified to __call(foo)
-	output: `__async(function(foo,bar){return __call(function(){return foo();},void 0,function(e){return __call(bar,__empty);});});`,
+	output: `__async(function(foo,bar){return __call(foo,void 0,function(e){return __call(bar,__empty);});});`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", async _ => false)).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; }, async _ => false)).toBe(undefined),

@@ -462,6 +462,15 @@ module.exports = function({ types, template }) {
 					declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
 					left.replaceWith(leftIdentifier);
 				}
+			} else if (parent.isSequenceExpression()) {
+				const children = parent.node.expressions.map((_, i) => parent.get(`expressions.${i}`));
+				const position = children.indexOf(awaitPath);
+				for (var i = 0; i < position; i++) {
+					const sequenceNode = children[i].node;
+					const sequenceIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(sequenceNode);
+					declarations.push(types.variableDeclarator(sequenceIdentifier, sequenceNode));
+					children[i].replaceWith(sequenceIdentifier);
+				}
 			} else if (parent.isConditionalExpression()) {
 				const test = parent.get("test");
 				if (awaitPath !== test) {

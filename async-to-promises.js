@@ -466,10 +466,10 @@ module.exports = function({ types, template }) {
 				const children = parent.node.expressions.map((_, i) => parent.get(`expressions.${i}`));
 				const position = children.indexOf(awaitPath);
 				for (var i = 0; i < position; i++) {
-					const sequenceNode = children[i].node;
+					const sequenceNode = children[0].node;
 					const sequenceIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(sequenceNode);
 					declarations.push(types.variableDeclarator(sequenceIdentifier, sequenceNode));
-					children[i].replaceWith(sequenceIdentifier);
+					children[0].remove();
 				}
 			} else if (parent.isConditionalExpression()) {
 				const test = parent.get("test");

@@ -309,9 +309,8 @@ module.exports = function({ types, template }) {
 		}
 		const argument = target.get("argument");
 		if (argument.isCallExpression()) {
-			argument.node.arguments.forEach((_, i) => {
-				const awaitArgument = target.get(`argument.arguments.${i}`);
-				if (awaitArgument && awaitArgument.isFunction()) {
+			target.get("argument.arguments").forEach(awaitArgument => {
+				if (awaitArgument.isFunction()) {
 					rewriteFunctionBody(awaitArgument, state, exitIdentifier, breakIdentifier);
 				}
 			});
@@ -784,7 +783,7 @@ module.exports = function({ types, template }) {
 						// TODO: Support more complex switch statements
 						const label = parent.parentPath.isLabeledStatement() ? parent.parent.label.name : null;
 						const discriminant = parent.get("discriminant");
-						const testPaths = parent.node.cases.map((_, i) => parent.get(`cases.${i}.test`));
+						const testPaths = parent.get("cases").map(casePath => casePath.get("test"));
 						if (awaitPath !== discriminant && !(explicitExits.all && !testPaths.some(testPath => findLastAwaitPath(testPath)))) {
 							let breakIdentifier;
 							if (!explicitExits.all && explicitExits.any && !exitIdentifier) {
@@ -800,7 +799,9 @@ module.exports = function({ types, template }) {
 									defaultIndex = i;
 								}
 							});
-							const cases = parent.node.cases.map((switchCase, i) => {
+							const casePaths = parent.get("cases");
+							const cases = casePaths.map(casePath => {
+								const switchCase = casePath.node;
 								const args = [];
 								if (switchCase.test) {
 									args.push(switchCase.test);
@@ -809,7 +810,6 @@ module.exports = function({ types, template }) {
 								}
 								if (switchCase.consequent.length) {
 									args.push(types.functionExpression(null, [], types.blockStatement(switchCase.consequent)));
-									const casePath = parent.get(`cases.${i}`);
 									const caseExits = pathsReturnOrThrow(casePath);
 									const caseBreaks = pathsBreak(casePath);
 									const useBreakIdentifier = !caseBreaks.all && caseBreaks.any;

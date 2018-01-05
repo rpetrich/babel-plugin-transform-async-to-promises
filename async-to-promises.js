@@ -339,8 +339,9 @@ module.exports = function({ types, template }) {
 		return types.callExpression(helperReference(state, "__call"), [types.functionExpression(null, [], blockStatement)].concat(catchArgs));
 	}
 
-	function rewriteThisExpression(rewritePath, targetPath) {
+	function rewriteThisAndArgumentsExpression(rewritePath, targetPath) {
 		let hasThis = false;
+		let hasArguments = false;
 		rewritePath.traverse({
 			FunctionDeclaration(path) {
 				path.skip();
@@ -351,13 +352,24 @@ module.exports = function({ types, template }) {
 			ThisExpression(path) {
 				hasThis = true;
 				path.replaceWith(types.identifier("_this"));
+			},
+			Identifier(path) {
+				if (path.node.name === "arguments") {
+					hasArguments = true;
+					path.replaceWith(types.identifier("_arguments"));
+				}
 			}
 		});
 		if (hasThis) {
 			const binding = targetPath.scope.getBinding("_this");
 			if (!binding || !binding.constant || binding.scope !== targetPath.scope) {
 				targetPath.scope.push({ id: types.identifier("_this"), init: types.thisExpression() });
-				// targetPath.insertBefore(types.variableDeclaration("var", [types.variableDeclarator(types.identifier("_this"), types.thisExpression())]));
+			}
+		}
+		if (hasArguments) {
+			const binding = targetPath.scope.getBinding("_arguments");
+			if (!binding || !binding.constant || binding.scope !== targetPath.scope) {
+				targetPath.scope.push({ id: types.identifier("_arguments"), init: types.identifier("arguments") });
 			}
 		}
 	}
@@ -594,7 +606,7 @@ module.exports = function({ types, template }) {
 		if (!path || !path.isFunction()) {
 			return;
 		}
-		rewriteThisExpression(path, path);
+		rewriteThisAndArgumentsExpression(path, path);
 		let awaitPath;
 		while (awaitPath = findLastAwaitPath(path)) {
 			const relocatedBlocks = [];
@@ -897,7 +909,7 @@ module.exports = function({ types, template }) {
 				if (node.async && isCompatible(path.get("body"))) {
 					const body = path.get("body").isBlockStatement() ? path.node.body : blockStatement([returnStatement(path.node.body)]);
 					path.replaceWith(types.functionExpression(null, node.params, body, false, node.async));
-					rewriteThisExpression(path, path.parentPath);
+					rewriteThisAndArgumentsExpression(path, path.parentPath);
 				}
 			},
 			FunctionExpression(path) {

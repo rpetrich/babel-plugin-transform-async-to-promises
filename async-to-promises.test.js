@@ -252,6 +252,16 @@ compiledTest("return in consequent", {
 	},
 });
 
+compiledTest("arguments expression", {
+	input: `async function() { var result = false; for (var i = 0; i < arguments.length; i++) { if (await arguments[i]()) result = true; }; return result; }`,
+	output: `__async(function(){var _arguments=arguments;var result=false;return __await(__forTo(_arguments,function(i){return __await(_arguments[i](),function(_arguments$i){if(_arguments$i)result=true;});}),function(){return result;});});`,
+	cases: {
+		none: async f => expect(await f()).toBe(false),
+		one: async f => expect(await f(async () => true)).toBe(true),
+		two: async f => expect(await f(async () => false, async () => true)).toBe(true),
+	},
+});
+
 compiledTest("this expressions", {
 	input: `async function() { return await this.foo() + await this.bar() }`,
 	output: `__async(function(){var _this=this;return __await(_this.foo(),function(_ref){return __await(_this.bar(),function(_this$bar){return _ref+_this$bar;});});});`,

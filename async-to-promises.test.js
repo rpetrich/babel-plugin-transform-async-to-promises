@@ -672,3 +672,8 @@ compiledTest("switch break with identifier", {
 	input: `async function(foo) { exit: switch (0) { default: await foo(); break exit; } }`,
 	output: `__async(function(foo){return __switch(0,[[void 0,function(){return __call(foo,function(_foo){return;});}]]);});`,
 });
+
+compiledTest("fetch example", {
+	input: `async function(url) { var response = await fetch(url); var blob = await response.blob(); return URL.createObjectURL(myBlob); }`,
+	output: `__async(function(url){return __await(fetch(url),function(response){return __await(response.blob(),function(blob){return URL.createObjectURL(myBlob);});});});`,
+});

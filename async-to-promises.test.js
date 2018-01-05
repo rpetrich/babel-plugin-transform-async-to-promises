@@ -354,7 +354,7 @@ compiledTest("catch and recover via variable", {
 
 compiledTest("finally passthrough", {
 	input: `async function(value, log) { try { return await value(); } finally { log("finished value(), might rethrow"); } }`,
-	output: `__async(function(value,log){return __finally(__call(value),function(_wasThrown,_result){log("finished value(), might rethrow");return __rethrow(_wasThrown,_result);});});`,
+	output: `__async(function(value,log){return __finallyRethrows(__call(value),function(_wasThrown,_result){log("finished value(), might rethrow");return __rethrow(_wasThrown,_result);});});`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", _ => undefined)).toBe("success"),
 		throw: async f => {

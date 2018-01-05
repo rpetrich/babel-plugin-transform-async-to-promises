@@ -647,6 +647,7 @@ module.exports = function({ types, template }) {
 								const temporary = explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
 								const success = explicitExits.all ? returnStatement(temporary) : null;
 								let finallyFunction;
+								let finallyName;
 								if (parent.node.finalizer) {
 									let finallyArgs = [];
 									let finallyBody = parent.node.finalizer.body;
@@ -655,6 +656,9 @@ module.exports = function({ types, template }) {
 										const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
 										finallyArgs = [wasThrownIdentifier, resultIdentifier];
 										finallyBody = finallyBody.concat(returnStatement(types.callExpression(helperReference(state, "__rethrow"), [wasThrownIdentifier, resultIdentifier])));
+										finallyName = "__finallyRethrows";
+									} else {
+										finallyName = "__finally";
 									}
 									finallyFunction = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
 								}
@@ -673,8 +677,8 @@ module.exports = function({ types, template }) {
 										rewriteFunctionBody(evalPath.get("arguments.2"), state, exitIdentifier, breakIdentifier);
 									}
 								}
-								if (finallyFunction) {
-									parent.get("argument").replaceWith(types.callExpression(helperReference(state, "__finally"), [parent.node.argument, finallyFunction]));
+								if (finallyFunction && finallyName) {
+									parent.get("argument").replaceWith(types.callExpression(helperReference(state, finallyName), [parent.node.argument, finallyFunction]));
 								}
 							},
 							path: parent,
@@ -1075,9 +1079,14 @@ module.exports = function({ types, template }) {
 								return (new Promise(function (resolve) { resolve(body()); })).then(then, recover);
 							}`)());		
 						}
+						if (usedHelpers["__finallyRethrows"]) {
+							body.insertBefore(template(`function __finallyRethrows(promise, finalizer) {
+								return promise.then(finalizer.bind(null, false), finalizer.bind(null, true));
+							}`)());
+						}
 						if (usedHelpers["__finally"]) {
 							body.insertBefore(template(`function __finally(promise, finalizer) {
-								return promise.then(finalizer.bind(null, false), finalizer.bind(null, true));
+								return promise.then(finalizer, finalizer);
 							}`)());
 						}
 						if (usedHelpers["__rethrow"]) {

@@ -463,13 +463,13 @@ module.exports = function({ types, template }) {
 					left.replaceWith(leftIdentifier);
 				}
 			} else if (parent.isSequenceExpression()) {
-				const children = parent.node.expressions.map((_, i) => parent.get(`expressions.${i}`));
+				const children = parent.get("expressions");
 				const position = children.indexOf(awaitPath);
 				for (var i = 0; i < position; i++) {
-					const sequenceNode = children[0].node;
+					const sequenceNode = children[i].node;
 					const sequenceIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(sequenceNode);
 					declarations.push(types.variableDeclarator(sequenceIdentifier, sequenceNode));
-					children[0].remove();
+					children[i].remove();
 				}
 			} else if (parent.isConditionalExpression()) {
 				const test = parent.get("test");

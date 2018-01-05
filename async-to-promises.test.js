@@ -3,7 +3,7 @@ const babel = require("babel-core");
 const babylon = require("babylon");
 
 const testInput = false;
-const verifyCompiled = false;
+const verifyCompiled = true;
 const logCompiled = false;
 
 const stripHelpersVisitor = {

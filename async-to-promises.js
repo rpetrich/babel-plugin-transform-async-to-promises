@@ -467,7 +467,9 @@ module.exports = function({ types, template }) {
 				for (var i = 0; i < position; i++) {
 					const sequenceNode = children[i].node;
 					const sequenceIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(sequenceNode);
-					declarations.push(types.variableDeclarator(sequenceIdentifier, sequenceNode));
+					if (!isExpressionOfLiterals(children[i])) {
+						declarations.push(types.variableDeclarator(sequenceIdentifier, sequenceNode));
+					}
 					children[i].remove();
 				}
 			} else if (parent.isConditionalExpression()) {

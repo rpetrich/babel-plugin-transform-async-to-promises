@@ -370,8 +370,17 @@ compiledTest("finally passthrough", {
 });
 
 compiledTest("finally suppress original return", {
-	input: `async function(value, log) { try { return await value(); } finally { return "suppressed"; } }`,
-	output: `__async(function(value,log){return __finally(__call(value),function(){return"suppressed";});});`,
+	input: `async function(value) { try { return await value(); } finally { return "suppressed"; } }`,
+	output: `__async(function(value){return __finally(__call(value),function(){return"suppressed";});});`,
+	cases: {
+		success: async f => expect(await f(async _ => "success", _ => undefined)).toBe("suppressed"),
+		recover: async f => expect(await f(async _ => { throw "test"; }, _ => undefined)).toBe("suppressed"),
+	},
+});
+
+compiledTest("finally double", {
+	input: `async function(func) { try { try { return await value(); } finally { if (0) { return "not this"; } } } finally { return "suppressed"; } }`,
+	output: `__async(function(func){return __finally(__call(function(){return __finallyRethrows(__call(value),function(_wasThrown,_result){if(0){return"not this";}return __rethrow(_wasThrown,_result);});}),function(){return"suppressed";});});`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", _ => undefined)).toBe("suppressed"),
 		recover: async f => expect(await f(async _ => { throw "test"; }, _ => undefined)).toBe("suppressed"),

@@ -421,6 +421,9 @@ module.exports = function({ types, template }) {
 				}
 			});
 		}
+		if (path.isUnaryExpression()) {
+			return isExpressionOfLiterals(path.get("argument"));
+		}
 		if (path.isIdentifier()) {
 			const binding = path.scope.getBinding(path.node.name);
 			if (binding) {

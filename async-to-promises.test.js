@@ -686,3 +686,33 @@ compiledTest("fetch example", {
 	input: `async function(url) { var response = await fetch(url); var blob = await response.blob(); return URL.createObjectURL(myBlob); }`,
 	output: `__async(function(url){return __await(fetch(url),function(response){return __await(response.blob(),function(blob){return URL.createObjectURL(myBlob);});});});`,
 });
+
+compiledTest("array literal", {
+	input: `async function(left, right) { return [0, left(), 2, await right(), 4] }`,
+	output: `__async(function(left,right){var _left=left();return __call(right,function(_right){return[0,_left,2,_right,4];});});`,
+	cases: {
+		value: async f => {
+			expect(await f(() => 1, async () => 3)).toEqual([0, 1, 2, 3, 4]);
+		},
+		order: async f => {
+			var leftCalled = false;
+			await f(() => (expect(leftCalled).toBe(false), leftCalled = true), () => expect(leftCalled).toBe(true));
+			expect(leftCalled).toBe(true);
+		},
+	}
+});
+
+compiledTest("object literal", {
+	input: `async function(left, right) { return { zero: 0, one: left(), two: 2, three: await right(), four: 4 } }`,
+	output: `__async(function(left,right){var _left=left();return __call(right,function(_right){return{zero:0,one:_left,two:2,three:_right,four:4};});});`,
+	cases: {
+		value: async f => {
+			expect(await f(() => 1, async () => 3)).toEqual({ zero: 0, one: 1, two: 2, three: 3, four: 4 });
+		},
+		order: async f => {
+			var leftCalled = false;
+			await f(() => (expect(leftCalled).toBe(false), leftCalled = true), () => expect(leftCalled).toBe(true));
+			expect(leftCalled).toBe(true);
+		},
+	}
+});

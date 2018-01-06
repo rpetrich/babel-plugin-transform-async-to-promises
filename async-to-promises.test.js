@@ -731,3 +731,12 @@ compiledTest("sequence expression", {
 		},
 	}
 });
+
+compiledTest("class syntax", {
+	input: `function() { return class { async foo(baz) { return await baz(); } static async bar(baz) { return await baz(); } } }`,
+	output: `function(){return class{foo(baz){return __call(function(){return baz();});}static bar(baz){return __call(function(){return baz();});}};};`,
+	cases: {
+		method: async f => expect(await (new (f())).foo(async () => true)).toBe(true),
+		"class method": async f => expect(await f().bar(async () => true)).toBe(true),
+	}
+});

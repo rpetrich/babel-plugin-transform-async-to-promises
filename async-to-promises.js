@@ -951,10 +951,7 @@ module.exports = function({ types, template }) {
 			ObjectMethod(path) {
 				if (path.node.async && isCompatible(path.get("body"))) {
 					if (path.node.kind === "method") {
-						const body = path.get("body");
-						body.replaceWith(types.blockStatement([types.returnStatement(types.callExpression(helperReference(this, "__call"), [types.functionExpression(null, [], body.node)]))]));
-						rewriteFunctionBody(body.get("body.0.argument.arguments.0"), this);
-						path.replaceWith(types.objectMethod(path.node.kind, path.node.key, path.node.params, path.node.body, path.node.computed));
+						path.replaceWith(types.objectProperty(path.node.key, types.functionExpression(null, path.node.params, path.node.body, path.node.generator, path.node.async), path.node.computed, false, path.node.decorators));
 					}
 				}
 			},

@@ -458,6 +458,18 @@ compiledTest("for of await in value", {
 	},
 });
 
+compiledTest("for of await in body with break", {
+	input: `async function(iter) { var result = 0; for (var value of iter) { result += await value; if (result > 10) break; } return result; }`,
+	output: `__async(function(iter){var _interrupt;var result=0;return __await(__forOf(iter,function(value){return __await(value,function(_value){result+=_value;if(result>10){_interrupt=1;return;}});},function(){return _interrupt;}),function(){return result;});});`,
+	cases: {
+		empty: async f => expect(await f([])).toBe(0),
+		single: async f => expect(await f([1])).toBe(1),
+		multiple: async f => expect(await f([1,2])).toBe(3),
+		break: async f => expect(await f([1,10,4])).toBe(11),
+	},
+});
+
+
 compiledTest("while loop", {
 	input: `async function(foo) { let shouldContinue = true; while (shouldContinue) { shouldContinue = await foo(); } }`,
 	output: `__async(function(foo){let shouldContinue=true;return __for(function(){return shouldContinue;},void 0,function(){return __call(foo,function(_foo){shouldContinue=_foo;});});});`,

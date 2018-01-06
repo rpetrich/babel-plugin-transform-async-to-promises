@@ -943,9 +943,18 @@ module.exports = function({ types, template }) {
 					if (path.node.kind === "method") {
 						const body = path.get("body");
 						body.replaceWith(types.blockStatement([types.returnStatement(types.callExpression(helperReference(this, "__call"), [types.functionExpression(null, [], body.node)]))]));
-						console.log(body.get("body.0.argument").node.type);
 						rewriteFunctionBody(body.get("body.0.argument.arguments.0"), this);
 						path.replaceWith(types.classMethod(path.node.kind, path.node.key, path.node.params, path.node.body, path.node.computed, path.node.static));
+					}
+				}
+			},
+			ObjectMethod(path) {
+				if (path.node.async && isCompatible(path.get("body"))) {
+					if (path.node.kind === "method") {
+						const body = path.get("body");
+						body.replaceWith(types.blockStatement([types.returnStatement(types.callExpression(helperReference(this, "__call"), [types.functionExpression(null, [], body.node)]))]));
+						rewriteFunctionBody(body.get("body.0.argument.arguments.0"), this);
+						path.replaceWith(types.objectMethod(path.node.kind, path.node.key, path.node.params, path.node.body, path.node.computed));
 					}
 				}
 			},

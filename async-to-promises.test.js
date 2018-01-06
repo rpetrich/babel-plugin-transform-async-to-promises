@@ -740,3 +740,11 @@ compiledTest("class syntax", {
 		"class method": async f => expect(await f().bar(async () => true)).toBe(true),
 	}
 });
+
+compiledTest("object method syntax", {
+	input: `function() { return { async foo(bar) { return await bar(); } }; }`,
+	output: `function(){return{foo(bar){return __call(function(){return bar();});}};};`,
+	cases: {
+		method: async f => expect(await f().foo(async () => true)).toBe(true),
+	}
+});

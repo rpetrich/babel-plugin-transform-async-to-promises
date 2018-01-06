@@ -996,7 +996,46 @@ module.exports = function({ types, template }) {
 						if (usedHelpers["__forOf"]) {
 							usedHelpers["__for"] = true;
 							body.insertBefore(template(`function __forOf(target, body, check) {
+								if (typeof Symbol !== "undefined") {
+									var iteratorSymbol = Symbol.iterator;
+									if (iteratorSymbol) {
+										var iterator = target[iteratorSymbol]();
+										var step;
+										var iteration = __for(check ? function() {
+											return !(step = iterator.next()).done && !check();
+										} : function() {
+											return !(step = iterator.next()).done;
+										}, void 0, function() {
+											return body(step.value);
+										});
+										if (iterator.return) {
+											return iteration.then(function(result) {
+												try {
+													// Inform iterator of early exit
+													if ((!step || !step.done) && iterator.return) {
+														iterator.return();
+													}
+												} finally {
+													return result;
+												}
+											}, function(error) {
+												try {
+													// Inform iterator of early exit
+													if ((!step || !step.done) && iterator.return) {
+														iterator.return();
+													}
+												} finally {
+													throw error;
+												}
+											});
+										} else {
+											return iteration;
+										}
+									}
+								}
+								// No support for Symbol.iterator
 								if (target.length) {
+									// Handle live collections properly
 									var values = [];
 									for (var value of target) {
 										values.push(value);

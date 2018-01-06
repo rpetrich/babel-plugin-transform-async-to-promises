@@ -438,6 +438,26 @@ compiledTest("for to length with continue", {
 	},
 });
 
+compiledTest("for of await in body", {
+	input: `async function(iter) { var result = 0; for (var value of iter) result += await value; return result; }`,
+	output: `__async(function(iter){var result=0;return __await(__forOf(iter,function(value){return __await(value,function(_value){result+=_value;});}),function(){return result;});});`,
+	cases: {
+		empty: async f => expect(await f([])).toBe(0),
+		single: async f => expect(await f([1])).toBe(1),
+		multiple: async f => expect(await f([1,2])).toBe(3),
+	},
+});
+
+compiledTest("for of await in value", {
+	input: `async function(foo) { var result = 0; for (var value of await foo()) result += value; return result; }`,
+	output: `__async(function(foo){var result=0;return __call(foo,function(_foo){for(var value of _foo)result+=value;return result;});});`,
+	cases: {
+		empty: async f => expect(await f(async () => [])).toBe(0),
+		single: async f => expect(await f(async () => [1])).toBe(1),
+		multiple: async f => expect(await f(async () => [1,2])).toBe(3),
+	},
+});
+
 compiledTest("while loop", {
 	input: `async function(foo) { let shouldContinue = true; while (shouldContinue) { shouldContinue = await foo(); } }`,
 	output: `__async(function(foo){let shouldContinue=true;return __for(function(){return shouldContinue;},void 0,function(){return __call(foo,function(_foo){shouldContinue=_foo;});});});`,

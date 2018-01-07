@@ -320,6 +320,20 @@ compiledTest("compound variable declarator", {
 	},
 });
 
+compiledTest("calling member functions", {
+	input: `async function(foo, bar) { return bar.baz(await foo()); }`,
+	output: `__async(function(foo,bar){var _baz=bar.baz;return __call(foo,function(_foo){return _baz.call(bar,_foo);});});`,
+	cases: {
+		normal: async f => expect(await f(async _ => true, { baz: arg => arg })).toBe(true),
+		reassign: async f => {
+			const bar = {
+				baz: () => true,
+			};
+			expect(await f(() => bar.baz = () => false, bar)).toBe(true)
+		}
+	},
+});
+
 compiledTest("catch and recover via return", {
 	input: `async function(foo) { try { return await foo(); } catch(e) { return "fallback"; } }`,
 	output: `__async(function(foo){return __call(foo,void 0,function(e){return"fallback";});});`,

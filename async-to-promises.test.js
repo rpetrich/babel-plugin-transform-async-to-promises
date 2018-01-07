@@ -408,6 +408,23 @@ compiledTest("finally double", {
 	},
 });
 
+compiledTest("throw test", {
+	input: `async function() { throw true; }`,
+	output: `__async(function(){throw true;})`,
+	cases: {
+		throws: async f => {
+			var result;
+			try {
+				await f()
+				result = false;
+			} catch (e) {
+				result = e;
+			}
+			expect(result).toBe(true);
+		}
+	},
+});
+
 
 compiledTest("for to length iteration", {
 	input: `async function(list) { var result = 0; for (var i = 0; i < list.length; i++) { result += await list[i](); } return result;}`,

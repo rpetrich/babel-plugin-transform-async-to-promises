@@ -936,7 +936,7 @@ module.exports = function({ types, template }) {
 		},
 		__await: {
 			value: template(`function __await(value, then, recover) {
-								return (value && value.then ? value : Promise.resolve(value)).then(then, recover);
+								return Promise.resolve(value).then(then, recover);
 							}`)(),
 			dependencies: [],
 		},

@@ -567,16 +567,15 @@ module.exports = function({ types, template }) {
 								object.replaceWith(objectIdentifier);
 							}
 							const property = callee.get("property");
-							if (callee.node.computed && !isExpressionOfLiterals(property)) {
-								const propertyIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(property.node);
-								declarations.push(types.variableDeclarator(propertyIdentifier, property.node));
-								property.replaceWith(propertyIdentifier);
-							}
-							parent.replaceWith(types.callExpression(types.memberExpression(callee.node, types.identifier("call")), [object.node].concat(parent.node.arguments)));
+							const calleeIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(property.node);
+							const calleeNode = callee.node;
+							parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), [object.node].concat(parent.node.arguments)));
+							declarations.push(types.variableDeclarator(calleeIdentifier, calleeNode));
 						} else if (!callee.isIdentifier() || !(/^__/.test(callee.node.name) || awaitPath.scope.getBinding(callee.node.name).constant)) {
 							const calleeIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(callee.node);
-							declarations.push(types.variableDeclarator(calleeIdentifier, callee.node));
+							const calleeNode = callee.node;
 							callee.replaceWith(calleeIdentifier);
+							declarations.push(types.variableDeclarator(calleeIdentifier, calleeNode));
 						}
 					}
 				}

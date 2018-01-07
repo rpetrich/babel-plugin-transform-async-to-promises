@@ -602,7 +602,7 @@ compiledTest("for in await object", {
 
 compiledTest("for in await value", {
 	input: `async function(foo) { var values = []; for (var key in foo) { values.push(await foo[key]()); }; return values.sort(); }`,
-	output: `__async(function(foo){var values=[];return __await(__forIn(foo,function(key){return __await(foo[key](),function(_foo$key){values.push.call(values,_foo$key);});}),function(){return values.sort();});});`,
+	output: `__async(function(foo){var values=[];return __await(__forIn(foo,function(key){var _push=values.push;return __await(foo[key](),function(_foo$key){_push.call(values,_foo$key);});}),function(){return values.sort();});});`,
 	cases: {
 		two: async f => {
 			var obj = { bar: async _ => 0, baz: async _ => 1 };
@@ -612,8 +612,8 @@ compiledTest("for in await value", {
 });
 
 compiledTest("for in own await value", {
-	input: `async function(foo) { var values = []; for (var key in foo) { if (Object.prototype.hasOwnProperty.call(foo, key)) values.push(await foo[key]()); }; return values.sort(); }`,
-	output: `__async(function(foo){var values=[];return __await(__forOwn(foo,function(key){return __await(foo[key](),function(_foo$key){values.push.call(values,_foo$key);});}),function(){return values.sort();});});`,
+	input: `async function(foo) { var values = []; for (var key in foo) { if (Object.prototype.hasOwnProperty.call(foo, key)) { values.push(await foo[key]()); } } return values.sort(); }`,
+	output: `__async(function(foo){var values=[];return __await(__forOwn(foo,function(key){var _push=values.push;return __await(foo[key](),function(_foo$key){_push.call(values,_foo$key);});}),function(){return values.sort();});});`,
 	cases: {
 		two: async f => {
 			var obj = { bar: async _ => 0, baz: async _ => 1 };

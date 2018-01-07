@@ -764,12 +764,27 @@ compiledTest("sequence expression", {
 	}
 });
 
-compiledTest("class syntax", {
+compiledTest("class methods", {
 	input: `function() { return class { async foo(baz) { return await baz(); } static async bar(baz) { return await baz(); } } }`,
 	output: `function(){return class{foo(baz){return __call(function(){return baz();});}static bar(baz){return __call(function(){return baz();});}};};`,
 	cases: {
 		method: async f => expect(await (new (f())).foo(async () => true)).toBe(true),
 		"class method": async f => expect(await f().bar(async () => true)).toBe(true),
+	}
+});
+
+compiledTest("class methods with pseudo-variables", {
+	input: `function() { return class { async testThis() { return this; } async testArguments() { return arguments[0]; } }; }`,
+	output: `function(){return class{testThis(){var _this=this;return __call(function(){return _this;});}testArguments(){var _arguments=arguments;return __call(function(){return _arguments[0];});}};};`,
+	cases: {
+		"this": async f => {
+			const object = new (f());
+			expect(await object.testThis()).toBe(object);
+		},
+		"arguments": async f => {
+			const object = new (f());
+			expect(await object.testArguments(1)).toBe(1);
+		},
 	}
 });
 

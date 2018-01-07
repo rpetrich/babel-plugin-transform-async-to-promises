@@ -619,7 +619,6 @@ module.exports = function({ types, template }) {
 		if (!path || !path.isFunction()) {
 			return;
 		}
-		rewriteThisAndArgumentsExpression(path, path);
 		let awaitPath;
 		while (awaitPath = findLastAwaitPath(path)) {
 			const relocatedBlocks = [];
@@ -1144,6 +1143,7 @@ module.exports = function({ types, template }) {
 			FunctionDeclaration(path) {
 				const node = path.node;
 				if (node.async && isCompatible(path.get("body"))) {
+					rewriteThisAndArgumentsExpression(path, path);
 					path.remove();
 					path.scope.parent.push({ id: node.id, init: types.functionExpression(null, node.params, node.body, node.generator, node.async) });
 				}
@@ -1158,6 +1158,7 @@ module.exports = function({ types, template }) {
 			},
 			FunctionExpression(path) {
 				if (path.node.async && isCompatible(path.get("body"))) {
+					rewriteThisAndArgumentsExpression(path, path);
 					rewriteFunctionBody(path);
 					path.replaceWith(types.callExpression(helperReference(path, "__async"), [
 						types.functionExpression(null, path.node.params, path.node.body)
@@ -1169,7 +1170,9 @@ module.exports = function({ types, template }) {
 					if (path.node.kind === "method") {
 						const body = path.get("body");
 						body.replaceWith(types.blockStatement([types.returnStatement(types.callExpression(helperReference(path, "__call"), [types.functionExpression(null, [], body.node)]))]));
-						rewriteFunctionBody(body.get("body.0.argument.arguments.0"));
+						const migratedPath = body.get("body.0.argument.arguments.0");
+						rewriteThisAndArgumentsExpression(migratedPath, path);
+						rewriteFunctionBody(migratedPath);
 						path.replaceWith(types.classMethod(path.node.kind, path.node.key, path.node.params, path.node.body, path.node.computed, path.node.static));
 					}
 				}

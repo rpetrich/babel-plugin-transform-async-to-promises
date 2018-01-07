@@ -8,9 +8,13 @@ const logCompiled = false;
 
 const stripHelpersVisitor = {
 	FunctionDeclaration(path) {
-		if (/^__/.test(path.node.id.name)) {
-			path.remove();
-		}
+		path.remove();
+	},
+	VariableDeclaration(path) {
+		path.remove();
+	},
+	ReturnStatement(path) {
+		path.skip();
 	},
 };
 

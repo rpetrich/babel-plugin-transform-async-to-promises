@@ -906,15 +906,32 @@ module.exports = function({ types, template }) {
 
 	const helpers = {
 		__async: {
-			value: template(`function __async(f) {
-								return function() {
-									try {
-										return Promise.resolve(f.apply(this, arguments));
-									} catch(e) {
-										return Promise.reject(e);
+			value: template(`var __async = function() {
+								try {
+									if (isNaN.apply(null, {})) {
+										return function(f) {
+											return function() {
+												try {
+													return Promise.resolve(f.apply(this, arguments));
+												} catch(e) {
+													return Promise.reject(e);
+												}
+											}
+										};
 									}
+								} catch (e) {
 								}
-							}`)(),
+								return function(f) {
+									// Pre-ES5.1 JavaScript runtimes don't accept array-likes in Function.apply
+									return function() {
+										try {
+											return Promise.resolve(f.apply(this, Array.prototype.slice.call(arguments)));
+										} catch(e) {
+											return Promise.reject(e);
+										}
+									}
+								};
+							}()`)(),
 			dependencies: [],
 		},
 		__await: {

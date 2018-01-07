@@ -2,9 +2,10 @@ const asyncToPromises = require("./async-to-promises");
 const babel = require("babel-core");
 const babylon = require("babylon");
 
-const testInput = false;
-const verifyCompiled = true;
-const logCompiled = false;
+const runTestCasesOnInput = false;
+const checkTestCases = true;
+const checkOutputMatches = true;
+const logCompiledOutput = false;
 
 const stripHelpersVisitor = {
 	FunctionDeclaration(path) {
@@ -29,13 +30,13 @@ function compiledTest(name, { input, output, cases }) {
 		const inputReturned = "return " + input;
 		const ast = babylon.parse(inputReturned, { allowReturnOutsideFunction: true });
 		const result = babel.transformFromAst(ast, inputReturned, { plugins: [pluginUnderTest], compact: true });
-		if (logCompiled){
+		if (logCompiledOutput) {
 			console.log(name + " input", input);
 			console.log(name + " output", extractJustFunction(result));
 		}
 		let fn;
 		test("syntax", () => {
-			const code = testInput ? inputReturned : result.code;
+			const code = runTestCasesOnInput ? inputReturned : result.code;
 			try {
 				fn = new Function(code);
 			} catch (e) {
@@ -45,19 +46,21 @@ function compiledTest(name, { input, output, cases }) {
 				throw e;
 			}
 		});
-		if (verifyCompiled) {
+		if (checkTestCases) {
+			for (let key in cases) {
+				if (cases.hasOwnProperty(key)) {
+					test(key, async () => {
+						if (fn) {
+							return cases[key](fn());
+						}
+					});
+				}
+			}
+		}
+		if (checkOutputMatches) {
 			test("output", () => {
 				expect(extractJustFunction(result)).toBe(output);
 			});
-		}
-		for (let key in cases) {
-			if (cases.hasOwnProperty(key)) {
-				test(key, async () => {
-					if (fn) {
-						return cases[key](fn());
-					}
-				});
-			}
 		}
 	});
 }

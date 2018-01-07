@@ -243,9 +243,10 @@ module.exports = function({ types, template }) {
 			let body = path.get("body");
 			while (body.isBlockStatement()) {
 				const statements = body.get("body");
-				if (statements.length === 1) {
-					body = statements[0];
+				if (statements.length !== 1) {
+					return;
 				}
+				body = statements[0];
 			}
 			// Check for an if statement with a single call expression
 			if (body.isIfStatement() && !body.node.alternate) {

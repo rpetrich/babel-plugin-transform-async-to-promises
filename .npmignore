@@ -1,2 +1,2 @@
-node_modules
+*.test.js
 babel-plugin-transform-async-to-promises-*.tgz

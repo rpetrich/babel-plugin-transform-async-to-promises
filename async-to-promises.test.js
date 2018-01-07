@@ -408,6 +408,45 @@ compiledTest("finally double", {
 	},
 });
 
+compiledTest("try catch finally", {
+	input: `async function(foo, bar, baz) { var result; try { return await foo(); } catch (e) { return await bar(); } finally { baz(); } }`,
+	output: `__async(function(foo,bar,baz){var result;return __finallyRethrows(__call(foo,void 0,function(e){return bar();}),function(_wasThrown,_result){baz();return __rethrow(_wasThrown,_result);});})`,
+	cases: {
+		normal: async f => {
+			const foo = async () => true;
+			let barCalled = false;
+			const bar = async () => {
+				barCalled = true;
+				return false;
+			}
+			let bazCalled = false;
+			const baz = async () => {
+				bazCalled = true;
+			}
+			expect(await f(foo, bar, baz)).toBe(true);
+			expect(barCalled).toBe(false);
+			expect(bazCalled).toBe(true);
+		},
+		throws: async f => {
+			const foo = async () => {
+				throw new Error();
+			};
+			let barCalled = false;
+			const bar = async () => {
+				barCalled = true;
+				return false;
+			}
+			let bazCalled = false;
+			const baz = async () => {
+				bazCalled = true;
+			}
+			expect(await f(foo, bar, baz)).toBe(false);
+			expect(barCalled).toBe(true);
+			expect(bazCalled).toBe(true);
+		},
+	},
+});
+
 compiledTest("throw test", {
 	input: `async function() { throw true; }`,
 	output: `__async(function(){throw true;})`,

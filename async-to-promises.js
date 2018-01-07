@@ -625,6 +625,12 @@ module.exports = function({ types, template }) {
 			AwaitExpression(path) {
 				result = path;
 			},
+			CallExpression(path) {
+				const callee = path.get("callee");
+				if (callee.isIdentifier() && callee.node.name === "eval") {
+					throw path.buildCodeFrameError("Calling eval from inside an async function is not supported!");
+				}
+			},
 		});
 		return result;
 	}

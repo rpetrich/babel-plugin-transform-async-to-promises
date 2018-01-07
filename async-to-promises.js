@@ -231,6 +231,58 @@ module.exports = function({ types, template }) {
 		}
 	}
 
+	function extractForOwnBodyPath(path) {
+		// Match: for (var key of obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) { ... } }
+		let left = path.get("left");
+		if (left.isVariableDeclaration()) {
+			left = left.get("declarations.0.id");
+		}
+		const right = path.get("right");
+		// Check to see if we have a simple for of statement with two variables
+		if (left.isIdentifier() && right.isIdentifier() && path.scope.getBinding(right.node.name).constant) {
+			let body = path.get("body");
+			while (body.isBlockStatement()) {
+				const statements = body.get("body");
+				if (statements.length === 1) {
+					body = statements[0];
+				}
+			}
+			// Check for an if statement with a single call expression
+			if (body.isIfStatement() && !body.node.alternate) {
+				const test = body.get("test");
+				if (test.isCallExpression() && test.node.arguments.length === 2) {
+					const args = test.get("arguments");
+					// Check that call arguments match the key and target variables
+					if (args[0].isIdentifier() && args[0].node.name === right.node.name &&
+						args[1].isIdentifier() && args[1].node.name === left.node.name)
+					{
+						// Check for .call(...)
+						const callee = test.get("callee");
+						if (callee.isMemberExpression() && callee.get("property").isIdentifier() && !callee.node.computed && callee.node.property.name === "call") {
+							// Check for .hasOwnProperty
+							let method = callee.get("object");
+							if (method.isMemberExpression() && method.get("property").isIdentifier() && !method.node.computed && method.node.property.name == "hasOwnProperty") {
+								let target = method.get("object");
+								// Check for empty temporary object
+								if (target.isObjectExpression() && target.node.properties.length === 0) {
+									return body.get("consequent");
+								}
+								// Strip .prototype if present
+								if (target.isMemberExpression() && target.get("property").isIdentifier() && !target.node.computed && target.node.property.name == "prototype") {
+									target = target.get("object");
+								}
+								// Check for Object
+								if (target.isIdentifier() && target.node.name === "Object") {
+									return body.get("consequent");
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	function isPassthroughContinuation(continuation) {
 		if (!continuation || continuation.type !== "FunctionExpression") {
 			return false;
@@ -709,6 +761,7 @@ module.exports = function({ types, template }) {
 						}
 						replaceReturnsAndBreaks(parent.get("body"), exitIdentifier, breakIdentifier);
 						const isForIn = parent.isForInStatement();
+						const forOwnBodyPath = isForIn && extractForOwnBodyPath(parent);
 						const isForOf = parent.isForOfStatement();
 						if (isForIn || isForOf) {
 							const right = parent.get("right");
@@ -721,12 +774,12 @@ module.exports = function({ types, template }) {
 									relocate() {
 										const left = parent.get("left");
 										const loopIdentifier = left.isVariableDeclaration() ? left.node.declarations[0].id : left.node;
-										const params = [right.node, types.functionExpression(null, [loopIdentifier], blockStatement(parent.get("body").node))];
+										const params = [right.node, types.functionExpression(null, [loopIdentifier], blockStatement((forOwnBodyPath || parent.get("body")).node))];
 										const exitCheck = buildBreakExitCheck(exitIdentifier, breakIdentifier);
 										if (exitCheck) {
 											params.push(exitCheck);
 										}
-										const loopCall = types.callExpression(helperReference(parent, isForIn ? "__forIn" : "__forOf"), params);
+										const loopCall = types.callExpression(helperReference(parent, isForIn ? forOwnBodyPath ? "__forOwn" : "__forIn" : "__forOf"), params);
 										let resultIdentifier = null;
 										if (explicitExits.any) {
 											resultIdentifier = path.scope.generateUidIdentifier("result");
@@ -954,6 +1007,18 @@ module.exports = function({ types, template }) {
 								var keys = [], i = 0;
 								for (var key in target) {
 									keys.push(key);
+								}
+								return __for(check ? function() { return i < keys.length && !check(); } : function() { return i < keys.length; }, function() { i++; }, function() { return body(keys[i]); });
+							}`)(),
+			dependencies: ["__for"],
+		},
+		__forOwn: {
+			value: template(`function __forOwn(target, body, check) {
+								var keys = [], i = 0;
+								for (var key in target) {
+									if (Object.prototype.hasOwnProperty.call(target, key)) {
+										keys.push(key);
+									}
 								}
 								return __for(check ? function() { return i < keys.length && !check(); } : function() { return i < keys.length; }, function() { i++; }, function() { return body(keys[i]); });
 							}`)(),

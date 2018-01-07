@@ -442,6 +442,33 @@ compiledTest("for to length with continue", {
 	},
 });
 
+compiledTest("for to length with mutation", {
+	input: `async function(list) { for (var i = 0; i < list.length; i++) { if (await list[i]()) { i = list.length; } }}`,
+	output: `__async(function(list){var i=0;return __for(function(){return i<list.length;},function(){return i++;},function(){return __await(list[i](),function(_list$i){if(_list$i){i=list.length;}});});});`,
+	cases: {
+		none: async f => expect(await f([])).toBe(undefined),
+		single: async f => {
+			let called = false;
+			await f([async _ => called = true]);
+			expect(called).toBe(true);
+		},
+		both: async f => {
+			let called1 = false;
+			let called2 = false;
+			await f([async _ => { called1 = true }, async _ => called2 = true]);
+			expect(called1).toBe(true);
+			expect(called2).toBe(true);
+		},
+		stop: async f => {
+			let called1 = false;
+			let called2 = false;
+			await f([async _ => called1 = true, async _ => called2 = true]);
+			expect(called1).toBe(true);
+			expect(called2).toBe(false);
+		},
+	},
+});
+
 compiledTest("for of await in body", {
 	input: `async function(iter) { var result = 0; for (var value of iter) result += await value; return result; }`,
 	output: `__async(function(iter){var result=0;return __await(__forOf(iter,function(value){return __await(value,function(_value){result+=_value;});}),function(){return result;});});`,

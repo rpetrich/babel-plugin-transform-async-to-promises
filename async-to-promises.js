@@ -218,10 +218,12 @@ module.exports = function({ types, template }) {
 							update.get("argument").isIdentifier() &&
 							update.node.argument.name === i.name
 						) {
-							return {
-								i,
-								array: test.node.right.object
-							};
+							if (!statement.scope.getBinding(i.name).constantViolations.some(cv => cv !== update.get("argument"))) {
+								return {
+									i,
+									array: test.node.right.object
+								};
+							}
 						}
 					}
 				}

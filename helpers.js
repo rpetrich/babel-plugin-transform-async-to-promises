@@ -129,16 +129,22 @@ export function __for(test, update, body) {
 	return new Promise(function(resolve, reject) {
 		var result;
 		cycle();
+		function dispatchTest(resolve) {
+			resolve(test());
+		}
 		function cycle() {
-			__call(test, checkTestResult, reject);
+			(new Promise(dispatchTest)).then(checkTestResult, reject);
 		}
 		function stashAndUpdate(value) {
 			result = value;
 			return update && update();
 		}
+		function dispatchBody(resolve) {
+			resolve(body());
+		}
 		function checkTestResult(shouldContinue) {
 			if (shouldContinue) {
-				__call(body, stashAndUpdate).then(cycle, reject);
+				(new Promise(dispatchBody)).then(stashAndUpdate).then(cycle, reject);
 			} else {
 				resolve(result);
 			}
@@ -148,18 +154,27 @@ export function __for(test, update, body) {
 
 export function __do(body, test) {
 	return new Promise(function(resolve, reject) {
+		var result;
 		cycle();
-		function cycle() {
-			return __call(body, checkTestResult, reject);
+		function dispatchBody(resolve) {
+			resolve(body());
 		}
-		function checkTestResult(value) {
-			__call(test, function(shouldContinue) {
-				if (shouldContinue) {
-					cycle();
-				} else {
-					resolve(value);
-				}
-			}, reject);
+		function cycle() {
+			(new Promise(dispatchBody)).then(stashAndUpdate, reject);
+		}
+		function dispatchTest(resolve) {
+			resolve(test());
+		}
+		function stashAndUpdate(value) {
+			result = value;
+			(new Promise(dispatchTest)).then(checkTestResult, reject);
+		}
+		function checkTestResult(shouldContinue) {
+			if (shouldContinue) {
+				cycle();
+			} else {
+				resolve(result);
+			}
 		}
 	});
 }

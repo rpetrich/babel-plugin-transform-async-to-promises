@@ -52,22 +52,27 @@ export function __forTo(array, body) {
 	});
 }
 
+export function __forValues(array, body, check) {
+	var i = 0;
+	return __for(check ? function() { return i < array.length && !check(); } : function() { return i < array.length; }, function() { i++; }, function() { return body(array[i]); });
+}
+
 export function __forIn(target, body, check) {
-	var keys = [], i = 0;
+	var keys = [];
 	for (var key in target) {
 		keys.push(key);
 	}
-	return __for(check ? function() { return i < keys.length && !check(); } : function() { return i < keys.length; }, function() { i++; }, function() { return body(keys[i]); });
+	return __forValues(keys, body, check);
 }
 
 export function __forOwn(target, body, check) {
-	var keys = [], i = 0;
+	var keys = [];
 	for (var key in target) {
 		if (Object.prototype.hasOwnProperty.call(target, key)) {
 			keys.push(key);
 		}
 	}
-	return __for(check ? function() { return i < keys.length && !check(); } : function() { return i < keys.length; }, function() { i++; }, function() { return body(keys[i]); });
+	return __forValues(keys, body, check);
 }
 
 export function __forOf(target, body, check) {

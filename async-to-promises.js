@@ -965,254 +965,19 @@ exports.default = function({ types, template }) {
 		}
 	}
 
-	const helpers = {
-		__async: {
-			value: template(`var __async = function() {
-								try {
-									if (isNaN.apply(null, {})) {
-										return function(f) {
-											return function() {
-												try {
-													return Promise.resolve(f.apply(this, arguments));
-												} catch(e) {
-													return Promise.reject(e);
-												}
-											}
-										};
-									}
-								} catch (e) {
-								}
-								return function(f) {
-									// Pre-ES5.1 JavaScript runtimes don't accept array-likes in Function.apply
-									return function() {
-										try {
-											return Promise.resolve(f.apply(this, Array.prototype.slice.call(arguments)));
-										} catch(e) {
-											return Promise.reject(e);
-										}
-									}
-								};
-							}()`)(),
-			dependencies: [],
-		},
-		__await: {
-			value: template(`function __await(value, then, recover) {
-								return Promise.resolve(value).then(then, recover);
-							}`)(),
-			dependencies: [],
-		},
-		__forTo: {
-			value: template(`function __forTo(array, body) {
-								var i = 0;
-								return __for(function() { return i < array.length; }, function() { i++; }, function() { return body(i); });
-							}`)(),
-			dependencies: ["__for"],
-		},
-		__forIn: {
-			value: template(`function __forIn(target, body, check) {
-								var keys = [], i = 0;
-								for (var key in target) {
-									keys.push(key);
-								}
-								return __for(check ? function() { return i < keys.length && !check(); } : function() { return i < keys.length; }, function() { i++; }, function() { return body(keys[i]); });
-							}`)(),
-			dependencies: ["__for"],
-		},
-		__forOwn: {
-			value: template(`function __forOwn(target, body, check) {
-								var keys = [], i = 0;
-								for (var key in target) {
-									if (Object.prototype.hasOwnProperty.call(target, key)) {
-										keys.push(key);
-									}
-								}
-								return __for(check ? function() { return i < keys.length && !check(); } : function() { return i < keys.length; }, function() { i++; }, function() { return body(keys[i]); });
-							}`)(),
-			dependencies: ["__for"],
-		},
-		__forOf: {
-			value: template(`function __forOf(target, body, check) {
-								if (typeof Symbol !== "undefined") {
-									var iteratorSymbol = Symbol.iterator;
-									if (iteratorSymbol) {
-										var iterator = target[iteratorSymbol]();
-										var step;
-										var iteration = __for(check ? function() {
-											return !(step = iterator.next()).done && !check();
-										} : function() {
-											return !(step = iterator.next()).done;
-										}, void 0, function() {
-											return body(step.value);
-										});
-										if (iterator.return) {
-											return iteration.then(function(result) {
-												try {
-													// Inform iterator of early exit
-													if ((!step || !step.done) && iterator.return) {
-														iterator.return();
-													}
-												} finally {
-													return result;
-												}
-											}, function(error) {
-												try {
-													// Inform iterator of early exit
-													if ((!step || !step.done) && iterator.return) {
-														iterator.return();
-													}
-												} finally {
-													throw error;
-												}
-											});
-										} else {
-											return iteration;
-										}
-									}
-								}
-								// No support for Symbol.iterator
-								if (target.length) {
-									// Handle live collections properly
-									var values = [];
-									for (var value of target) {
-										values.push(value);
-									}
-									target = values;
-								}
-								var i = 0;
-								return __for(check ? function() { return i < target.length && !check(); } : function() { return i < target.length; }, function() { i++; }, function() { return body(target[i]); });
-							}`)(),
-			dependencies: ["__for"],
-		},
-		__for: {
-			value: template(`function __for(test, update, body) {
-								return new Promise(function(resolve, reject) {
-									var result;
-									cycle();
-									function cycle() {
-										__call(test, checkTestResult, reject);
-									}
-									function stashAndUpdate(value) {
-										result = value;
-										return update && update();
-									}
-									function checkTestResult(shouldContinue) {
-										if (shouldContinue) {
-											__call(body, stashAndUpdate).then(cycle, reject);
-										} else {
-											resolve(result);
-										}
-									}
-								});
-							}`)(),
-			dependencies: ["__call"],
-		},
-		__do: {
-			value: template(`function __do(body, test) {
-								return new Promise(function(resolve, reject) {
-									cycle();
-									function cycle() {
-										return __call(body, checkTestResult, reject);
-									}
-									function checkTestResult(value) {
-										__call(test, function(shouldContinue) {
-											if (shouldContinue) {
-												cycle();
-											} else {
-												resolve(value);
-											}
-										}, reject);
-									}
-								});
-							}`)(),
-			dependencies: ["__call"],
-		},
-		__switch: {
-			value: template(`function __switch(discriminant, cases) {
-								return new Promise(function(resolve, reject) {
-									var i = -1;
-									var defaultIndex = -1;
-									function nextCase() {
-										if (++i === cases.length) {
-											if (defaultIndex !== -1) {
-												i = defaultIndex;
-												dispatchCaseBody();
-											} else {
-												resolve();
-											}
-										} else {
-											var test = cases[i][0];
-											if (test) {
-												__call(test, checkCaseTest, reject);
-											} else {
-												defaultIndex = i;
-												nextCase();
-											}
-										}
-									}
-									function checkCaseTest(test) {
-										if (test !== discriminant) {
-											nextCase();
-										} else {
-											dispatchCaseBody();
-										}
-									}
-									function dispatchCaseBody() {
-										for (;;) {
-											var body = cases[i][1];
-											if (body) {
-												return __call(body, checkFallthrough, reject);
-											} else if (++i === cases.length) {
-												return resolve();
-											}
-										}
-									}
-									function checkFallthrough(result) {
-										var fallthroughCheck = cases[i][2];
-										if (!fallthroughCheck || fallthroughCheck()) {
-											resolve(result);
-										} else if (++i === cases.length) {
-											resolve();
-										} else {
-											dispatchCaseBody();
-										}
-									}
-									nextCase();
-								});
-							}`)(),
-			dependencies: ["__call"],
-		},
-		__call: {
-			value: template(`function __call(body, then, recover) {
-								return (new Promise(function (resolve) { resolve(body()); })).then(then, recover);
-							}`)(),
-			dependencies: [],
-		},
-		__finallyRethrows: {
-			value: template(`function __finallyRethrows(promise, finalizer) {
-								return promise.then(finalizer.bind(null, false), finalizer.bind(null, true));
-							}`)(),
-			dependencies: [],
-		},
-		__finally: {
-			value: template(`function __finally(promise, finalizer) {
-								return promise.then(finalizer, finalizer);
-							}`)(),
-			dependencies: [],
-		},
-		__rethrow: {
-			value: template(`function __rethrow(thrown, value) {
-								if (thrown)
-									throw value;
-								return value;
-							}`)(),
-			dependencies: [],
-		},
-		__empty: {
-			value: template(`function __empty(thrown, value) {
-							}`)(),
-			dependencies: [],
-		},
-	};
+	let helpers;
+
+	function getHelperDependencies(path) {
+		const dependencies = [];
+		path.traverse({
+			Identifier(path) {
+				if (/^__/.test(path.node.name) && dependencies.indexOf(path.node.name) == -1) {
+					dependencies.push(path.node.name);
+				}
+			}
+		});
+		return dependencies;
+	}
 
 	function helperReference(state, path, name) {
 		const file = path.scope.hub.file;
@@ -1222,6 +987,29 @@ exports.default = function({ types, template }) {
 			if (state.opts.externalHelpers) {
 				file.path.unshiftContainer("body", types.importDeclaration([types.importSpecifier(result, result)], types.stringLiteral("babel-plugin-transform-async-to-promises/helpers")));
 			} else {
+				if (!helpers) {
+					// Read helpers from ./helpers.js
+					const newHelpers = [];
+					const helperCode = require("fs").readFileSync(require("path").join(__dirname, "helpers.js")).toString();
+					const helperAst = require("babylon").parse(helperCode, { sourceType: "module" });
+					require("babel-core").transformFromAst(helperAst, helperCode, { babelrc: false, plugins: [{ visitor: {
+						ExportNamedDeclaration(path) {
+							const declaration = path.get("declaration");
+							if (declaration.isFunctionDeclaration()) {
+								newHelpers[declaration.node.id.name] = {
+									value: declaration.node,
+									dependencies: getHelperDependencies(declaration),
+								};
+							} else if (declaration.isVariableDeclaration()) {
+								newHelpers[declaration.node.declarations[0].id.name] = {
+									value: declaration.node,
+									dependencies: getHelperDependencies(declaration),
+								};
+							}
+						}
+					} }] });
+					helpers = newHelpers;
+				}
 				const helper = helpers[name];
 				for (const dependency of helper.dependencies) {
 					helperReference(state, path, dependency);

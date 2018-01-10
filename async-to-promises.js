@@ -1,6 +1,6 @@
 const errorOnIncompatible = true;
 
-module.exports = function({ types, template }) {
+exports.default = function({ types, template }) {
 
 	function pathsReachNodeTypes(matchingNodeTypes) {
 		function visit(path, result) {
@@ -297,7 +297,7 @@ module.exports = function({ types, template }) {
 		return false;
 	}
 
-	function awaitAndContinue(path, value, continuation, catchContinuation) {
+	function awaitAndContinue(state, path, value, continuation, catchContinuation) {
 		let useCallHelper = false;
 		while (value.type === "CallExpression" && value.arguments.length === 0 && value.callee.type !== "MemberExpression") {
 			value = value.callee;
@@ -318,7 +318,7 @@ module.exports = function({ types, template }) {
 		} else {
 			args = [value, continuation || voidExpression(), catchContinuation];
 		}
-		return types.callExpression(helperReference(path, useCallHelper ? "__call" : "__await"), args);
+		return types.callExpression(helperReference(state, path, useCallHelper ? "__call" : "__await"), args);
 	}
 
 	function voidExpression(arg) {
@@ -347,7 +347,7 @@ module.exports = function({ types, template }) {
 		return result;
 	}
 
-	function relocateTail(awaitExpression, statementNode, target, temporary, exitIdentifier, breakIdentifier) {
+	function relocateTail(state, awaitExpression, statementNode, target, temporary, exitIdentifier, breakIdentifier) {
 		const tail = borrowTail(target);
 		if (statementNode && statementNode.type === "ExpressionStatement" && statementNode.expression.type === "Identifier") {
 			statementNode = null;
@@ -355,25 +355,25 @@ module.exports = function({ types, template }) {
 		const blocks = statementNode ? [statementNode].concat(tail) : tail;
 		if (blocks.length) {
 			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
-			target.replaceWith(returnStatement(awaitAndContinue(target, awaitExpression, fn)));
+			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, fn)));
 		} else if (pathsReturnOrThrow(target).any) {
 			target.replaceWith(returnStatement(awaitExpression));
 			return target.get("argument");
 		} else {
-			target.replaceWith(returnStatement(awaitAndContinue(target, awaitExpression, helperReference(target, "__empty"))));
+			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, helperReference(state, target, "__empty"))));
 		}
 		const argument = target.get("argument");
 		if (argument.isCallExpression()) {
 			target.get("argument.arguments").forEach(awaitArgument => {
 				if (awaitArgument.isFunction()) {
-					rewriteFunctionBody(awaitArgument, exitIdentifier, breakIdentifier);
+					rewriteFunctionBody(state, awaitArgument, exitIdentifier, breakIdentifier);
 				}
 			});
 			return target.get("argument.arguments.0");
 		}
 	}
 
-	function tryHelper(path, blockStatement, catchFunction) {
+	function tryHelper(state, path, blockStatement, catchFunction) {
 		const catchArgs = catchFunction ? [voidExpression(), catchFunction] : [];
 		const body = blockStatement.body.filter(statement => statement.type !== "EmptyStatement");
 		if (body.length === 1) {
@@ -385,12 +385,12 @@ module.exports = function({ types, template }) {
 				}
 				if (argument.type === "CallExpression" && argument.arguments.length === 0) {
 					if (argument.callee.type === "Identifier" || argument.callee.type === "FunctionExpression") {
-						return types.callExpression(helperReference(path, "__call"), [argument.callee].concat(catchArgs));
+						return types.callExpression(helperReference(state, path, "__call"), [argument.callee].concat(catchArgs));
 					}
 				}
 			}
 		}
-		return types.callExpression(helperReference(path, "__call"), [types.functionExpression(null, [], blockStatement)].concat(catchArgs));
+		return types.callExpression(helperReference(state, path, "__call"), [types.functionExpression(null, [], blockStatement)].concat(catchArgs));
 	}
 
 	function rewriteThisAndArgumentsExpression(rewritePath, targetPath) {
@@ -675,7 +675,7 @@ module.exports = function({ types, template }) {
 		});
 	}
 
-	function rewriteFunctionBody(path, exitIdentifier, breakIdentifier) {
+	function rewriteFunctionBody(state, path, exitIdentifier, breakIdentifier) {
 		if (!path || !path.isFunction()) {
 			return;
 		}
@@ -707,7 +707,7 @@ module.exports = function({ types, template }) {
 										parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 									}
 									if (!explicitExits.all) {
-										relocateTail(inlineEvaluated([parent.node]), null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
+										relocateTail(state, inlineEvaluated([parent.node]), null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
 									}
 								},
 								path: parent,
@@ -727,7 +727,7 @@ module.exports = function({ types, template }) {
 										const resultIdentifier = path.scope.generateUidIdentifier("result");
 										const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
 										finallyArgs = [wasThrownIdentifier, resultIdentifier];
-										finallyBody = finallyBody.concat(returnStatement(types.callExpression(helperReference(parent, "__rethrow"), [wasThrownIdentifier, resultIdentifier])));
+										finallyBody = finallyBody.concat(returnStatement(types.callExpression(helperReference(state, parent, "__rethrow"), [wasThrownIdentifier, resultIdentifier])));
 										finallyName = "__finallyRethrows";
 									} else {
 										finallyName = "__finally";
@@ -739,18 +739,18 @@ module.exports = function({ types, template }) {
 								if (parent.node.handler) {
 									const catchClause = parent.node.handler;
 									rewriteCatch = catchClause.body.body.length;
-									catchExpression = rewriteCatch ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(parent, "__empty");
+									catchExpression = rewriteCatch ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(state, parent, "__empty");
 								}
-								const evalBlock = tryHelper(parent, parent.node.block, catchExpression);
-								const evalPath = relocateTail(evalBlock, success, parent, temporary, exitIdentifier, breakIdentifier);
+								const evalBlock = tryHelper(state, parent, parent.node.block, catchExpression);
+								const evalPath = relocateTail(state, evalBlock, success, parent, temporary, exitIdentifier, breakIdentifier);
 								if (evalPath && evalPath.isCallExpression()) {
-									rewriteFunctionBody(evalPath.get("arguments.0"), exitIdentifier, breakIdentifier);
+									rewriteFunctionBody(state, evalPath.get("arguments.0"), exitIdentifier, breakIdentifier);
 									if (rewriteCatch) {
-										rewriteFunctionBody(evalPath.get("arguments.2"), exitIdentifier, breakIdentifier);
+										rewriteFunctionBody(state, evalPath.get("arguments.2"), exitIdentifier, breakIdentifier);
 									}
 								}
 								if (finallyFunction && finallyName) {
-									parent.get("argument").replaceWith(types.callExpression(helperReference(parent, finallyName), [parent.node.argument, finallyFunction]));
+									parent.get("argument").replaceWith(types.callExpression(helperReference(state, parent, finallyName), [parent.node.argument, finallyFunction]));
 								}
 							},
 							path: parent,
@@ -785,13 +785,13 @@ module.exports = function({ types, template }) {
 										if (exitCheck) {
 											params.push(exitCheck);
 										}
-										const loopCall = types.callExpression(helperReference(parent, isForIn ? forOwnBodyPath ? "__forOwn" : "__forIn" : "__forOf"), params);
+										const loopCall = types.callExpression(helperReference(state, parent, isForIn ? forOwnBodyPath ? "__forOwn" : "__forIn" : "__forOf"), params);
 										let resultIdentifier = null;
 										if (explicitExits.any) {
 											resultIdentifier = path.scope.generateUidIdentifier("result");
 											parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 										}
-										relocateTail(loopCall, null, label ? parent.parentPath : parent, resultIdentifier, exitIdentifier, breakIdentifier);
+										relocateTail(state, loopCall, null, label ? parent.parentPath : parent, resultIdentifier, exitIdentifier, breakIdentifier);
 									},
 									path: parent,
 								})
@@ -810,7 +810,7 @@ module.exports = function({ types, template }) {
 							if (testExpression) {
 								const testPath = parent.get("test");
 								testPath.replaceWith(functionize(testExpression));
-								rewriteFunctionBody(testPath, exitIdentifier);
+								rewriteFunctionBody(state, testPath, exitIdentifier);
 							}
 							const update = parent.get("update");
 							if (update.node) {
@@ -821,8 +821,8 @@ module.exports = function({ types, template }) {
 									const isDoWhile = parent.isDoWhileStatement();
 									if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
 										// TODO: Validate that body doesn't reassign array or i
-										const loopCall = types.callExpression(helperReference(parent, "__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
-										relocateTail(loopCall, null, parent, undefined, exitIdentifier, breakIdentifier);
+										const loopCall = types.callExpression(helperReference(state, parent, "__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
+										relocateTail(state, loopCall, null, parent, undefined, exitIdentifier, breakIdentifier);
 									} else {
 										const init = parent.get("init");
 										if (init.node) {
@@ -832,13 +832,13 @@ module.exports = function({ types, template }) {
 										const bodyFunction = types.functionExpression(null, [], blockStatement(parent.node.body));
 										const testFunction = parent.get("test").node || voidExpression();
 										const updateFunction = parent.get("update").node || voidExpression();
-										const loopCall = isDoWhile ? types.callExpression(helperReference(parent, "__do"), [bodyFunction, testFunction]) : types.callExpression(helperReference(parent, "__for"), [testFunction, updateFunction, bodyFunction]);
+										const loopCall = isDoWhile ? types.callExpression(helperReference(state, parent, "__do"), [bodyFunction, testFunction]) : types.callExpression(helperReference(state, parent, "__for"), [testFunction, updateFunction, bodyFunction]);
 										let resultIdentifier = null;
 										if (explicitExits.any) {
 											resultIdentifier = path.scope.generateUidIdentifier("result");
 											parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 										}
-										relocateTail(loopCall, null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
+										relocateTail(state, loopCall, null, parent, resultIdentifier, exitIdentifier, breakIdentifier);
 									}
 								},
 								path: parent,
@@ -859,7 +859,7 @@ module.exports = function({ types, template }) {
 							testPaths.forEach((testPath, i) => {
 								if (testPath.node) {
 									testPath.replaceWith(functionize(testPath.node));
-									rewriteFunctionBody(testPath, exitIdentifier);
+									rewriteFunctionBody(state, testPath, exitIdentifier);
 								} else {
 									defaultIndex = i;
 								}
@@ -901,7 +901,7 @@ module.exports = function({ types, template }) {
 										});
 									}
 									if (!caseExits.any && !caseBreaks.any) {
-										args.push(helperReference(parent, "__empty"));
+										args.push(helperReference(state, parent, "__empty"));
 									} else if (!(caseExits.all || caseBreaks.all)) {
 										const breakCheck = buildBreakExitCheck(caseExits.any ? exitIdentifier : null, useBreakIdentifier ? breakIdentifier : null);
 										if (breakCheck) {
@@ -918,8 +918,8 @@ module.exports = function({ types, template }) {
 										resultIdentifier = path.scope.generateUidIdentifier("result");
 										parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 									}
-									const switchCall = types.callExpression(helperReference(parent, "__switch"), [discriminant.node, types.arrayExpression(cases)]);
-									relocateTail(switchCall, null, label ? parent.parentPath : parent, resultIdentifier, exitIdentifier, breakIdentifier);
+									const switchCall = types.callExpression(helperReference(state, parent, "__switch"), [discriminant.node, types.arrayExpression(cases)]);
+									relocateTail(state, switchCall, null, label ? parent.parentPath : parent, resultIdentifier, exitIdentifier, breakIdentifier);
 								},
 								path: parent,
 							});
@@ -950,7 +950,7 @@ module.exports = function({ types, template }) {
 										originalAwaitPath.parentPath.remove();
 									}
 								}
-								relocateTail(awaitExpression, parent.node, parent, resultIdentifier, exitIdentifier, breakIdentifier);
+								relocateTail(state, awaitExpression, parent.node, parent, resultIdentifier, exitIdentifier, breakIdentifier);
 							},
 							path: parent,
 						});
@@ -1214,16 +1214,20 @@ module.exports = function({ types, template }) {
 		},
 	};
 
-	function helperReference(path, name) {
+	function helperReference(state, path, name) {
 		const file = path.scope.hub.file;
 		let result = file.declarations[name];
 		if (!result) {
 			result = file.declarations[name] = types.identifier(name);
-			const helper = helpers[name];
-			for (const dependency of helper.dependencies) {
-				helperReference(path, dependency);
+			if (state.opts.externalHelpers) {
+				file.path.unshiftContainer("body", types.importDeclaration([types.importSpecifier(result, result)], types.stringLiteral("babel-plugin-transform-async-to-promises/helpers")));
+			} else {
+				const helper = helpers[name];
+				for (const dependency of helper.dependencies) {
+					helperReference(state, path, dependency);
+				}
+				file.path.unshiftContainer("body", helper.value);
 			}
-			file.path.unshiftContainer("body", helper.value);
 		}
 		return result;
 	}
@@ -1249,8 +1253,8 @@ module.exports = function({ types, template }) {
 			FunctionExpression(path) {
 				if (path.node.async && isCompatible(path.get("body"))) {
 					rewriteThisAndArgumentsExpression(path, path);
-					rewriteFunctionBody(path);
-					path.replaceWith(types.callExpression(helperReference(path, "__async"), [
+					rewriteFunctionBody(this, path);
+					path.replaceWith(types.callExpression(helperReference(this, path, "__async"), [
 						types.functionExpression(null, path.node.params, path.node.body)
 					]));
 				}
@@ -1259,10 +1263,10 @@ module.exports = function({ types, template }) {
 				if (path.node.async && isCompatible(path.get("body"))) {
 					if (path.node.kind === "method") {
 						const body = path.get("body");
-						body.replaceWith(types.blockStatement([types.returnStatement(types.callExpression(helperReference(path, "__call"), [types.functionExpression(null, [], body.node)]))]));
+						body.replaceWith(types.blockStatement([types.returnStatement(types.callExpression(helperReference(this, path, "__call"), [types.functionExpression(null, [], body.node)]))]));
 						const migratedPath = body.get("body.0.argument.arguments.0");
 						rewriteThisAndArgumentsExpression(migratedPath, path);
-						rewriteFunctionBody(migratedPath);
+						rewriteFunctionBody(this, migratedPath);
 						path.replaceWith(types.classMethod(path.node.kind, path.node.key, path.node.params, path.node.body, path.node.computed, path.node.static));
 					}
 				}
@@ -1277,3 +1281,5 @@ module.exports = function({ types, template }) {
 		}
 	}
 }
+
+module.exports = exports.default;

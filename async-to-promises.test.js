@@ -8,21 +8,20 @@ const checkOutputMatches = true;
 const logCompiledOutput = false;
 
 const stripHelpersVisitor = {
-	FunctionDeclaration(path) {
-		path.remove();
-	},
-	VariableDeclaration(path) {
-		path.remove();
-	},
-	ReturnStatement(path) {
-		path.skip();
-	},
+	Statement(path) {
+		if (path.isReturnStatement()) {
+			path.skip();
+		} else {
+			path.remove();
+		}
+	}
 };
 
 const pluginUnderTest = asyncToPromises(babel);
 
 function extractJustFunction(result) {
-	return babel.transformFromAst(result.ast, result.code, { plugins: [{ visitor: stripHelpersVisitor }], compact: true }).code.replace(/(^return )|(;$)/g, "");
+	const code = babel.transformFromAst(result.ast, result.code, { plugins: [{ visitor: stripHelpersVisitor }], compact: true }).code;
+	return code.match(/return\s*(.*);$/)[1];
 }
 
 function compiledTest(name, { input, output, cases }) {
@@ -30,9 +29,10 @@ function compiledTest(name, { input, output, cases }) {
 		const inputReturned = "return " + input;
 		const ast = babylon.parse(inputReturned, { allowReturnOutsideFunction: true });
 		const result = babel.transformFromAst(ast, inputReturned, { plugins: [pluginUnderTest], compact: true });
+		const strippedResult = extractJustFunction(result);
 		if (logCompiledOutput) {
 			console.log(name + " input", input);
-			console.log(name + " output", extractJustFunction(result));
+			console.log(name + " output", strippedResult);
 		}
 		let fn;
 		test("syntax", () => {
@@ -59,7 +59,7 @@ function compiledTest(name, { input, output, cases }) {
 		}
 		if (checkOutputMatches) {
 			test("output", () => {
-				expect(extractJustFunction(result)).toBe(output);
+				expect(strippedResult).toBe(output);
 			});
 		}
 	});

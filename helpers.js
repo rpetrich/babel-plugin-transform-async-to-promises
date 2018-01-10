@@ -30,8 +30,26 @@ export function __await(value, then, recover) {
 }
 
 export function __forTo(array, body) {
-	var i = 0;
-	return __for(function() { return i < array.length; }, function() { i++; }, function() { return body(i); });
+	return new Promise(function(resolve, reject) {
+		var i = 0;
+		var result;
+		cycle();
+		function dispatch(resolve) {
+			resolve(body(i));
+		}
+		function cycle() {
+			if (i < array.length) {
+				(new Promise(dispatch)).then(next, reject);
+			} else {
+				resolve(result);
+			}
+		}
+		function next(value) {
+			result = value;
+			i++;
+			cycle();
+		}
+	});
 }
 
 export function __forIn(target, body, check) {

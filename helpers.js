@@ -122,8 +122,7 @@ export function __forOf(target, body, check) {
 		}
 		target = values;
 	}
-	var i = 0;
-	return __for(check ? function() { return i < target.length && !check(); } : function() { return i < target.length; }, function() { i++; }, function() { return body(target[i]); });
+	return __forValues(target, body, check);
 }
 
 export function __for(test, update, body) {

@@ -571,7 +571,7 @@ exports.default = function({ types, template }) {
 							const calleeNode = callee.node;
 							parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), [object.node].concat(parent.node.arguments)));
 							declarations.push(types.variableDeclarator(calleeIdentifier, calleeNode));
-						} else if (!callee.isIdentifier() || !(/^__/.test(callee.node.name) || awaitPath.scope.getBinding(callee.node.name).constant)) {
+						} else if (!callee.isIdentifier() || !(/^__/.test(callee.node.name) || (awaitPath.scope.getBinding(callee.node.name) || {}).constant)) {
 							const calleeIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(callee.node);
 							const calleeNode = callee.node;
 							callee.replaceWith(calleeIdentifier);
@@ -1238,8 +1238,13 @@ exports.default = function({ types, template }) {
 				const node = path.node;
 				if (node.async && isCompatible(path.get("body"))) {
 					rewriteThisAndArgumentsExpression(path, path);
-					path.remove();
-					path.scope.parent.push({ id: node.id, init: types.functionExpression(null, node.params, node.body, node.generator, node.async) });
+					const expression = types.functionExpression(null, node.params, node.body, node.generator, node.async);
+					if (path.parentPath.isExportDeclaration() || path.parentPath.isExportDefaultDeclaration()) {
+						path.replaceWith(types.variableDeclaration("const", [types.variableDeclarator(node.id, expression)]));
+					} else {
+						path.remove();
+						path.scope.parent.push({ id: node.id, init: expression });
+					}
 				}
 			},
 			ArrowFunctionExpression(path) {

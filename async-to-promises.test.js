@@ -821,12 +821,12 @@ compiledTest("await complex switch", {
 
 compiledTest("for break with identifier", {
 	input: `async function(foo) { loop: for (;;) { await foo(); break loop; } }`,
-	output: `__async(function(foo){var _loopInterrupt;loop:return __for(function(){return!_loopInterrupt;},void 0,function(){return __call(foo,function(_foo){_loopInterrupt=1;return;});});})`,
+	output: `__async(function(foo){var _loopInterrupt;loop:return __for(function(){return!_loopInterrupt;},void 0,function(){return __call(foo,function(){_loopInterrupt=1;return;});});})`,
 });
 
 compiledTest("switch break with identifier", {
 	input: `async function(foo) { exit: switch (0) { default: await foo(); break exit; } }`,
-	output: `__async(function(foo){return __switch(0,[[void 0,function(){return __call(foo,function(_foo){return;});}]]);})`,
+	output: `__async(function(foo){return __switch(0,[[void 0,function(){return __call(foo,function(){return;});}]]);})`,
 });
 
 compiledTest("fetch example", {

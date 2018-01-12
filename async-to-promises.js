@@ -352,7 +352,7 @@ exports.default = function({ types, template }) {
 		if (statementNode && statementNode.type === "ExpressionStatement" && statementNode.expression.type === "Identifier") {
 			statementNode = null;
 		}
-		const blocks = statementNode ? [statementNode].concat(tail) : tail;
+		const blocks = (statementNode ? [statementNode].concat(tail) : tail).filter(statement => statement.type !== "EmptyStatement");
 		if (blocks.length) {
 			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
 			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, fn)));
@@ -929,31 +929,41 @@ exports.default = function({ types, template }) {
 				if (processExpressions && (parent.isStatement() || (parent.isSwitchCase() && awaitPath.node != parent.node.test))) {
 					if (!awaitPath.isFunction() && !awaitPath.isSwitchCase()) {
 						const originalArgument = originalAwaitPath.node.argument;
-						const reusingExisting = originalAwaitPath.parentPath.isVariableDeclarator();
-						let resultIdentifier;
-						if (reusingExisting) {
-							resultIdentifier = originalAwaitPath.parent.id;
+						if (originalAwaitPath.parentPath.isExpressionStatement()) {
+							originalAwaitPath.replaceWith(voidExpression());
+							relocatedBlocks.push({
+								relocate() {
+									relocateTail(state, originalArgument, types.emptyStatement(), parent, null, exitIdentifier, breakIdentifier);
+								},
+								path: parent,
+							});
 						} else {
-							resultIdentifier = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalArgument);
-						}
-						originalAwaitPath.replaceWith(resultIdentifier);
-						const { declarations, awaitExpression } = extractDeclarations(originalAwaitPath, originalArgument);
-						if (declarations.length) {
-							parent.insertBefore(types.variableDeclaration("var", declarations));
-						}
-						relocatedBlocks.push({
-							relocate() {
-								if (reusingExisting) {
-									if (parent.node.declarations.length === 1) {
-										parent.replaceWith(types.emptyStatement());
-									} else {
-										originalAwaitPath.parentPath.remove();
+							const reusingExisting = originalAwaitPath.parentPath.isVariableDeclarator();
+							let resultIdentifier;
+							if (reusingExisting) {
+								resultIdentifier = originalAwaitPath.parent.id;
+							} else {
+								resultIdentifier = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalArgument);
+							}
+							originalAwaitPath.replaceWith(resultIdentifier);
+							const { declarations, awaitExpression } = extractDeclarations(originalAwaitPath, originalArgument);
+							if (declarations.length) {
+								parent.insertBefore(types.variableDeclaration("var", declarations));
+							}
+							relocatedBlocks.push({
+								relocate() {
+									if (reusingExisting) {
+										if (parent.node.declarations.length === 1) {
+											parent.replaceWith(types.emptyStatement());
+										} else {
+											originalAwaitPath.parentPath.remove();
+										}
 									}
-								}
-								relocateTail(state, awaitExpression, parent.node, parent, resultIdentifier, exitIdentifier, breakIdentifier);
-							},
-							path: parent,
-						});
+									relocateTail(state, awaitExpression, parent.node, parent, resultIdentifier, exitIdentifier, breakIdentifier);
+								},
+								path: parent,
+							});
+						}
 					}
 					processExpressions = false;
 				}

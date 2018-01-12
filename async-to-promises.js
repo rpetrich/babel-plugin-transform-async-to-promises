@@ -427,12 +427,16 @@ exports.default = function({ types, template }) {
 					const declarations = path.get("declarations");
 					for (const declaration of declarations) {
 						const binding = scope.getBinding(declaration.node.id.name);
-						if (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path))) {
+						if (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath)) {
 							targetPath.scope.push({ id: declaration.node.id });
 							if (declaration.node.init) {
 								path.insertBefore(types.expressionStatement(types.assignmentExpression("=", declaration.node.id, declaration.node.init)));
 							}
-							declaration.remove();
+							if ((path.parentPath.isForInStatement() || path.parentPath.isForOfStatement()) && path.parentPath.get("left") === path) {
+								path.replaceWith(declaration.node.id);
+							} else {
+								declaration.remove();
+							}
 						}
 					}
 				}

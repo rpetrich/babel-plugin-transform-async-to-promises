@@ -840,8 +840,8 @@ compiledTest("switch break with identifier", {
 });
 
 compiledTest("fetch example", {
-	input: `async function(url) { var response = await fetch(url); var blob = await response.blob(); return URL.createObjectURL(myBlob); }`,
-	output: `__async(function(url){return __await(fetch(url),function(response){return __await(response.blob(),function(blob){return URL.createObjectURL(myBlob);});});})`,
+	input: `async function(url) { var response = await fetch(url); var blob = await response.blob(); return URL.createObjectURL(blob); }`,
+	output: `__async(function(url){return __await(fetch(url),function(response){return __await(response.blob(),function(blob){return URL.createObjectURL(blob);});});})`,
 });
 
 compiledTest("array literal", {
@@ -921,10 +921,19 @@ compiledTest("object method syntax", {
 	}
 });
 
-compiledTest("Variable hoisting", {
+compiledTest("variable hoisting", {
 	input: `async function(foo) { function baz() { return bar; } var bar = await foo(); return baz(); }`,
 	output: `__async(function(foo){var bar;function baz(){return bar;}return __call(foo,function(_foo){bar=_foo;return baz();});})`,
 	cases: {
 		value: async f => expect(await f(() => true)).toBe(true),
 	}
+});
+
+compiledTest("complex hoisting", {
+	input: `async function(foo, bar, baz) { if (foo()) { var result = await bar(); } else { result = await baz(); }; return result; }`,
+	output: `__async(function(foo,bar,baz){var result;return __call(function(){var _exit;return __call(function(){if(foo()){return __call(bar,function(_bar){result=_bar;});}else{return __call(baz,function(_baz){result=_baz;});}},function(_result){if(_exit)return _result;});},function(){return result;});})`,
+	cases: {
+		consequent: async f => expect(await f(_ => true, async _ => 1, async _ => 0)).toBe(1),
+		alternate: async f => expect(await f(_ => false, async _ => 1, async _ => 0)).toBe(0),
+	},
 });

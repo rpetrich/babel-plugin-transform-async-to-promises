@@ -556,7 +556,7 @@ compiledTest("for of await in body", {
 				expect(false).toBe(true);
 			} catch (e) {
 				expect(e.constructor).toBe(TypeError);
-				expect(e.message).toBe("value is not iterable");
+				expect(/\ is\ not\ iterable$/.test(e.message)).toBe(true);
 			}
 		}
 	},

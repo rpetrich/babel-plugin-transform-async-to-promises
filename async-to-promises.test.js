@@ -549,6 +549,16 @@ compiledTest("for of await in body", {
 		empty: async f => expect(await f([])).toBe(0),
 		single: async f => expect(await f([1])).toBe(1),
 		multiple: async f => expect(await f([1,2])).toBe(3),
+		error: async f => {
+			try {
+				await f({});
+				// Should not get here
+				expect(false).toBe(true);
+			} catch (e) {
+				expect(e.constructor).toBe(TypeError);
+				expect(e.message).toBe("value is not iterable");
+			}
+		}
 	},
 });
 

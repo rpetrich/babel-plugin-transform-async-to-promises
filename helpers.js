@@ -88,7 +88,7 @@ export function __forOwn(target, body, check) {
 export function __forOf(target, body, check) {
 	if (typeof Symbol !== "undefined") {
 		var iteratorSymbol = Symbol.iterator;
-		if (iteratorSymbol) {
+		if (iteratorSymbol && (iteratorSymbol in target)) {
 			var iterator = target[iteratorSymbol]();
 			var step;
 			var iteration = __for(check ? function() {
@@ -124,15 +124,15 @@ export function __forOf(target, body, check) {
 		}
 	}
 	// No support for Symbol.iterator
-	if (target.length) {
-		// Handle live collections properly
-		var values = [];
-		for (var i = 0; i < target.length; i++) {
-			values.push(target[i]);
-		}
-		target = values;
+	if (!("length" in target)) {
+		throw new TypeError("value is not iterable");
 	}
-	return __forValues(target, body, check);
+	// Handle live collections properly
+	var values = [];
+	for (var i = 0; i < target.length; i++) {
+		values.push(target[i]);
+	}
+	return __forValues(values, body, check);
 }
 
 // Asynchronously implement a generic for loop

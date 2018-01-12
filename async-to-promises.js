@@ -828,7 +828,6 @@ exports.default = function({ types, template }) {
 								relocate() {
 									const isDoWhile = parent.isDoWhileStatement();
 									if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
-										// TODO: Validate that body doesn't reassign array or i
 										const loopCall = types.callExpression(helperReference(state, parent, "__forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
 										relocateTail(state, loopCall, null, parent, undefined, exitIdentifier, breakIdentifier);
 									} else {

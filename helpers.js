@@ -1,3 +1,4 @@
+// Converts argument to a function that always returns a Promise
 export const __async = (function() {
 	try {
 		if (isNaN.apply(null, {})) {
@@ -25,10 +26,12 @@ export const __async = (function() {
 	};
 })();
 
+// Awaits on a value that may or may not be a Promise (equivalent to the await keyword in ES2015, with continuations passed explicitly)
 export function __await(value, then, recover) {
 	return Promise.resolve(value).then(then, recover);
 }
 
+// Asynchronously iterate through an object that has a length property, passing the index as the first argument to the callback (even as the length property changes)
 export function __forTo(array, body) {
 	return new Promise(function(resolve, reject) {
 		var i = 0;
@@ -52,11 +55,14 @@ export function __forTo(array, body) {
 	});
 }
 
+// Asynchronously iterate through an object that has a length property, passing the value as the first argument to the callback (even as the length property changes)
 export function __forValues(array, body, check) {
 	var i = 0;
 	return __for(check ? function() { return i < array.length && !check(); } : function() { return i < array.length; }, function() { i++; }, function() { return body(array[i]); });
 }
 
+// Asynchronously iterate through an object's properties (including properties inherited from the prototype)
+// Uses a snapshot of the object's properties
 export function __forIn(target, body, check) {
 	var keys = [];
 	for (var key in target) {
@@ -65,6 +71,8 @@ export function __forIn(target, body, check) {
 	return __forValues(keys, body, check);
 }
 
+// Asynchronously iterate through an object's own properties (excluding properties inherited from the prototype)
+// Uses a snapshot of the object's properties
 export function __forOwn(target, body, check) {
 	var keys = [];
 	for (var key in target) {
@@ -75,6 +83,8 @@ export function __forOwn(target, body, check) {
 	return __forValues(keys, body, check);
 }
 
+// Asynchronously iterate through an object's values
+// Uses for...of if the runtime supports it, otherwise iterates until length on a copy
 export function __forOf(target, body, check) {
 	if (typeof Symbol !== "undefined") {
 		var iteratorSymbol = Symbol.iterator;
@@ -125,6 +135,7 @@ export function __forOf(target, body, check) {
 	return __forValues(target, body, check);
 }
 
+// Asynchronously implement a generic for loop
 export function __for(test, update, body) {
 	return new Promise(function(resolve, reject) {
 		var result;
@@ -152,6 +163,7 @@ export function __for(test, update, body) {
 	});
 }
 
+// Asynchronously implement a do ... while loop
 export function __do(body, test) {
 	return new Promise(function(resolve, reject) {
 		var result;
@@ -179,6 +191,7 @@ export function __do(body, test) {
 	});
 }
 
+// Asynchronously implement a switch statement
 export function __switch(discriminant, cases) {
 	return new Promise(function(resolve, reject) {
 		var i = -1;
@@ -232,23 +245,28 @@ export function __switch(discriminant, cases) {
 	});
 }
 
+// Asynchronously call a function and pass the result to explicitly passed continuations
 export function __call(body, then, recover) {
 	return (new Promise(function (resolve) { resolve(body()); })).then(then, recover);
 }
 
+// Asynchronously await a promise and pass the result to a finally continuation
 export function __finallyRethrows(promise, finalizer) {
 	return promise.then(finalizer.bind(null, false), finalizer.bind(null, true));
 }
 
+// Asynchronously await a promise and invoke a finally continuation that always overrides the result
 export function __finally(promise, finalizer) {
 	return promise.then(finalizer, finalizer);
 }
 
+// Rethrow or return a value from a finally continuation
 export function __rethrow(thrown, value) {
 	if (thrown)
 		throw value;
 	return value;
 }
 
+// Empty function to implement break and other control flow that ignores asynchronous results
 export function __empty() {
 }

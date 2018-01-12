@@ -353,6 +353,14 @@ exports.default = function({ types, template }) {
 			statementNode = null;
 		}
 		const blocks = (statementNode ? [statementNode].concat(tail) : tail).filter(statement => statement.type !== "EmptyStatement");
+		while (blocks.length) {
+			const lastStatement = blocks[blocks.length - 1];
+			if (lastStatement.type === "ReturnStatement" && lastStatement.argument === null) {
+				blocks.pop();
+			} else {
+				break;
+			}
+		}
 		if (blocks.length) {
 			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
 			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, fn)));

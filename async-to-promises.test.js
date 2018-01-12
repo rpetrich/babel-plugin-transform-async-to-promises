@@ -920,3 +920,11 @@ compiledTest("object method syntax", {
 		method: async f => expect(await f().foo(async () => true)).toBe(true),
 	}
 });
+
+compiledTest("Variable hoisting", {
+	input: `async function(foo) { function baz() { return bar; } var bar = await foo(); return baz(); }`,
+	output: `__async(function(foo){var bar;function baz(){return bar;}return __call(foo,function(_foo){bar=_foo;return baz();});})`,
+	cases: {
+		value: async f => expect(await f(() => true)).toBe(true),
+	}
+});

@@ -420,7 +420,23 @@ exports.default = function({ types, template }) {
 					hasArguments = true;
 					path.replaceWith(types.identifier("_arguments"));
 				}
-			}
+			},
+			VariableDeclaration(path) {
+				const scope = path.scope;
+				if (path.node.kind === "var") {
+					const declarations = path.get("declarations");
+					for (const declaration of declarations) {
+						const binding = scope.getBinding(declaration.node.id.name);
+						if (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path))) {
+							targetPath.scope.push({ id: declaration.node.id });
+							if (declaration.node.init) {
+								path.insertBefore(types.expressionStatement(types.assignmentExpression("=", declaration.node.id, declaration.node.init)));
+							}
+							declaration.remove();
+						}
+					}
+				}
+			},
 		});
 		if (hasThis) {
 			const binding = targetPath.scope.getBinding("_this");
@@ -1042,7 +1058,6 @@ exports.default = function({ types, template }) {
 			FunctionDeclaration(path) {
 				const node = path.node;
 				if (node.async && isCompatible(path.get("body"))) {
-					rewriteThisAndArgumentsExpression(path, path);
 					const expression = types.functionExpression(null, node.params, node.body, node.generator, node.async);
 					if (path.parentPath.isExportDeclaration() || path.parentPath.isExportDefaultDeclaration()) {
 						path.replaceWith(types.variableDeclaration("const", [types.variableDeclarator(node.id, expression)]));
@@ -1057,7 +1072,6 @@ exports.default = function({ types, template }) {
 				if (node.async && isCompatible(path.get("body"))) {
 					const body = path.get("body").isBlockStatement() ? path.node.body : blockStatement([returnStatement(path.node.body)]);
 					path.replaceWith(types.functionExpression(null, node.params, body, false, node.async));
-					rewriteThisAndArgumentsExpression(path, path.parentPath);
 				}
 			},
 			FunctionExpression(path) {

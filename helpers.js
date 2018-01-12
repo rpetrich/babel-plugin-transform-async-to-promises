@@ -127,8 +127,8 @@ export function __forOf(target, body, check) {
 	if (target.length) {
 		// Handle live collections properly
 		var values = [];
-		for (var value of target) {
-			values.push(value);
+		for (var i = 0; i < target.length; i++) {
+			values.push(target[i]);
 		}
 		target = values;
 	}

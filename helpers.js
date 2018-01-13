@@ -31,6 +31,11 @@ export function __await(value, then, recover) {
 	return Promise.resolve(value).then(then, recover);
 }
 
+// Awaits on a value that may or may not be a Promise, then ignores it
+export function __awaitIgnored(value) {
+	return Promise.resolve(value).then(__empty);
+}
+
 // Asynchronously iterate through an object that has a length property, passing the index as the first argument to the callback (even as the length property changes)
 export function __forTo(array, body) {
 	return new Promise(function(resolve, reject) {
@@ -248,6 +253,11 @@ export function __switch(discriminant, cases) {
 // Asynchronously call a function and pass the result to explicitly passed continuations
 export function __call(body, then, recover) {
 	return (new Promise(function (resolve) { resolve(body()); })).then(then, recover);
+}
+
+// Asynchronously call a function and swallow the result
+export function __callIgnored(body) {
+	return (new Promise(function (resolve) { resolve(body()) })).then(__empty);
 }
 
 // Asynchronously await a promise and pass the result to a finally continuation

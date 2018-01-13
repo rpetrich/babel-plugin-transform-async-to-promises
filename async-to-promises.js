@@ -304,6 +304,7 @@ exports.default = function({ types, template, traverse }) {
 
 	function awaitAndContinue(state, path, value, continuation, catchContinuation) {
 		let useCallHelper = false;
+		let ignoreResult = false;
 		while (value.type === "CallExpression" && value.arguments.length === 0 && value.callee.type !== "MemberExpression") {
 			value = value.callee;
 			useCallHelper = true;
@@ -317,13 +318,22 @@ exports.default = function({ types, template, traverse }) {
 					return value;
 				}
 			}
-			args = [value, continuation];
+			if (continuation.type === "Identifier" && continuation.name === "__empty") {
+				ignoreResult = true;
+				args = [value];
+			} else {
+				args = [value, continuation];
+			}
 		} else if (!continuation || isPassthroughContinuation(continuation)) {
 			args = [value, voidExpression(), catchContinuation];
 		} else {
 			args = [value, continuation || voidExpression(), catchContinuation];
 		}
-		return types.callExpression(helperReference(state, path, useCallHelper ? "__call" : "__await"), args);
+		let helperName = useCallHelper ? "__call" : "__await";
+		if (ignoreResult) {
+			helperName += "Ignored";
+		}
+		return types.callExpression(helperReference(state, path, helperName), args);
 	}
 
 	function voidExpression(arg) {

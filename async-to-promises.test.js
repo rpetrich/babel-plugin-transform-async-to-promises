@@ -635,7 +635,7 @@ compiledTest("while loop", {
 
 compiledTest("while predicate", {
 	input: `async function(foo) { var count = 0; while(await foo()) { count++; } return count }`,
-	output: `__async(function(foo){var count=0;return __await(__for(function(){return foo();},void 0,function(){count++;}),function(){return count;});})`,
+	output: `__async(function(foo){var count=0;return __await(__for(foo,void 0,function(){count++;}),function(){return count;});})`,
 	cases: {
 		one: async f => {
 			var count = 0;

@@ -514,6 +514,19 @@ exports.default = function({ types, template, traverse }) {
 		return types.callExpression(types.functionExpression(null, [], blockStatement(statements)), []);
 	}
 
+	function unwrapReturnCallWithEmptyArguments(node, scope) {
+		if (types.isFunctionExpression(node) && node.body.body.length === 1 && types.isReturnStatement(node.body.body[0])) {
+			const expression = node.body.body[0].argument;
+			if (types.isCallExpression(expression) && expression.arguments.length === 0 && types.isIdentifier(expression.callee)) {
+				const binding = scope.getBinding(expression.callee.name);
+				if (binding && binding.constant) {
+					return expression.callee;
+				}
+			}
+		}
+		return node;
+	}
+
 	function isExpressionOfLiterals(path) {
 		if (path.isIdentifier() && path.node.name === "undefined") {
 			return true;
@@ -849,7 +862,7 @@ exports.default = function({ types, template, traverse }) {
 										const params = [right.node, types.functionExpression(null, [loopIdentifier], blockStatement((forOwnBodyPath || parent.get("body")).node))];
 										const exitCheck = buildBreakExitCheck(exitIdentifier, breakIdentifier);
 										if (exitCheck) {
-											params.push(exitCheck);
+											params.push(unwrapReturnCallWithEmptyArguments(exitCheck, path.scope));
 										}
 										const loopCall = types.callExpression(helperReference(state, parent, isForIn ? forOwnBodyPath ? "__forOwn" : "__forIn" : "__forOf"), params);
 										let resultIdentifier = null;
@@ -895,8 +908,8 @@ exports.default = function({ types, template, traverse }) {
 										}
 										const forIdentifier = path.scope.generateUidIdentifier("for");
 										const bodyFunction = types.functionExpression(null, [], blockStatement(parent.node.body));
-										const testFunction = parent.get("test").node || voidExpression();
-										const updateFunction = parent.get("update").node || voidExpression();
+										const testFunction = unwrapReturnCallWithEmptyArguments(parent.get("test").node || voidExpression(), path.scope);
+										const updateFunction = unwrapReturnCallWithEmptyArguments(parent.get("update").node || voidExpression(), path.scope);
 										const loopCall = isDoWhile ? types.callExpression(helperReference(state, parent, "__do"), [bodyFunction, testFunction]) : types.callExpression(helperReference(state, parent, "__for"), [testFunction, updateFunction, bodyFunction]);
 										let resultIdentifier = null;
 										if (explicitExits.any) {

@@ -430,8 +430,8 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function rewriteThisAndArgumentsExpression(rewritePath, targetPath) {
-		let hasThis = false;
-		let hasArguments = false;
+		let thisIdentifier;
+		let argumentsIdentifier;
 		rewritePath.traverse({
 			FunctionDeclaration(path) {
 				path.skip();
@@ -440,13 +440,17 @@ exports.default = function({ types, template, traverse }) {
 				path.skip();
 			},
 			ThisExpression(path) {
-				hasThis = true;
-				path.replaceWith(types.identifier("_this"));
+				if (!thisIdentifier) {
+					thisIdentifier = path.scope.generateUidIdentifier("this");
+				}
+				path.replaceWith(thisIdentifier);
 			},
 			Identifier(path) {
 				if (path.node.name === "arguments") {
-					hasArguments = true;
-					path.replaceWith(types.identifier("_arguments"));
+					if (!argumentsIdentifier) {
+						argumentsIdentifier = path.scope.generateUidIdentifier("arguments");
+					}
+					path.replaceWith(argumentsIdentifier);
 				}
 			},
 			VariableDeclaration(path) {
@@ -478,17 +482,11 @@ exports.default = function({ types, template, traverse }) {
 				}
 			},
 		});
-		if (hasThis) {
-			const binding = targetPath.scope.getBinding("_this");
-			if (!binding || !binding.constant || binding.scope !== targetPath.scope) {
-				targetPath.scope.push({ id: types.identifier("_this"), init: types.thisExpression() });
-			}
+		if (thisIdentifier) {
+			targetPath.scope.push({ id: thisIdentifier, init: types.thisExpression() });
 		}
-		if (hasArguments) {
-			const binding = targetPath.scope.getBinding("_arguments");
-			if (!binding || !binding.constant || binding.scope !== targetPath.scope) {
-				targetPath.scope.push({ id: types.identifier("_arguments"), init: types.identifier("arguments") });
-			}
+		if (argumentsIdentifier) {
+			targetPath.scope.push({ id: argumentsIdentifier, init: types.identifier("arguments") });
 		}
 	}
 

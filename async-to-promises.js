@@ -652,23 +652,25 @@ exports.default = function({ types, template }) {
 		return { declarations, awaitExpression };
 	}
 
+	const lastAwaitVisitor = {
+		Function(path) {
+			path.skip();
+		},
+		AwaitExpression(path) {
+			this.result = path;
+		},
+		CallExpression(path) {
+			const callee = path.get("callee");
+			if (callee.isIdentifier() && callee.node.name === "eval") {
+				throw path.buildCodeFrameError("Calling eval from inside an async function is not supported!");
+			}
+		},
+	};
+
 	function findLastAwaitPath(path) {
-		let result = path.isAwaitExpression() ? path : null;
-		path.traverse({
-			Function(path) {
-				path.skip();
-			},
-			AwaitExpression(path) {
-				result = path;
-			},
-			CallExpression(path) {
-				const callee = path.get("callee");
-				if (callee.isIdentifier() && callee.node.name === "eval") {
-					throw path.buildCodeFrameError("Calling eval from inside an async function is not supported!");
-				}
-			},
-		});
-		return result;
+		let state = { result: path.isAwaitExpression() ? path : null };
+		path.traverse(lastAwaitVisitor, state);
+		return state.result;
 	}
 
 	function buildBreakExitCheck(exitIdentifier, breakIdentifier) {

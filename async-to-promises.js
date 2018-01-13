@@ -1,14 +1,19 @@
 const errorOnIncompatible = true;
 
-exports.default = function({ types, template }) {
+exports.default = function({ types, template, traverse }) {
 
 	function pathsReachNodeTypes(matchingNodeTypes) {
 		function visit(path, result) {
+			const originalNode = path.node._originalNode;
+			if (originalNode) {
+				traverse(types.isStatement(originalNode) ? types.blockStatement([originalNode]) : types.expressionStatement(originalNode), visitor, path.scope, { match: result }, path);
+				return false;
+			}
 			if (matchingNodeTypes.indexOf(path.node.type) !== -1) {
 				result.any = true;
 				result.all = true;
 				result.hasBreak = result.hasBreak || path.isBreakStatement();
-				return true;
+				return false;
 			}
 			if (path.isConditional()) {
 				const test = match(path.get("test"));
@@ -341,9 +346,10 @@ exports.default = function({ types, template }) {
 		return dest;
 	}
 
-	function returnStatement(argument) {
+	function returnStatement(argument, originalNode) {
 		const result = types.returnStatement(argument);
 		result._skip = true;
+		result._originalNode = originalNode;
 		return result;
 	}
 
@@ -363,12 +369,12 @@ exports.default = function({ types, template }) {
 		}
 		if (blocks.length) {
 			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
-			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, fn)));
+			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, fn), target.node));
 		} else if (pathsReturnOrThrow(target).any) {
-			target.replaceWith(returnStatement(awaitExpression));
+			target.replaceWith(returnStatement(awaitExpression, target.node));
 			return target.get("argument");
 		} else {
-			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, helperReference(state, target, "__empty"))));
+			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, helperReference(state, target, "__empty")), target.node));
 		}
 		const argument = target.get("argument");
 		if (argument.isCallExpression()) {
@@ -692,12 +698,12 @@ exports.default = function({ types, template }) {
 			},
 			ReturnStatement(path) {
 				if (!path.node._skip && exitIdentifier) {
-					path.node._skip = true;
-					path.get("argument").replaceWith(types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument || voidExpression()]));
+					const newArgument = types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument || voidExpression()]);
+					path.replaceWith(returnStatement(newArgument, path.node))
 				}
 			},
 			BreakStatement(path) {
-				const replace = returnStatement();
+				const replace = returnStatement(null, path.node);
 				if (breakIdentifier) {
 					path.replaceWithMultiple([
 						types.expressionStatement(types.assignmentExpression("=", breakIdentifier, types.numericLiteral(1))),
@@ -708,7 +714,7 @@ exports.default = function({ types, template }) {
 				}
 			},
 			ContinueStatement(path) {
-				path.replaceWith(returnStatement());
+				path.replaceWith(returnStatement(null, path.node));
 			},
 		});
 	}
@@ -925,13 +931,14 @@ exports.default = function({ types, template }) {
 												path.skip();
 											},
 											BreakStatement(path) {
-												path.replaceWith(returnStatement());
+												path.replaceWith(returnStatement(null, path.node));
 												if (useBreakIdentifier) {
 													path.insertBefore(types.expressionStatement(types.assignmentExpression("=", breakIdentifier, types.numericLiteral(1))));
 												}
 											},
 											ReturnStatement(path) {
 												if (exitIdentifier && !path.node._skip) {
+													path.replaceWith(returnStatement(path.node.argument, path.node));
 													path.insertBefore(types.expressionStatement(types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1))));
 												}
 											},
@@ -1089,7 +1096,7 @@ exports.default = function({ types, template }) {
 			ArrowFunctionExpression(path) {
 				const node = path.node;
 				if (node.async && isCompatible(path.get("body"))) {
-					const body = path.get("body").isBlockStatement() ? path.node.body : blockStatement([returnStatement(path.node.body)]);
+					const body = path.get("body").isBlockStatement() ? path.node.body : blockStatement([types.returnStatement(path.node.body)]);
 					path.replaceWith(types.functionExpression(null, node.params, body, false, node.async));
 				}
 			},

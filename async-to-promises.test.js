@@ -233,8 +233,7 @@ compiledTest("if body returns", {
 
 compiledTest("if body assignments", {
 	input: `async function(foo, bar, baz) { var result; if (foo()) { result = await bar(); } else { result = await baz(); }; return result; }`,
-	// TODO: Fix unnecessary _exit dance caused by split rewriting passes
-	output: `__async(function(foo,bar,baz){var result;return __call(function(){var _exit;return __call(function(){if(foo()){return __call(bar,function(_bar){result=_bar;});}else{return __call(baz,function(_baz){result=_baz;});}},function(_result){if(_exit)return _result;});},function(){return result;});})`,
+	output: `__async(function(foo,bar,baz){var result;return __call(function(){return __call(function(){if(foo()){return __call(bar,function(_bar){result=_bar;});}else{return __call(baz,function(_baz){result=_baz;});}},__empty);},function(){return result;});})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 1, async _ => 0)).toBe(0),
@@ -507,7 +506,7 @@ compiledTest("for to length iteration", {
 
 compiledTest("for to length with break", {
 	input: `async function(list) { for (var i = 0; i < list.length; i++) { if (await list[i]()) { break; } }}`,
-	output: `__async(function(list){var _interrupt;var i=0;return __for(function(){return!_interrupt&&i<list.length;},function(){return i++;},function(){return __await(list[i](),function(_list$i){if(_list$i){_interrupt=1;return;}});});})`,
+	output: `__async(function(list){var _interrupt;var i=0;return __await(__for(function(){return!_interrupt&&i<list.length;},function(){return i++;},function(){return __await(list[i](),function(_list$i){if(_list$i){_interrupt=1;return;}});}),__empty);})`,
 	cases: {
 		none: async f => expect(await f([])).toBe(undefined),
 		single: async f => {
@@ -545,7 +544,7 @@ compiledTest("for to length with continue", {
 
 compiledTest("for to length with mutation", {
 	input: `async function(list) { for (var i = 0; i < list.length; i++) { if (await list[i]()) { i = list.length; } }}`,
-	output: `__async(function(list){var i=0;return __for(function(){return i<list.length;},function(){return i++;},function(){return __await(list[i](),function(_list$i){if(_list$i){i=list.length;}});});})`,
+	output: `__async(function(list){var i=0;return __await(__for(function(){return i<list.length;},function(){return i++;},function(){return __await(list[i](),function(_list$i){if(_list$i){i=list.length;}});}),__empty);})`,
 	cases: {
 		none: async f => expect(await f([])).toBe(undefined),
 		single: async f => {
@@ -614,7 +613,7 @@ compiledTest("for of await in body with break", {
 
 compiledTest("while loop", {
 	input: `async function(foo) { let shouldContinue = true; while (shouldContinue) { shouldContinue = await foo(); } }`,
-	output: `__async(function(foo){let shouldContinue=true;return __for(function(){return shouldContinue;},void 0,function(){return __call(foo,function(_foo){shouldContinue=_foo;});});})`,
+	output: `__async(function(foo){let shouldContinue=true;return __await(__for(function(){return shouldContinue;},void 0,function(){return __call(foo,function(_foo){shouldContinue=_foo;});}),__empty);})`,
 	cases: {
 		one: async f => {
 			var count = 0;
@@ -658,7 +657,7 @@ compiledTest("while predicate", {
 
 compiledTest("do while loop", {
 	input: `async function(foo) { let shouldContinue; do { shouldContinue = await foo(); } while(shouldContinue); }`,
-	output: `__async(function(foo){let shouldContinue;return __do(function(){return __call(foo,function(_foo){shouldContinue=_foo;});},function(){return shouldContinue;});})`,
+	output: `__async(function(foo){let shouldContinue;return __await(__do(function(){return __call(foo,function(_foo){shouldContinue=_foo;});},function(){return shouldContinue;}),__empty);})`,
 	cases: {
 		one: async f => {
 			var count = 0;
@@ -859,12 +858,12 @@ compiledTest("await complex switch", {
 
 compiledTest("for break with identifier", {
 	input: `async function(foo) { loop: for (;;) { await foo(); break loop; } }`,
-	output: `__async(function(foo){var _loopInterrupt;loop:return __for(function(){return!_loopInterrupt;},void 0,function(){return __call(foo,function(){_loopInterrupt=1;});});})`,
+	output: `__async(function(foo){var _loopInterrupt;loop:return __await(__for(function(){return!_loopInterrupt;},void 0,function(){return __call(foo,function(){_loopInterrupt=1;});}),__empty);})`,
 });
 
 compiledTest("switch break with identifier", {
 	input: `async function(foo) { exit: switch (0) { default: await foo(); break exit; } }`,
-	output: `__async(function(foo){return __switch(0,[[void 0,function(){return __call(foo,__empty);}]]);})`,
+	output: `__async(function(foo){return __await(__switch(0,[[void 0,function(){return __call(foo,__empty);}]]),__empty);})`,
 });
 
 compiledTest("fetch example", {
@@ -959,7 +958,7 @@ compiledTest("variable hoisting", {
 
 compiledTest("complex hoisting", {
 	input: `async function(foo, baz) { if (foo()) { var result = await bar(); function bar() { return 1; } } else { result = await baz(); }; return result; }`,
-	output: `__async(function(foo,baz){var result;return __call(function(){var _exit;return __call(function(){if(foo()){function bar(){return 1;}return __call(bar,function(_bar){result=_bar;});}else{return __call(baz,function(_baz){result=_baz;});}},function(_result){if(_exit)return _result;});},function(){return result;});})`,
+	output: `__async(function(foo,baz){var result;return __call(function(){return __call(function(){if(foo()){function bar(){return 1;}return __call(bar,function(_bar){result=_bar;});}else{return __call(baz,function(_baz){result=_baz;});}},__empty);},function(){return result;});})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 0)).toBe(0),

@@ -565,6 +565,10 @@ exports.default = function({ types, template, traverse }) {
 		return false;
 	}
 
+	function generateIdentifierForPath(path) {
+		return path.scope.generateUidIdentifierBasedOnNode(path.isAwaitExpression() ? path.node.argument : path.node);
+	}
+
 	function extractDeclarations(awaitPath, awaitExpression) {
 		const declarations = [];
 		do {
@@ -583,7 +587,7 @@ exports.default = function({ types, template, traverse }) {
 				const left = parent.get("left");
 				if (awaitPath !== left) {
 					const leftNode = left.node;
-					const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
+					const leftIdentifier = generateIdentifierForPath(left);
 					declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
 					left.replaceWith(leftIdentifier);
 					awaitExpression = parent.node.operator === "||" ? types.conditionalExpression(leftIdentifier, types.numericLiteral(0), awaitExpression) : types.conditionalExpression(leftIdentifier, awaitExpression, types.numericLiteral(0));
@@ -592,7 +596,7 @@ exports.default = function({ types, template, traverse }) {
 				const left = parent.get("left");
 				if (awaitPath !== left) {
 					const leftNode = left.node;
-					const leftIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(leftNode);
+					const leftIdentifier = generateIdentifierForPath(left);
 					declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
 					left.replaceWith(leftIdentifier);
 				}
@@ -600,19 +604,19 @@ exports.default = function({ types, template, traverse }) {
 				const children = parent.get("expressions");
 				const position = children.indexOf(awaitPath);
 				for (var i = 0; i < position; i++) {
-					const sequenceNode = children[i].node;
-					const sequenceIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(sequenceNode);
-					if (!isExpressionOfLiterals(children[i])) {
-						declarations.push(types.variableDeclarator(sequenceIdentifier, sequenceNode));
+					const expression = children[i];
+					if (!isExpressionOfLiterals(expression)) {
+						const sequenceIdentifier = generateIdentifierForPath(expression);
+						declarations.push(types.variableDeclarator(sequenceIdentifier, expression.node));
 					}
-					children[i].remove();
+					expression.remove();
 				}
 			} else if (parent.isConditionalExpression()) {
 				const test = parent.get("test");
 				if (awaitPath !== test) {
 					const consequent = parent.get("consequent");
 					const testNode = test.node;
-					const testIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(testNode);
+					const testIdentifier = generateIdentifierForPath(test);
 					declarations.push(types.variableDeclarator(testIdentifier, testNode));
 					test.replaceWith(testIdentifier);
 					if (consequent !== awaitPath && consequent.isAwaitExpression()) {
@@ -630,7 +634,7 @@ exports.default = function({ types, template, traverse }) {
 							break;
 						}
 						if (!isExpressionOfLiterals(arg)) {
-							const argIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(arg.node);
+							const argIdentifier = generateIdentifierForPath(arg);
 							declarations.push(types.variableDeclarator(argIdentifier, arg.node));
 							arg.replaceWith(argIdentifier);
 						}
@@ -639,17 +643,17 @@ exports.default = function({ types, template, traverse }) {
 						if (callee.isMemberExpression()) {
 							const object = callee.get("object");
 							if (!isExpressionOfLiterals(object)) {
-								const objectIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(object.node);
+								const objectIdentifier = generateIdentifierForPath(object);
 								declarations.push(types.variableDeclarator(objectIdentifier, object.node));
 								object.replaceWith(objectIdentifier);
 							}
 							const property = callee.get("property");
-							const calleeIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(property.node);
+							const calleeIdentifier = generateIdentifierForPath(property);
 							const calleeNode = callee.node;
 							parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), [object.node].concat(parent.node.arguments)));
 							declarations.push(types.variableDeclarator(calleeIdentifier, calleeNode));
 						} else if (!callee.isIdentifier() || !(/^__/.test(callee.node.name) || (awaitPath.scope.getBinding(callee.node.name) || {}).constant)) {
-							const calleeIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(callee.node);
+							const calleeIdentifier = generateIdentifierForPath(callee);
 							const calleeNode = callee.node;
 							callee.replaceWith(calleeIdentifier);
 							declarations.push(types.variableDeclarator(calleeIdentifier, calleeNode));
@@ -662,7 +666,7 @@ exports.default = function({ types, template, traverse }) {
 						break;
 					}
 					if (!isExpressionOfLiterals(element)) {
-						const elementIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(element.node);
+						const elementIdentifier = generateIdentifierForPath(element);
 						declarations.push(types.variableDeclarator(elementIdentifier, element.node));
 						element.replaceWith(elementIdentifier);
 					}
@@ -674,16 +678,18 @@ exports.default = function({ types, template, traverse }) {
 					}
 					if (prop.isObjectProperty()) {
 						if (prop.computed) {
-							if (!isExpressionOfLiterals(prop.get("key"))) {
-								const keyIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(prop.node.key);
-								declarations.push(types.variableDeclarator(keyIdentifier, prop.node.key));
-								prop.get("key").replaceWith(keyIdentifier);
+							const propKey = prop.get("key");
+							if (!isExpressionOfLiterals(propKey)) {
+								const keyIdentifier = generateIdentifierForPath(propKey);
+								declarations.push(types.variableDeclarator(keyIdentifier, propKey.node));
+								propKey.replaceWith(keyIdentifier);
 							}
 						}
-						if (!isExpressionOfLiterals(prop.get("value"))) {
-							const propIdentifier = awaitPath.scope.generateUidIdentifierBasedOnNode(prop.node.value);
-							declarations.push(types.variableDeclarator(propIdentifier, prop.node.value));
-							prop.get("value").replaceWith(propIdentifier);
+						const propValue = prop.get("value");
+						if (!isExpressionOfLiterals(propValue)) {
+							const propIdentifier = generateIdentifierForPath(propValue);
+							declarations.push(types.variableDeclarator(propIdentifier, propValue.node));
+							propValue.replaceWith(propIdentifier);
 						}
 					}
 				}
@@ -1022,7 +1028,7 @@ exports.default = function({ types, template, traverse }) {
 							if (reusingExisting) {
 								resultIdentifier = originalAwaitPath.parent.id;
 							} else {
-								resultIdentifier = originalAwaitPath.scope.generateUidIdentifierBasedOnNode(originalArgument);
+								resultIdentifier = generateIdentifierForPath(originalAwaitPath.get("argument"));
 							}
 							originalAwaitPath.replaceWith(resultIdentifier);
 							const { declarations, awaitExpression } = extractDeclarations(originalAwaitPath, originalArgument);

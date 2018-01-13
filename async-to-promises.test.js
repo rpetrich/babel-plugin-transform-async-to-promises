@@ -506,7 +506,7 @@ compiledTest("for to length iteration", {
 
 compiledTest("for to length with break", {
 	input: `async function(list) { for (var i = 0; i < list.length; i++) { if (await list[i]()) { break; } }}`,
-	output: `__async(function(list){var _interrupt;var i=0;return __awaitIgnored(__for(function(){return!_interrupt&&i<list.length;},function(){return i++;},function(){return __await(list[i](),function(_list$i){if(_list$i){_interrupt=1;return;}});}));})`,
+	output: `__async(function(list){var _interrupt;var i=0;return __awaitIgnored(__for(function(){return!_interrupt&&i<list.length;},function(){return i++;},function(){return __await(list[i](),function(_list$i){if(_list$i){_interrupt=1;}});}));})`,
 	cases: {
 		none: async f => expect(await f([])).toBe(undefined),
 		single: async f => {
@@ -601,7 +601,7 @@ compiledTest("for of await in value", {
 
 compiledTest("for of await in body with break", {
 	input: `async function(iter) { var result = 0; for (var value of iter) { result += await value; if (result > 10) break; } return result; }`,
-	output: `__async(function(iter){var _interrupt;var result=0;return __await(__forOf(iter,function(value){return __await(value,function(_value){result+=_value;if(result>10){_interrupt=1;return;}});},function(){return _interrupt;}),function(){return result;});})`,
+	output: `__async(function(iter){var _interrupt;var result=0;return __await(__forOf(iter,function(value){return __await(value,function(_value){result+=_value;if(result>10){_interrupt=1;}});},function(){return _interrupt;}),function(){return result;});})`,
 	cases: {
 		empty: async f => expect(await f([])).toBe(0),
 		single: async f => expect(await f([1])).toBe(1),

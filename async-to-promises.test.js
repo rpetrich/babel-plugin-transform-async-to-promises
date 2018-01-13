@@ -930,10 +930,10 @@ compiledTest("variable hoisting", {
 });
 
 compiledTest("complex hoisting", {
-	input: `async function(foo, bar, baz) { if (foo()) { var result = await bar(); } else { result = await baz(); }; return result; }`,
-	output: `__async(function(foo,bar,baz){var result;return __call(function(){var _exit;return __call(function(){if(foo()){return __call(bar,function(_bar){result=_bar;});}else{return __call(baz,function(_baz){result=_baz;});}},function(_result){if(_exit)return _result;});},function(){return result;});})`,
+	input: `async function(foo, baz) { if (foo()) { var result = await bar(); function bar() { return 1; } } else { result = await baz(); }; return result; }`,
+	output: `__async(function(foo,baz){var result;return __call(function(){var _exit;return __call(function(){if(foo()){function bar(){return 1;}return __call(bar,function(_bar){result=_bar;});}else{return __call(baz,function(_baz){result=_baz;});}},function(_result){if(_exit)return _result;});},function(){return result;});})`,
 	cases: {
-		consequent: async f => expect(await f(_ => true, async _ => 1, async _ => 0)).toBe(1),
-		alternate: async f => expect(await f(_ => false, async _ => 1, async _ => 0)).toBe(0),
+		consequent: async f => expect(await f(_ => true, async _ => 0)).toBe(1),
+		alternate: async f => expect(await f(_ => false, async _ => 0)).toBe(0),
 	},
 });

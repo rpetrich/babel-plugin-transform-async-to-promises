@@ -441,6 +441,14 @@ exports.default = function({ types, template }) {
 					}
 				}
 			},
+			FunctionDeclaration(path) {
+				const siblings = path.getAllPrevSiblings();
+				if (siblings.some(sibling => !sibling.isFunctionDeclaration())) {
+					const node = path.node;
+					path.remove();
+					siblings[0].insertBefore(node);
+				}
+			},
 		});
 		if (hasThis) {
 			const binding = targetPath.scope.getBinding("_this");

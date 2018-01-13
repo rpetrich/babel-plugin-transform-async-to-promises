@@ -726,7 +726,7 @@ exports.default = function({ types, template }) {
 			let expressionToAwait = node.argument;
 			let processExpressions = true;
 			do {
-				const parent = awaitPath.parentPath;
+				let parent = awaitPath.parentPath;
 				if (!relocatedBlocks.find(block => block.path === parent)) {
 					const explicitExits = pathsReturnOrThrow(parent);
 					if (parent.isIfStatement()) {
@@ -985,7 +985,12 @@ exports.default = function({ types, template }) {
 							originalAwaitPath.replaceWith(resultIdentifier);
 							const { declarations, awaitExpression } = extractDeclarations(originalAwaitPath, originalArgument);
 							if (declarations.length) {
-								parent.insertBefore(types.variableDeclaration("var", declarations));
+								if (!parent.parentPath.isBlockStatement()) {
+									parent.replaceWithMultiple([types.variableDeclaration("var", declarations), parent.node]);
+									parent = parent.get("body.1");
+								} else {
+									parent.insertBefore(types.variableDeclaration("var", declarations));
+								}
 							}
 							relocatedBlocks.push({
 								relocate() {

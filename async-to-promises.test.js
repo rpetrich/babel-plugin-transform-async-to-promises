@@ -131,6 +131,20 @@ compiledTest("await logical right", {
 	},
 });
 
+compiledTest("await logical statement scope", {
+	input: `async function(left, right) { if (true) return left() && await right(); else return false; }`,
+	output: `__async(function(left,right){if(true){var _left=left();return __await(_left?right():0,function(_right){return _left&&_right;});}else return false;})`,
+	cases: {
+		false: async f => expect(await f(_ => 0, async _ => 2)).toBe(0),
+		true: async f => expect(await f(_ => 5, async _ => 2)).toBe(2),
+		order: async f => {
+			let lastCalled = 0;
+			await f(() => lastCalled = 1, () => lastCalled = 2);
+			expect(lastCalled).toBe(2);
+		}
+	},
+});
+
 compiledTest("await logical both", {
 	input: `async function(left, right) { return await left() && await right(); }`,
 	output: `__async(function(left,right){return __call(left,function(_ref){return __await(_ref?right():0,function(_right){return _ref&&_right;});});})`,
@@ -155,6 +169,20 @@ compiledTest("await binary right", {
 	cases: {
 		two: async f => expect(await f(_ => 0, async _ => 2)).toBe(2),
 		seven: async f => expect(await f(_ => 5, async _ => 2)).toBe(7),
+	},
+});
+
+compiledTest("await binary statement scope", {
+	input: `async function(left, right) { if (true) return left() + await right(); else return false; }`,
+	output: `__async(function(left,right){if(true){var _left=left();return __call(right,function(_right){return _left+_right;});}else return false;})`,
+	cases: {
+		two: async f => expect(await f(_ => 0, async _ => 2)).toBe(2),
+		seven: async f => expect(await f(_ => 5, async _ => 2)).toBe(7),
+		order: async f => {
+			let lastCalled = 0;
+			await f(() => lastCalled = 1, () => lastCalled = 2);
+			expect(lastCalled).toBe(2);
+		}
 	},
 });
 

@@ -16,9 +16,9 @@ async function fetchAsObjectURL(url) {
 ### Output:
 
 ```javascript
-var fetchAsObjectURL = __async(function(url) {
-	return __await(fetch(url), function(response) {
-		return __await(response.blob(), function(blob) {
+var fetchAsObjectURL = _async(function(url) {
+	return _await(fetch(url), function(response) {
+		return _await(response.blob(), function(blob) {
 			return URL.createObjectURL(blob);
 		});
 	});

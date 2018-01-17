@@ -188,18 +188,20 @@ exports.default = function({ types, template, traverse }) {
 		return result;
 	}
 
-	function identifierInSingleReturnStatement(statements) {
-		statements = statements.filter(statement => statement.type !== "EmptyStatement");
+	function isNonEmptyStatement(statement) {
+		return !types.isEmptyStatement(statement);
+	}
+
+	function awaitedExpressionInSingleReturnStatement(statements) {
+		statements = statements.filter(isNonEmptyStatement);
 		if (statements.length === 1) {
-			if (statements[0].type === "ReturnStatement") {
+			if (types.isReturnStatement(statements[0])) {
 				let argument = statements[0].argument;
 				if (argument) {
-					while (argument.type === "AwaitExpression") {
+					while (types.isAwaitExpression(argument)) {
 						argument = argument.argument;
 					}
-					if (argument.type === "Identifier") {
-						return argument;
-					}
+					return argument;
 				}
 			}
 		}
@@ -298,12 +300,12 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function isPassthroughContinuation(continuation) {
-		if (!continuation || continuation.type !== "FunctionExpression") {
+		if (!continuation || !types.isFunctionExpression(continuation)) {
 			return false;
 		}
 		if (continuation.params.length === 1) {
-			const returnIdentifier = identifierInSingleReturnStatement(continuation.body.body);
-			if (returnIdentifier && returnIdentifier.name === continuation.params[0].name) {
+			const expression = awaitedExpressionInSingleReturnStatement(continuation.body.body);
+			if (expression && types.isIdentifier(expression) && expression.name === continuation.params[0].name) {
 				return true;
 			}
 		}
@@ -313,7 +315,7 @@ exports.default = function({ types, template, traverse }) {
 	function awaitAndContinue(state, path, value, continuation, catchContinuation) {
 		let useCallHelper = false;
 		let ignoreResult = false;
-		while (value.type === "CallExpression" && value.arguments.length === 0 && value.callee.type !== "MemberExpression") {
+		while (types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee)) {
 			value = value.callee;
 			useCallHelper = true;
 		}
@@ -326,7 +328,7 @@ exports.default = function({ types, template, traverse }) {
 					return value;
 				}
 			}
-			if (continuation.type === "Identifier" && continuation === path.hub.file.declarations["_empty"]) {
+			if (types.isIdentifier(continuation) && continuation === path.hub.file.declarations["_empty"]) {
 				ignoreResult = true;
 				args = [value];
 			} else {
@@ -393,10 +395,10 @@ exports.default = function({ types, template, traverse }) {
 
 	function relocateTail(state, awaitExpression, statementNode, target, temporary, exitIdentifier) {
 		const tail = borrowTail(target);
-		if (statementNode && statementNode.type === "ExpressionStatement" && statementNode.expression.type === "Identifier") {
+		if (statementNode && types.isExpressionStatement(statementNode) && types.isIdentifier(statementNode.expression)) {
 			statementNode = null;
 		}
-		const blocks = removeUnnecessaryReturnStatements((statementNode ? [statementNode].concat(tail) : tail).filter(statement => statement.type !== "EmptyStatement"));
+		const blocks = removeUnnecessaryReturnStatements((statementNode ? [statementNode].concat(tail) : tail).filter(isNonEmptyStatement));
 		if (blocks.length) {
 			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
 			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, fn), target.node));
@@ -419,16 +421,16 @@ exports.default = function({ types, template, traverse }) {
 
 	function tryHelper(state, path, blockStatement, catchFunction) {
 		const catchArgs = catchFunction ? [voidExpression(), catchFunction] : [];
-		const body = blockStatement.body.filter(statement => statement.type !== "EmptyStatement");
+		const body = blockStatement.body.filter(isNonEmptyStatement);
 		if (body.length === 1) {
 			const statement = body[0];
-			if (statement.type === "ReturnStatement") {
+			if (types.isReturnStatement(statement)) {
 				let argument = statement.argument;
-				while (argument.type === "AwaitExpression") {
+				while (types.isAwaitExpression(argument)) {
 					argument = argument.argument;
 				}
-				if (argument.type === "CallExpression" && argument.arguments.length === 0) {
-					if (argument.callee.type === "Identifier" || argument.callee.type === "FunctionExpression") {
+				if (types.isCallExpression(argument) && argument.arguments.length === 0) {
+					if (types.isIdentifier(argument.callee) || types.isFunctionExpression(argument.callee)) {
 						return types.callExpression(helperReference(state, path, "_call"), [argument.callee].concat(catchArgs));
 					}
 				}
@@ -529,20 +531,12 @@ exports.default = function({ types, template, traverse }) {
 
 	function blockStatement(statementOrStatements) {
 		if ("length" in statementOrStatements) {
-			return types.blockStatement(statementOrStatements.filter(statement => statement.type !== "EmptyStatement"));
-		} else if (statementOrStatements.type !== "BlockStatement") {
+			return types.blockStatement(statementOrStatements.filter(statement => !types.isEmptyStatement()));
+		} else if (!types.isBlockStatement(statementOrStatements)) {
 			return types.blockStatement([statementOrStatements]);
 		} else {
 			return statementOrStatements;
 		}
-	}
-
-	function inlineEvaluated(statements) {
-		const returnIdentifier = identifierInSingleReturnStatement(statements);
-		if (returnIdentifier) {
-			return returnIdentifier;
-		}
-		return types.callExpression(types.functionExpression(null, [], blockStatement(statements)), []);
 	}
 
 	function unwrapReturnCallWithEmptyArguments(node, scope) {
@@ -938,7 +932,7 @@ exports.default = function({ types, template, traverse }) {
 										parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 									}
 									if (!explicitExits.all) {
-										relocateTail(state, inlineEvaluated([parent.node]), null, parent, resultIdentifier, exitIdentifier);
+										relocateTail(state, types.callExpression(types.functionExpression(null, [], blockStatement([parent.node])), []), null, parent, resultIdentifier, exitIdentifier);
 									}
 								},
 								path: parent,
@@ -1029,7 +1023,7 @@ exports.default = function({ types, template, traverse }) {
 							const breakExitCheck = buildBreakExitCheck(exitIdentifier, breakIdentifiers);
 							if (breakExitCheck) {
 								const inverted = types.unaryExpression("!", breakExitCheck);
-								testExpression = testExpression && (testExpression.type != "BooleanLiteral" || !testExpression.value) ? types.logicalExpression("&&", inverted, testExpression) : inverted;
+								testExpression = testExpression && (!types.isBooleanLiteral(testExpression) || !testExpression.value) ? types.logicalExpression("&&", inverted, testExpression) : inverted;
 							}
 							if (testExpression) {
 								const testPath = parent.get("test");

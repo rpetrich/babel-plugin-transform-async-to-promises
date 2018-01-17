@@ -1103,11 +1103,11 @@ exports.default = function({ types, template, traverse }) {
 									args.push(voidExpression());
 								}
 								if (switchCase.consequent.length) {
-									args.push(types.functionExpression(null, [], types.blockStatement(switchCase.consequent)));
 									const caseExits = pathsReturnOrThrow(casePath);
 									const caseBreaks = pathsBreak(casePath);
 									const useBreakIdentifier = !caseBreaks.all && caseBreaks.any;
 									let breakIdentifiers = replaceReturnsAndBreaks(casePath, exitIdentifier);
+									args.push(types.functionExpression(null, [], types.blockStatement(removeUnnecessaryReturnStatements(switchCase.consequent))));
 									if (!caseExits.any && !caseBreaks.any) {
 										args.push(helperReference(state, parent, "_empty"));
 									} else if (!(caseExits.all || caseBreaks.all)) {

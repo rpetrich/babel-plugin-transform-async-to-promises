@@ -777,8 +777,10 @@ exports.default = function({ types, template, traverse }) {
 			},
 			ReturnStatement(path) {
 				if (!path.node._skip && exitIdentifier) {
-					const newArgument = types.sequenceExpression([types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1)), path.node.argument || voidExpression()]);
-					path.replaceWith(returnStatement(newArgument, path.node))
+					path.replaceWithMultiple([
+						types.expressionStatement(types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1))),
+						returnStatement(path.node.argument, path.node),
+					]);
 				}
 			},
 			BreakStatement(path) {

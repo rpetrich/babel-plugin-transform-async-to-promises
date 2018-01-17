@@ -6,6 +6,19 @@ exports.default = function({ types, template, traverse }) {
 		return types.isStatement(node) ? types.blockStatement([node]) : types.expressionStatement(node);
 	}
 
+	const pathForNewNodeVisitor = {
+		enter(path) {
+			this.path = path;
+			path.stop();
+		}
+	};
+
+	function pathForNewNode(node, parentPath) {
+		const state = {};
+		traverse(wrapNodeInStatement(node), pathForNewNodeVisitor, parentPath.scope, state, parentPath);
+		return state.path;
+	}
+
 	function pathsPassTest(matchingNodeTest) {
 		function visit(path, result) {
 			const originalNode = path.node._originalNode;
@@ -313,31 +326,24 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function awaitAndContinue(state, path, value, continuation, catchContinuation) {
-		let useCallHelper = false;
+		const useCallHelper = types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee);
+		const firstArg = useCallHelper ? value.callee : value;
 		let ignoreResult = false;
-		while (types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee)) {
-			value = value.callee;
-			useCallHelper = true;
-		}
 		let args;
 		if (!catchContinuation) {
 			if (!continuation || isPassthroughContinuation(continuation)) {
-				if (useCallHelper) {
-					return types.callExpression(value, []);
-				} else {
-					return value;
-				}
+				return value;
 			}
 			if (types.isIdentifier(continuation) && continuation === path.hub.file.declarations["_empty"]) {
 				ignoreResult = true;
-				args = [value];
+				args = [firstArg];
 			} else {
-				args = [value, continuation];
+				args = [firstArg, continuation];
 			}
 		} else if (!continuation || isPassthroughContinuation(continuation)) {
-			args = [value, voidExpression(), catchContinuation];
+			args = [firstArg, voidExpression(), catchContinuation];
 		} else {
-			args = [value, continuation || voidExpression(), catchContinuation];
+			args = [firstArg, continuation || voidExpression(), catchContinuation];
 		}
 		let helperName = useCallHelper ? "_call" : "_await";
 		if (ignoreResult) {
@@ -393,6 +399,12 @@ exports.default = function({ types, template, traverse }) {
 		return blocks;
 	}
 
+	function rewriteFunctionNode(state, parentPath, node, exitIdentifier) {
+		const path = pathForNewNode(node, parentPath);
+		rewriteFunctionBody(state, path, exitIdentifier);
+		return path.node;
+	}
+
 	function relocateTail(state, awaitExpression, statementNode, target, temporary, exitIdentifier) {
 		const tail = borrowTail(target);
 		if (statementNode && types.isExpressionStatement(statementNode) && types.isIdentifier(statementNode.expression)) {
@@ -401,21 +413,13 @@ exports.default = function({ types, template, traverse }) {
 		const blocks = removeUnnecessaryReturnStatements((statementNode ? [statementNode].concat(tail) : tail).filter(isNonEmptyStatement));
 		if (blocks.length) {
 			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
-			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, fn), target.node));
+			const rewritten = rewriteFunctionNode(state, target, fn, exitIdentifier);
+			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, rewritten), target.node));
 		} else if (pathsReturnOrThrow(target).any) {
 			target.replaceWith(returnStatement(awaitExpression, target.node));
 			return target.get("argument");
 		} else {
 			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, helperReference(state, target, "_empty")), target.node));
-		}
-		const argument = target.get("argument");
-		if (argument.isCallExpression()) {
-			target.get("argument.arguments").forEach(awaitArgument => {
-				if (awaitArgument.isFunction()) {
-					rewriteFunctionBody(state, awaitArgument, exitIdentifier);
-				}
-			});
-			return target.get("argument.arguments.0");
 		}
 	}
 
@@ -932,7 +936,9 @@ exports.default = function({ types, template, traverse }) {
 										parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
 									}
 									if (!explicitExits.all) {
-										relocateTail(state, types.callExpression(types.functionExpression(null, [], blockStatement([parent.node])), []), null, parent, resultIdentifier, exitIdentifier);
+										const fn = types.functionExpression(null, [], blockStatement([parent.node]));
+										const rewritten = rewriteFunctionNode(state, parent, fn, exitIdentifier);
+										relocateTail(state, types.callExpression(rewritten, []), null, parent, resultIdentifier, exitIdentifier);
 									}
 								},
 								path: parent,
@@ -967,13 +973,7 @@ exports.default = function({ types, template, traverse }) {
 									catchExpression = rewriteCatch ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(state, parent, "_empty");
 								}
 								const evalBlock = tryHelper(state, parent, parent.node.block, catchExpression);
-								const evalPath = relocateTail(state, evalBlock, success, parent, temporary, exitIdentifier);
-								if (evalPath && evalPath.isCallExpression()) {
-									rewriteFunctionBody(state, evalPath.get("arguments.0"), exitIdentifier);
-									if (rewriteCatch) {
-										rewriteFunctionBody(state, evalPath.get("arguments.2"), exitIdentifier);
-									}
-								}
+								relocateTail(state, evalBlock, success, parent, temporary, exitIdentifier);
 								if (finallyFunction && finallyName) {
 									parent.get("argument").replaceWith(types.callExpression(helperReference(state, parent, finallyName), [parent.node.argument, finallyFunction]));
 								}
@@ -1027,8 +1027,7 @@ exports.default = function({ types, template, traverse }) {
 							}
 							if (testExpression) {
 								const testPath = parent.get("test");
-								testPath.replaceWith(functionize(testExpression));
-								rewriteFunctionBody(state, testPath, exitIdentifier);
+								testPath.replaceWith(rewriteFunctionNode(state, parent, functionize(testExpression), exitIdentifier));
 							}
 							const update = parent.get("update");
 							if (update.node) {
@@ -1074,8 +1073,7 @@ exports.default = function({ types, template, traverse }) {
 							let defaultIndex;
 							testPaths.forEach((testPath, i) => {
 								if (testPath.node) {
-									testPath.replaceWith(functionize(testPath.node));
-									rewriteFunctionBody(state, testPath, exitIdentifier);
+									testPath.replaceWith(rewriteFunctionNode(state, parent, functionize(testPath.node), exitIdentifier));
 								} else {
 									defaultIndex = i;
 								}

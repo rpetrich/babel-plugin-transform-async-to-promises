@@ -626,19 +626,21 @@ exports.default = function({ types, template, traverse }) {
 			} else if (parent.isLogicalExpression()) {
 				const left = parent.get("left");
 				if (awaitPath !== left) {
-					const leftNode = left.node;
-					const leftIdentifier = generateIdentifierForPath(left);
-					declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
-					left.replaceWith(leftIdentifier);
-					awaitExpression = parent.node.operator === "||" ? types.conditionalExpression(leftIdentifier, types.numericLiteral(0), awaitExpression) : types.conditionalExpression(leftIdentifier, awaitExpression, types.numericLiteral(0));
+					if (!isExpressionOfLiterals(left)) {
+						const leftIdentifier = generateIdentifierForPath(left);
+						declarations.push(types.variableDeclarator(leftIdentifier, left.node));
+						left.replaceWith(leftIdentifier);
+					}
+					awaitExpression = parent.node.operator === "||" ? types.conditionalExpression(left.node, types.numericLiteral(0), awaitExpression) : types.conditionalExpression(left.node, awaitExpression, types.numericLiteral(0));
 				}
 			} else if (parent.isBinaryExpression()) {
 				const left = parent.get("left");
 				if (awaitPath !== left) {
-					const leftNode = left.node;
-					const leftIdentifier = generateIdentifierForPath(left);
-					declarations.push(types.variableDeclarator(leftIdentifier, leftNode));
-					left.replaceWith(leftIdentifier);
+					if (!isExpressionOfLiterals(left)) {
+						const leftIdentifier = generateIdentifierForPath(left);
+						declarations.push(types.variableDeclarator(leftIdentifier, left.node));
+						left.replaceWith(leftIdentifier);
+					}
 				}
 			} else if (parent.isSequenceExpression()) {
 				const children = parent.get("expressions");

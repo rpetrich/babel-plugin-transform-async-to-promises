@@ -327,8 +327,19 @@ exports.default = function({ types, template, traverse }) {
 
 	function awaitAndContinue(state, path, value, continuation, catchContinuation) {
 		const useCallHelper = types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee);
-		const firstArg = useCallHelper ? value.callee : value;
 		let ignoreResult = false;
+		let firstArg;
+		if (useCallHelper) {
+			firstArg = value.callee;
+			if (types.isFunctionExpression(firstArg)) {
+				const expression = awaitedExpressionInSingleReturnStatement(firstArg.body.body);
+				if (expression && types.isCallExpression(expression) && expression.callee._helperName === "_callIgnored") {
+					firstArg = expression.arguments[0];
+				}
+			}
+		} else {
+			firstArg = value;
+		}
 		let args;
 		if (!catchContinuation) {
 			if (!continuation || isPassthroughContinuation(continuation)) {
@@ -681,7 +692,7 @@ exports.default = function({ types, template, traverse }) {
 							const calleeNode = callee.node;
 							parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), [object.node].concat(parent.node.arguments)));
 							declarations.push(types.variableDeclarator(calleeIdentifier, calleeNode));
-						} else if (!callee.isIdentifier() || !(!callee.node.name._isHelperReference || (awaitPath.scope.getBinding(callee.node.name) || {}).constant)) {
+						} else if (!callee.isIdentifier() || !(!callee.node.name._helperName || (awaitPath.scope.getBinding(callee.node.name) || {}).constant)) {
 							const calleeIdentifier = generateIdentifierForPath(callee);
 							const calleeNode = callee.node;
 							callee.replaceWith(calleeIdentifier);
@@ -1207,7 +1218,7 @@ exports.default = function({ types, template, traverse }) {
 		let result = file.declarations[name];
 		if (!result) {
 			result = file.declarations[name] = usesIdentifier(file.path, name) ? file.path.scope.generateUidIdentifier(name) : types.identifier(name);
-			result._isHelperReference = true;
+			result._helperName = name;
 			if (state.opts.externalHelpers) {
 				file.path.unshiftContainer("body", types.importDeclaration([types.importSpecifier(result, types.identifier(name))], types.stringLiteral("babel-plugin-transform-async-to-promises/helpers")));
 			} else {

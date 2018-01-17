@@ -835,7 +835,7 @@ compiledTest("await case", {
 compiledTest("await break", {
 	input: `async function(foo, bar) { var result; switch (await foo()) { case await bar(): result = true; break; default: result = false; break; } return result; }`,
 	// output: `_async(function(foo,bar){var result;return _call(foo,function(_foo){return _await(_switch(_foo,[[function(){return bar();},function(){result=true;return;}],[void 0,function(){result=false;return;}]]),function(){return result;});});})`,
-	output: `_async(function(foo,bar){var _interrupt;var result;return _call(foo,function(_foo){return _await(_switch(_foo,[[function(){return bar();},function(){result=true;_interrupt=1;}],[void 0,function(){result=false;_interrupt=1;}]]),function(){return result;});});})`,
+	output: `_async(function(foo,bar){var result;return _call(foo,function(_foo){var _interrupt;return _await(_switch(_foo,[[function(){return bar();},function(){result=true;_interrupt=1;}],[void 0,function(){result=false;_interrupt=1;}]]),function(){return result;});});})`,
 	cases: {
 		true: async f => {
 			expect(await f(async () => 1, async () => 1)).toBe(true);

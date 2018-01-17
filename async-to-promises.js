@@ -437,64 +437,89 @@ exports.default = function({ types, template, traverse }) {
 		return types.callExpression(helperReference(state, path, "_call"), [types.functionExpression(null, [], blockStatement)].concat(catchArgs));
 	}
 
-	function rewriteThisAndArgumentsExpression(rewritePath, targetPath) {
-		let thisIdentifier;
-		let argumentsIdentifier;
-		rewritePath.traverse({
-			FunctionDeclaration(path) {
+	const rewriteThisVisitor = {
+		Function(path) {
+			if (!path.isArrowFunctionExpression()) {
 				path.skip();
-			},
-			FunctionExpression(path) {
-				path.skip();
-			},
-			ThisExpression(path) {
-				if (!thisIdentifier) {
-					thisIdentifier = path.scope.generateUidIdentifier("this");
+			}
+		},
+		ThisExpression(path) {
+			if (!this.thisIdentifier) {
+				this.thisIdentifier = path.scope.generateUidIdentifier("this");
+			}
+			path.replaceWith(this.thisIdentifier);
+		},
+	};
+
+	function rewriteThisExpressions(rewritePath, targetPath) {
+		const state = {};
+		rewritePath.traverse(rewriteThisVisitor, state);
+		if (state.thisIdentifier) {
+			targetPath.scope.push({ id: state.thisIdentifier, init: types.thisExpression() });
+		}
+	}
+
+	const rewriteThisArgumentsAndHoistVisitor = {
+		Function(path) {
+			path.skip();
+			if (path.isArrowFunctionExpression()) {
+				path.traverse(rewriteThisVisitor, this);
+			}
+		},
+		ThisExpression(path) {
+			if (!this.thisIdentifier) {
+				this.thisIdentifier = path.scope.generateUidIdentifier("this");
+			}
+			path.replaceWith(this.thisIdentifier);
+		},
+		Identifier(path) {
+			// Rewrite arguments
+			if (path.node.name === "arguments") {
+				if (!this.argumentsIdentifier) {
+					this.argumentsIdentifier = path.scope.generateUidIdentifier("arguments");
 				}
-				path.replaceWith(thisIdentifier);
-			},
-			Identifier(path) {
-				if (path.node.name === "arguments") {
-					if (!argumentsIdentifier) {
-						argumentsIdentifier = path.scope.generateUidIdentifier("arguments");
-					}
-					path.replaceWith(argumentsIdentifier);
-				}
-			},
-			VariableDeclaration(path) {
-				const scope = path.scope;
-				if (path.node.kind === "var") {
-					const declarations = path.get("declarations");
-					for (const declaration of declarations) {
-						const binding = scope.getBinding(declaration.node.id.name);
-						if (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath)) {
-							targetPath.scope.push({ id: declaration.node.id });
-							if (declaration.node.init) {
-								path.insertBefore(types.expressionStatement(types.assignmentExpression("=", declaration.node.id, declaration.node.init)));
-							}
-							if ((path.parentPath.isForInStatement() || path.parentPath.isForOfStatement()) && path.parentPath.get("left") === path) {
-								path.replaceWith(declaration.node.id);
-							} else {
-								declaration.remove();
-							}
+				path.replaceWith(this.argumentsIdentifier);
+			}
+		},
+		VariableDeclaration(path) {
+			const scope = path.scope;
+			if (path.node.kind === "var") {
+				const declarations = path.get("declarations");
+				for (const declaration of declarations) {
+					const binding = scope.getBinding(declaration.node.id.name);
+					if (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath)) {
+						this.targetPath.scope.push({ id: declaration.node.id });
+						if (declaration.node.init) {
+							path.insertBefore(types.expressionStatement(types.assignmentExpression("=", declaration.node.id, declaration.node.init)));
+						}
+						if ((path.parentPath.isForInStatement() || path.parentPath.isForOfStatement()) && path.parentPath.get("left") === path) {
+							path.replaceWith(declaration.node.id);
+						} else {
+							declaration.remove();
 						}
 					}
 				}
-			},
-			FunctionDeclaration(path) {
-				const siblings = path.getAllPrevSiblings();
-				if (siblings.some(sibling => !sibling.isFunctionDeclaration())) {
-					const node = path.node;
-					path.remove();
-					siblings[0].insertBefore(node);
-				}
-			},
-		});
-		if (thisIdentifier) {
-			targetPath.scope.push({ id: thisIdentifier, init: types.thisExpression() });
+			}
+		},
+		FunctionDeclaration(path) {
+			// Hoist function declarations
+			const siblings = path.getAllPrevSiblings();
+			if (siblings.some(sibling => !sibling.isFunctionDeclaration())) {
+				const node = path.node;
+				path.remove();
+				siblings[0].insertBefore(node);
+			}
+		},
+	};
+
+	function rewriteThisArgumentsAndHoistFunctions(rewritePath, targetPath) {
+		const state = { targetPath };
+		rewritePath.traverse(rewriteThisArgumentsAndHoistVisitor, state);
+		if (state.thisIdentifier) {
+			targetPath.scope.push({ id: state.thisIdentifier, init: types.thisExpression() });
 		}
-		if (argumentsIdentifier) {
-			targetPath.scope.push({ id: argumentsIdentifier, init: types.identifier("arguments") });
+		if (state.argumentsIdentifier) {
+			targetPath.scope.push({ id: state.argumentsIdentifier, init: types.identifier("arguments") });
 		}
 	}
 
@@ -1252,13 +1277,14 @@ exports.default = function({ types, template, traverse }) {
 			ArrowFunctionExpression(path) {
 				const node = path.node;
 				if (node.async && isCompatible(path.get("body"))) {
+					rewriteThisExpressions(path, path.getFunctionParent());
 					const body = path.get("body").isBlockStatement() ? path.node.body : blockStatement([types.returnStatement(path.node.body)]);
 					path.replaceWith(types.functionExpression(null, node.params, body, false, node.async));
 				}
 			},
 			FunctionExpression(path) {
 				if (path.node.async && isCompatible(path.get("body"))) {
-					rewriteThisAndArgumentsExpression(path, path);
+					rewriteThisArgumentsAndHoistFunctions(path, path);
 					rewriteFunctionBody(this, path);
 					path.replaceWith(types.callExpression(helperReference(this, path, "_async"), [
 						types.functionExpression(null, path.node.params, path.node.body)
@@ -1271,7 +1297,7 @@ exports.default = function({ types, template, traverse }) {
 						const body = path.get("body");
 						body.replaceWith(types.blockStatement([types.returnStatement(types.callExpression(helperReference(this, path, "_call"), [types.functionExpression(null, [], body.node)]))]));
 						const migratedPath = body.get("body.0.argument.arguments.0");
-						rewriteThisAndArgumentsExpression(migratedPath, path);
+						rewriteThisArgumentsAndHoistFunctions(migratedPath, path);
 						rewriteFunctionBody(this, migratedPath);
 						path.replaceWith(types.classMethod(path.node.kind, path.node.key, path.node.params, path.node.body, path.node.computed, path.node.static));
 					}

@@ -334,6 +334,17 @@ compiledTest("arrow functions", {
 	},
 });
 
+compiledTest("arrow functions with this", {
+	input: `function () { return async () => this; }`,
+	output: `function(){var _this=this;return _async(function(){return _this;});}`,
+	cases: {
+		true: async f => {
+			const object = {};
+			expect(await f.call(object)()).toBe(object);
+		}
+	},
+});
+
 compiledTest("inner functions", {
 	input: `function (value) { return async other => value + other; }`,
 	output: `function(value){return _async(function(other){return value+other;});}`,

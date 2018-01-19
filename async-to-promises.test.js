@@ -91,7 +91,7 @@ compiledTest("call chains", {
 
 compiledTest("argument evaluation order", {
 	input: `async function(a, b, c) { return await a(1, b + 1, await c()); }`,
-	output: `_async(function(a,b,c){var _ref=b+1;return _call(c,function(_c){return a(1,_ref,_c);});})`,
+	output: `_async(function(a,b,c){var _temp=b+1;return _call(c,function(_c){return a(1,_temp,_c);});})`,
 	cases: {
 		result: async f => expect(await f(async (a, b, c) => a + b + c, 1, async _ => 2)).toBe(5),
 	},
@@ -197,7 +197,7 @@ compiledTest("await binary both", {
 
 compiledTest("await binary and logical", {
 	input: `async function(left, middle, right) { return await left() + !(await middle()) && await right(); }`,
-	output: `_async(function(left,middle,right){return _call(left,function(_left){return _call(middle,function(_middle){var _ref=_left+!_middle;return _await(_ref?right():0,function(_right){return _ref&&_right;});});});})`,
+	output: `_async(function(left,middle,right){return _call(left,function(_left){return _call(middle,function(_middle){var _temp=_left+!_middle;return _await(_temp?right():0,function(_right){return _temp&&_right;});});});})`,
 	cases: {
 		two: async f => expect(await f(async _ => 3, async _ => false, async _ => 5)).toBe(5),
 		seven: async f => expect(await f(async _ => 0, async _ => true, async _ => 2)).toBe(0),

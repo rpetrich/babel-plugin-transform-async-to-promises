@@ -27,13 +27,13 @@ export const _async = (function() {
 })();
 
 // Awaits on a value that may or may not be a Promise (equivalent to the await keyword in ES2015, with continuations passed explicitly)
-export function _await(value, then, recover) {
-	return Promise.resolve(value).then(then, recover);
+export function _await(value, then, direct) {
+	return direct ? then(value) : Promise.resolve(value).then(then);
 }
 
 // Awaits on a value that may or may not be a Promise, then ignores it
-export function _awaitIgnored(value) {
-	return _await(value, _empty);
+export function _awaitIgnored(value, direct) {
+	return _await(value, _empty, direct);
 }
 
 // Asynchronously iterate through an object that has a length property, passing the index as the first argument to the callback (even as the length property changes)

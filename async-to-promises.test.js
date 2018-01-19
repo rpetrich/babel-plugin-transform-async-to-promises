@@ -124,7 +124,7 @@ compiledTest("await logical left", {
 
 compiledTest("await logical right", {
 	input: `async function(left, right) { return left() && await right(); }`,
-	output: `_async(function(left,right){var _left=left();return _await(_left?right():0,function(_right){return _left&&_right;});})`,
+	output: `_async(function(left,right){var _left=left();return _await(_left&&right(),function(_right){return _left&&_right;},!_left);})`,
 	cases: {
 		false: async f => expect(await f(_ => 0, async _ => 2)).toBe(0),
 		true: async f => expect(await f(_ => 5, async _ => 2)).toBe(2),
@@ -133,7 +133,7 @@ compiledTest("await logical right", {
 
 compiledTest("await logical statement scope", {
 	input: `async function(left, right) { if (true) return left() && await right(); else return false; }`,
-	output: `_async(function(left,right){if(true){var _left=left();return _await(_left?right():0,function(_right){return _left&&_right;});}else return false;})`,
+	output: `_async(function(left,right){if(true){var _left=left();return _await(_left&&right(),function(_right){return _left&&_right;},!_left);}else return false;})`,
 	cases: {
 		false: async f => expect(await f(_ => 0, async _ => 2)).toBe(0),
 		true: async f => expect(await f(_ => 5, async _ => 2)).toBe(2),
@@ -147,7 +147,7 @@ compiledTest("await logical statement scope", {
 
 compiledTest("await logical both", {
 	input: `async function(left, right) { return await left() && await right(); }`,
-	output: `_async(function(left,right){return _call(left,function(_left){return _await(_left?right():0,function(_right){return _left&&_right;});});})`,
+	output: `_async(function(left,right){return _call(left,function(_left){return _await(_left&&right(),function(_right){return _left&&_right;},!_left);});})`,
 	cases: {
 		false: async f => expect(await f(async _ => 0, async _ => 2)).toBe(0),
 		true: async f => expect(await f(async _ => 5, async _ => 2)).toBe(2),
@@ -197,7 +197,7 @@ compiledTest("await binary both", {
 
 compiledTest("await binary and logical", {
 	input: `async function(left, middle, right) { return await left() + !(await middle()) && await right(); }`,
-	output: `_async(function(left,middle,right){return _call(left,function(_left){return _call(middle,function(_middle){var _temp=_left+!_middle;return _await(_temp?right():0,function(_right){return _temp&&_right;});});});})`,
+	output: `_async(function(left,middle,right){return _call(left,function(_left){return _call(middle,function(_middle){var _temp=_left+!_middle;return _await(_temp&&right(),function(_right){return _temp&&_right;},!_temp);});});})`,
 	cases: {
 		two: async f => expect(await f(async _ => 3, async _ => false, async _ => 5)).toBe(5),
 		seven: async f => expect(await f(async _ => 0, async _ => true, async _ => 2)).toBe(0),
@@ -242,7 +242,7 @@ compiledTest("if body assignments", {
 
 compiledTest("ternary consequent", {
 	input: `async function(foo, bar, baz) { return foo() ? await bar() : baz(); }`,
-	output: `_async(function(foo,bar,baz){var _foo=foo();return _await(_foo?bar():0,function(_bar){return _foo?_bar:baz();});})`,
+	output: `_async(function(foo,bar,baz){var _foo=foo();return _await(_foo?bar():0,function(_bar){return _foo?_bar:baz();},!_foo);})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 1, _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 1, _ => 0)).toBe(0),
@@ -251,7 +251,7 @@ compiledTest("ternary consequent", {
 
 compiledTest("ternary alternate", {
 	input: `async function(foo, bar, baz) { return foo() ? bar() : await baz(); }`,
-	output: `_async(function(foo,bar,baz){var _foo=foo();return _await(_foo?0:baz(),function(_baz){return _foo?bar():_baz;});})`,
+	output: `_async(function(foo,bar,baz){var _foo=foo();return _await(_foo?0:baz(),function(_baz){return _foo?bar():_baz;},_foo);})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, _ => 1, async _ => 0)).toBe(0),
@@ -995,5 +995,45 @@ compiledTest("for of await double with break", {
 		single: async f => expect(await f([[1]])).toBe(1),
 		multiple: async f => expect(await f([[1,2],[3,4]])).toBe(10),
 		break: async f => expect(await f([[1,10,4],[5,4]])).toBe(11),
+	},
+});
+
+const orderTest = async f => {
+	var state;
+	const promise = f(() => state = false);
+	state = true;
+	await promise;
+	expect(state).toBe(true);
+}
+
+compiledTest("ternary alternate event loop ordering", {
+	input: `async function(callback) { false ? await 0 : true; callback(); }`,
+	output: `_async(function(callback){return _await(false?0:0,function(_){false?_:true;callback();},true);})`,
+	cases: {
+		order: orderTest,
+	},
+});
+
+compiledTest("ternary consequent event loop ordering", {
+	input: `async function(callback) { true ? true : await 0; callback(); }`,
+	output: `_async(function(callback){return _await(true?0:0,function(_){true?true:_;callback();},true);})`,
+	cases: {
+		order: orderTest,
+	},
+});
+
+compiledTest("logical and alternate event loop ordering", {
+	input: `async function(callback) { false && await 0; callback(); }`,
+	output: `_async(function(callback){return _await(false&&0,function(_){false&&_;callback();},true);})`,
+	cases: {
+		order: orderTest,
+	},
+});
+
+compiledTest("logical or consequent event loop ordering", {
+	input: `async function(callback) { true || await 0; callback(); }`,
+	output: `_async(function(callback){return _await(true||0,function(_){true||_;callback();},true);})`,
+	cases: {
+		order: orderTest,
 	},
 });

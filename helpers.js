@@ -33,7 +33,7 @@ export function _await(value, then, recover) {
 
 // Awaits on a value that may or may not be a Promise, then ignores it
 export function _awaitIgnored(value) {
-	return Promise.resolve(value).then(_empty);
+	return _await(value, _empty);
 }
 
 // Asynchronously iterate through an object that has a length property, passing the index as the first argument to the callback (even as the length property changes)

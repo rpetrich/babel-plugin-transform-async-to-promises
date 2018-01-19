@@ -212,7 +212,7 @@ export function _switch(discriminant, cases) {
 			} else {
 				var test = cases[i][0];
 				if (test) {
-					_call(test, checkCaseTest, reject);
+					_call(test, checkCaseTest, false, reject);
 				} else {
 					defaultIndex = i;
 					nextCase();
@@ -230,7 +230,7 @@ export function _switch(discriminant, cases) {
 			for (;;) {
 				var body = cases[i][1];
 				if (body) {
-					return _call(body, checkFallthrough, reject);
+					return _call(body, checkFallthrough, false, reject);
 				} else if (++i === cases.length) {
 					return resolve();
 				}
@@ -251,13 +251,18 @@ export function _switch(discriminant, cases) {
 }
 
 // Asynchronously call a function and pass the result to explicitly passed continuations
-export function _call(body, then, recover) {
+export function _call(body, then, direct, recover) {
 	return (new Promise(function (resolve) { resolve(body()); })).then(then, recover);
 }
 
 // Asynchronously call a function and swallow the result
-export function _callIgnored(body) {
-	return (new Promise(function (resolve) { resolve(body()) })).then(_empty);
+export function _callIgnored(body, direct) {
+	return _call(body, _empty, void 0, direct);
+}
+
+// Asynchronously call a function and send errors to recovery continuation
+export function _catch(body, recover, direct) {
+	return _call(body, void 0, direct, recover);
 }
 
 // Asynchronously await a promise and pass the result to a finally continuation

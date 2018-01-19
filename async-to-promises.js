@@ -335,6 +335,9 @@ exports.default = function({ types, template, traverse }) {
 				const expression = awaitedExpressionInSingleReturnStatement(firstArg.body.body);
 				if (expression && types.isCallExpression(expression) && expression.callee._helperName === "_callIgnored") {
 					firstArg = expression.arguments[0];
+					if (expression.arguments.length > 1) {
+						directExpression = logicalOr(expression.arguments[1], directExpression);
+					}
 				}
 			}
 		} else {
@@ -349,9 +352,6 @@ exports.default = function({ types, template, traverse }) {
 			args.push(continuation);
 		}
 		if (directExpression && !(types.isBooleanLiteral(directExpression) && !directExpression.value)) {
-			if (ignoreResult) {
-				args.push(voidExpression());
-			}
 			args.push(directExpression);
 		}
 		let helperName = useCallHelper ? "_call" : "_await";
@@ -432,24 +432,25 @@ exports.default = function({ types, template, traverse }) {
 		}
 	}
 
-	function tryHelper(state, path, blockStatement, catchFunction) {
-		const catchArgs = catchFunction ? [voidExpression(), catchFunction] : [];
-		const body = blockStatement.body.filter(isNonEmptyStatement);
-		if (body.length === 1) {
-			const statement = body[0];
-			if (types.isReturnStatement(statement)) {
-				let argument = statement.argument;
-				while (types.isAwaitExpression(argument)) {
-					argument = argument.argument;
-				}
-				if (types.isCallExpression(argument) && argument.arguments.length === 0) {
-					if (types.isIdentifier(argument.callee) || types.isFunctionExpression(argument.callee)) {
-						return types.callExpression(helperReference(state, path, "_call"), [argument.callee].concat(catchArgs));
-					}
-				}
+	function catchHelper(state, path, blockStatement, catchContinuation, directExpression) {
+		let target;
+		const expression = awaitedExpressionInSingleReturnStatement(blockStatement.body);
+		if (expression && types.isCallExpression(expression) && expression.arguments.length === 0) {
+			if (types.isIdentifier(expression.callee) || types.isFunctionExpression(expression.callee)) {
+				target = expression.callee;
 			}
 		}
-		return types.callExpression(helperReference(state, path, "_call"), [types.functionExpression(null, [], blockStatement)].concat(catchArgs));
+		const catchArgs = [target || types.functionExpression(null, [], blockStatement)];
+		if (catchContinuation) {
+			catchArgs.push(catchContinuation);
+		}
+		if (!types.isBooleanLiteral(directExpression) || directExpression.value) {
+			if (!catchContinuation) {
+				catchArgs.push(voidExpression());
+			}
+			catchArgs.push(directExpression);
+		}
+		return types.callExpression(helperReference(state, path, catchArgs.length > 1 ? "_catch" : "_call"), [].concat(catchArgs));
 	}
 
 	const rewriteThisVisitor = {
@@ -1008,7 +1009,7 @@ exports.default = function({ types, template, traverse }) {
 										rewriteCatch = catchClause.body.body.length;
 										catchExpression = rewriteCatch ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(state, parent, "_empty");
 									}
-									const evalBlock = tryHelper(state, parent, parent.node.block, catchExpression);
+									const evalBlock = catchHelper(state, parent, parent.node.block, catchExpression, types.booleanLiteral(false));
 									relocateTail(state, evalBlock, success, parent, temporary, exitIdentifier, types.booleanLiteral(false));
 									if (finallyFunction && finallyName) {
 										parent.get("argument").replaceWith(types.callExpression(helperReference(state, parent, finallyName), [parent.node.argument, finallyFunction]));

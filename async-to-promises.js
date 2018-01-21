@@ -573,9 +573,12 @@ exports.default = function({ types, template, traverse }) {
 		return node;
 	}
 
-	function isExpressionOfLiterals(path) {
+	function isExpressionOfLiterals(path, literalName) {
 		if (path.isIdentifier()) {
 			if (path.node.name === "undefined") {
+				return true;
+			}
+			if (path.node.name === literalName) {
 				return true;
 			}
 			const binding = path.parentPath.scope.getBinding(path.node.name);
@@ -594,20 +597,26 @@ exports.default = function({ types, template, traverse }) {
 			return true;
 		}
 		if (path.isArrayExpression()) {
-			return path.get("elements").every(path => isExpressionOfLiterals(path));
+			return path.get("elements").every(path => isExpressionOfLiterals(path, literalName));
 		}
 		if (path.isObjectExpression()) {
 			return path.get("properties").every(path => {
 				if (!path.isObjectProperty()) {
 					return true;
 				}
-				if (isExpressionOfLiterals(path.get("value")) && (!path.node.computed || isExpressionOfLiterals(path.get("key")))) {
+				if (isExpressionOfLiterals(path.get("value")) && (!path.node.computed || isExpressionOfLiterals(path.get("key"), literalName))) {
 					return true;
 				}
 			});
 		}
 		if (path.isUnaryExpression()) {
-			return isExpressionOfLiterals(path.get("argument"));
+			return isExpressionOfLiterals(path.get("argument"), literalName);
+		}
+		if (path.isLogicalExpression() || path.isBinaryExpression()) {
+			return isExpressionOfLiterals(path.get("left"), literalName) && isExpressionOfLiterals(path.get("right"), literalName);
+		}
+		if (path.isConditionalExpression()) {
+			return isExpressionOfLiterals(path.get("test"), literalName) && isExpressionOfLiterals(path.get("consequent"), literalName) && isExpressionOfLiterals(path.get("alternate"), literalName);
 		}
 		return false;
 	}
@@ -1211,7 +1220,8 @@ exports.default = function({ types, template, traverse }) {
 												originalAwaitPath.parentPath.remove();
 											}
 										}
-										relocateTail(state, awaitExpression, parent.node, parent, resultIdentifier, exitIdentifier, directExpression);
+										const isUnused = parent.isExpressionStatement() && isExpressionOfLiterals(parent.get("expression"), resultIdentifier.name);
+										relocateTail(state, awaitExpression, isUnused ? types.emptyStatement() : parent.node, parent, isUnused ? null : resultIdentifier, exitIdentifier, directExpression);
 									},
 									path: parent,
 								});

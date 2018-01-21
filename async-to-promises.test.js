@@ -90,10 +90,10 @@ compiledTest("call chains", {
 });
 
 compiledTest("argument evaluation order", {
-	input: `async function(a, b, c) { return await a(1, b + 1, await c()); }`,
-	output: `_async(function(a,b,c){var _temp=b+1;return _call(c,function(_c){return a(1,_temp,_c);});})`,
+	input: `async function(a, b, c) { return await a(1, b() + 1, await c()); }`,
+	output: `_async(function(a,b,c){var _temp=b()+1;return _call(c,function(_c){return a(1,_temp,_c);});})`,
 	cases: {
-		result: async f => expect(await f(async (a, b, c) => a + b + c, 1, async _ => 2)).toBe(5),
+		result: async f => expect(await f(async (a, b, c) => a + b + c, () => 1, async _ => 2)).toBe(5),
 	},
 });
 
@@ -1013,25 +1013,25 @@ const orderCases = {
 
 compiledTest("ternary alternate event loop ordering", {
 	input: `async function(delay, callback) { delay ? await 0 : true; callback(); }`,
-	output: `_async(function(delay,callback){return _await(delay?0:0,function(_){delay?_:true;callback();},!delay);})`,
+	output: `_async(function(delay,callback){return _await(delay?0:0,function(){callback();},!delay);})`,
 	cases: orderCases,
 });
 
 compiledTest("ternary consequent event loop ordering", {
 	input: `async function(delay, callback) { !delay ? true : await 0; callback(); }`,
-	output: `_async(function(delay,callback){return _await(delay?0:0,function(_){!delay?true:_;callback();},!delay);})`,
+	output: `_async(function(delay,callback){return _await(delay?0:0,function(){callback();},!delay);})`,
 	cases: orderCases,
 });
 
 compiledTest("logical and alternate event loop ordering", {
 	input: `async function(delay, callback) { delay && await 0; callback(); }`,
-	output: `_async(function(delay,callback){return _await(delay&&0,function(_){delay&&_;callback();},!delay);})`,
+	output: `_async(function(delay,callback){return _await(delay&&0,function(){callback();},!delay);})`,
 	cases: orderCases,
 });
 
 compiledTest("logical or consequent event loop ordering", {
 	input: `async function(delay, callback) { !delay || await 0; callback(); }`,
-	output: `_async(function(delay,callback){return _await(!delay||0,function(_){!delay||_;callback();},!delay);})`,
+	output: `_async(function(delay,callback){return _await(!delay||0,function(){callback();},!delay);})`,
 	cases: orderCases,
 });
 

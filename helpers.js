@@ -296,55 +296,109 @@ export function _do(body, test) {
 
 // Asynchronously implement a switch statement
 export function _switch(discriminant, cases) {
+	var dispatchIndex = -1;
+	var awaitBody;
+	outer:
+	try {
+		for (var i = 0; i < cases.length; i++) {
+			var test = cases[i][0];
+			if (test) {
+				var testValue = test();
+				if (testValue && testValue.then) {
+					break outer;
+				}
+				if (testValue === discriminant) {
+					dispatchIndex = i;
+					break;
+				}
+			} else {
+				// Found the default case, set it as the pending dispatch case
+				dispatchIndex = i;
+			}
+		}
+		if (dispatchIndex !== -1) {
+			do {
+				var body = cases[dispatchIndex][1];
+				while (!body) {
+					dispatchIndex++;
+					body = cases[dispatchIndex][1];
+				}
+				var result = body();
+				if (result && result.then) {
+					awaitBody = true;
+					break outer;
+				}
+				var fallthroughCheck = cases[dispatchIndex][2];
+				dispatchIndex++;
+			} while (fallthroughCheck && !fallthroughCheck());
+			return result;
+		}
+	} catch (e) {
+		return Promise.reject(e);
+	}
 	return new Promise(function(resolve, reject) {
-		var i = -1;
-		var defaultIndex = -1;
-		function nextCase() {
-			if (++i === cases.length) {
-				if (defaultIndex !== -1) {
-					i = defaultIndex;
-					dispatchCaseBody();
-				} else {
-					resolve();
-				}
-			} else {
-				var test = cases[i][0];
-				if (test) {
-					_call(test, checkCaseTest, false, reject);
-				} else {
-					defaultIndex = i;
-					nextCase();
-				}
-			}
-		}
-		function checkCaseTest(test) {
-			if (test !== discriminant) {
-				nextCase();
-			} else {
-				dispatchCaseBody();
-			}
-		}
-		function dispatchCaseBody() {
+		(awaitBody ? result.then(resumeAfterBody) : testValue.then(resumeAfterTest)).catch(reject);
+		function resumeAfterTest(value) {
 			for (;;) {
-				var body = cases[i][1];
-				if (body) {
-					return _call(body, checkFallthrough, false, reject);
-				} else if (++i === cases.length) {
-					return resolve();
+				if (value === discriminant) {
+					dispatchIndex = i;
+					break;
+				}
+				if (++i === cases.length) {
+					if (dispatchIndex !== -1) {
+						break;
+					} else {
+						resolve(result);
+						return;
+					}
+				}
+				test = cases[i][0];
+				if (test) {
+					value = test();
+					if (value && value.then) {
+						value.then(resumeAfterTest).catch(reject);
+						return;
+					}
+				} else {
+					dispatchIndex = i;
 				}
 			}
+			do {
+				var body = cases[dispatchIndex][1];
+				while (!body) {
+					dispatchIndex++;
+					body = cases[dispatchIndex][1];
+				}
+				var result = body();
+				if (result && result.then) {
+					result.then(resumeAfterBody).catch(reject);
+					return;
+				}
+				var fallthroughCheck = cases[dispatchIndex][2];
+				dispatchIndex++;
+			} while (fallthroughCheck && !fallthroughCheck());
+			resolve(result);
 		}
-		function checkFallthrough(result) {
-			var fallthroughCheck = cases[i][2];
-			if (!fallthroughCheck || fallthroughCheck()) {
-				resolve(result);
-			} else if (++i === cases.length) {
-				resolve();
-			} else {
-				dispatchCaseBody();
+		function resumeAfterBody(result) {
+			for (;;) {
+				var fallthroughCheck = cases[dispatchIndex][2];
+				if (!fallthroughCheck || fallthroughCheck()) {
+					break;
+				}
+				dispatchIndex++;
+				var body = cases[dispatchIndex][1];
+				while (!body) {
+					dispatchIndex++;
+					body = cases[dispatchIndex][1];
+				}
+				result = body();
+				if (result && result.then) {
+					result.then(resumeAfterBody).catch(reject);
+					return;
+				}
 			}
+			resolve(result);
 		}
-		nextCase();
 	});
 }
 

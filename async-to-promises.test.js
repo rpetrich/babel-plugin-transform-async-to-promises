@@ -1052,3 +1052,9 @@ compiledTest("for to event loop ordering", {
 	output: `_async(function(delay,callback){var array=[0,1,2,3,4];return _continue(_forTo(array,function(i){return _invokeIgnored(function(){if(delay){return _awaitIgnored(array[i]);}});}),function(){callback();});})`,
 	cases: orderCases,
 });
+
+compiledTest("switch event loop ordering", {
+	input: `async function(delay, callback) { switch(delay) { case false: break; case true: await true; break; } callback(); }`,
+	output: `_async(function(delay,callback){var _interrupt;return _continue(_switch(delay,[[function(){return false;},function(){_interrupt=1;}],[function(){return true;},function(){return _await(true,function(){_interrupt=1;});}]]),function(){callback();});})`,
+	cases: orderCases,
+});

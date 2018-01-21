@@ -616,6 +616,16 @@ exports.default = function({ types, template, traverse }) {
 		return path.scope.generateUidIdentifierBasedOnNode(path.isAwaitExpression() ? path.node.argument : path.node, "temp");
 	}
 
+	function conditionalExpression(test, consequent, alternate) {
+		while (types.isUnaryExpression(test) && test.operator === "!") {
+			test = test.argument;
+			const temp = consequent;
+			consequent = alternate;
+			alternate = consequent;
+		}
+		return types.conditionalExpression(test, consequent, alternate);
+	}
+
 	function logicalOr(left, right) {
 		if (types.isBooleanLiteral(left) && left.value === false) {
 			return right;
@@ -692,10 +702,10 @@ exports.default = function({ types, template, traverse }) {
 					const consequent = parent.get("consequent");
 					const alternate = parent.get("alternate");
 					if (consequent === awaitPath && alternate.isAwaitExpression()) {
-						awaitExpression = types.conditionalExpression(testNode, awaitExpression, alternate.node.argument);
+						awaitExpression = conditionalExpression(testNode, awaitExpression, alternate.node.argument);
 						parent.replaceWith(consequent.node);
 					} else {
-						awaitExpression = consequent !== awaitPath ? types.conditionalExpression(testNode, types.numericLiteral(0), awaitExpression) : types.conditionalExpression(testNode, awaitExpression, types.numericLiteral(0));
+						awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, types.numericLiteral(0), awaitExpression) : conditionalExpression(testNode, awaitExpression, types.numericLiteral(0));
 						directExpression = logicalOr(consequent !== awaitPath ? testNode : logicalNot(testNode), directExpression);
 					}
 				}

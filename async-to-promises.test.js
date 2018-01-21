@@ -1019,7 +1019,7 @@ compiledTest("ternary alternate event loop ordering", {
 
 compiledTest("ternary consequent event loop ordering", {
 	input: `async function(delay, callback) { !delay ? true : await 0; callback(); }`,
-	output: `_async(function(delay,callback){return _await(!delay?0:0,function(_){!delay?true:_;callback();},!delay);})`,
+	output: `_async(function(delay,callback){return _await(delay?0:0,function(_){!delay?true:_;callback();},!delay);})`,
 	cases: orderCases,
 });
 

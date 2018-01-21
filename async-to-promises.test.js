@@ -998,42 +998,61 @@ compiledTest("for of await double with break", {
 	},
 });
 
-const orderTest = async f => {
-	var state;
-	const promise = f(() => state = false);
-	state = true;
-	await promise;
-	expect(state).toBe(true);
-}
+const orderCases = {
+	immediate: async f => {
+		var state;
+		const promise = f(false, () => state = true);
+		state = false;
+		await promise;
+		expect(state).toBe(false);
+	},
+	delayed: async f => {
+		var state;
+		const promise = f(true, () => state = true);
+		state = false;
+		await promise;
+		expect(state).toBe(true);
+	},
+};
 
 compiledTest("ternary alternate event loop ordering", {
-	input: `async function(callback) { false ? await 0 : true; callback(); }`,
+	input: `async function(delay, callback) { delay ? await 0 : true; callback(); }`,
 	output: `_async(function(callback){return _await(false?0:0,function(_){false?_:true;callback();},true);})`,
-	cases: {
-		order: orderTest,
-	},
+	cases: orderCases,
 });
 
 compiledTest("ternary consequent event loop ordering", {
-	input: `async function(callback) { true ? true : await 0; callback(); }`,
+	input: `async function(delay, callback) { !delay ? true : await 0; callback(); }`,
 	output: `_async(function(callback){return _await(true?0:0,function(_){true?true:_;callback();},true);})`,
-	cases: {
-		order: orderTest,
-	},
+	cases: orderCases,
 });
 
 compiledTest("logical and alternate event loop ordering", {
-	input: `async function(callback) { false && await 0; callback(); }`,
+	input: `async function(delay, callback) { delay && await 0; callback(); }`,
 	output: `_async(function(callback){return _await(false&&0,function(_){false&&_;callback();},true);})`,
-	cases: {
-		order: orderTest,
-	},
+	cases: orderCases,
 });
 
 compiledTest("logical or consequent event loop ordering", {
-	input: `async function(callback) { true || await 0; callback(); }`,
+	input: `async function(delay, callback) { !delay || await 0; callback(); }`,
 	output: `_async(function(callback){return _await(true||0,function(_){true||_;callback();},true);})`,
-	cases: {
-		order: orderTest,
-	},
+	cases: orderCases,
+});
+
+compiledTest("if consequent event loop ordering", {
+	input: `async function(delay, callback) { if (delay) await 0; callback(); }`,
+	output: `_async(function(callback){return _call(function(){if(false)return _awaitIgnored(0);},function(){callback();});})`,
+	cases: orderCases,
+});
+
+compiledTest("if alternate event loop ordering", {
+	input: `async function(delay, callback) { if (!delay) { } else { await 0 }; callback(); }`,
+	output: `_async(function(callback){return _call(function(){if(true){}else{return _awaitIgnored(0);}},function(){callback();});})`,
+	cases: orderCases,
+});
+
+compiledTest("for to event loop ordering", {
+	input: `async function(delay, callback) { var array = [0,1,2,3,4]; for (var i = 0; i < array.length; i++) { if (delay) { await array[i]; } }; callback(); }`,
+	output: `_async(function(callback){var array=[0,1,2,3,4];return _await(_forTo(array,function(i){return _callIgnored(function(){if(false){return _awaitIgnored(array[i]);}});}),function(){callback();});})`,
+	cases: orderCases,
 });

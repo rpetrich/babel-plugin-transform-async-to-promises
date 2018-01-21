@@ -36,28 +36,47 @@ export function _awaitIgnored(value, direct) {
 	return _await(value, _empty, direct);
 }
 
+// Proceeds after a value has resolved, or proceeds immediately if the value is not thenable
+export function _continue(value, then) {
+	return !value || !value.then ? then(value) : value.then(then);
+}
+
+// Proceeds after a value has resolved, or proceeds immediately if the value is not thenable
+export function _continueIgnored(value) {
+	if (value && value.then) {
+		return value.then(_empty);
+	}
+}
+
 // Asynchronously iterate through an object that has a length property, passing the index as the first argument to the callback (even as the length property changes)
 export function _forTo(array, body) {
-	return new Promise(function(resolve, reject) {
-		var i = 0;
-		var result;
-		cycle();
-		function dispatch(resolve) {
-			resolve(body(i));
-		}
-		function cycle() {
-			if (i < array.length) {
-				(new Promise(dispatch)).then(next, reject);
-			} else {
-				resolve(result);
+	try {
+		for (var i = 0; i < array.length; ++i) {
+			var result = body(i);
+			if (result && result.then) {
+				return new Promise(function(resolve, reject) {
+					result.then(cycle, reject);
+					function cycle(result) {
+						try {
+							while (++i < array.length) {
+								result = body(i);
+								if (result && result.then) {
+									result.then(cycle, reject);
+									return;
+								}
+							}
+							resolve(result);
+						} catch (e) {
+							reject(e);
+						}
+					}
+				});
 			}
 		}
-		function next(value) {
-			result = value;
-			i++;
-			cycle();
-		}
-	});
+		return result;
+	} catch (e) {
+		return Promise.reject(e);
+	}
 }
 
 // Asynchronously iterate through an object that has a length property, passing the value as the first argument to the callback (even as the length property changes)
@@ -104,25 +123,23 @@ export function _forOf(target, body, check) {
 				return body(step.value);
 			});
 			if (iterator.return) {
-				return iteration.then(function(result) {
-					try {
-						// Inform iterator of early exit
-						if ((!step || !step.done) && iterator.return) {
+				var fixup = function(value) {
+					// Inform iterator of early exit
+					if ((!step || !step.done) && iterator.return) {
+						try {
 							iterator.return();
+						} catch(e) {
 						}
-					} finally {
-						return result;
 					}
-				}, function(error) {
-					try {
-						// Inform iterator of early exit
-						if ((!step || !step.done) && iterator.return) {
-							iterator.return();
-						}
-					} finally {
-						throw error;
-					}
-				});
+					return value;
+				};
+				if (iteration && iteration.then) {
+					return iteration.then(fixup, function(error) {
+						throw fixup(error);
+					});
+				} else {
+					return fixup(iteration);
+				}
 			} else {
 				return iteration;
 			}
@@ -142,25 +159,77 @@ export function _forOf(target, body, check) {
 
 // Asynchronously implement a generic for loop
 export function _for(test, update, body) {
+	try {
+		var stage;
+		for (;;) {
+			var shouldContinue = test();
+			if (!shouldContinue) {
+				return result;
+			}
+			if (shouldContinue.then) {
+				stage = 0;
+				break;
+			}
+			var result = body();
+			if (result && result.then) {
+				stage = 1;
+				break;
+			}
+			if (update) {
+				var updateValue = update();
+				if (updateValue && updateValue.then) {
+					stage = 2;
+					break;
+				}
+			}
+		}
+	} catch (e) {
+		return Promise.reject(e);
+	}
 	return new Promise(function(resolve, reject) {
-		var result;
-		cycle();
-		function dispatchTest(resolve) {
-			resolve(test());
-		}
-		function cycle() {
-			(new Promise(dispatchTest)).then(checkTestResult, reject);
-		}
-		function stashAndUpdate(value) {
+		(stage === 0 ? shouldContinue.then(resumeAfterTest) : stage === 1 ? result.then(resumeAfterBody) : updateValue.then(resumeAfterUpdate)).catch(reject);
+		function resumeAfterBody(value) {
 			result = value;
-			return update && update();
+			do {
+				if (update) {
+					updateValue = update();
+					if (updateValue && updateValue.then) {
+						updateValue.then(resumeAfterUpdate).catch(reject);
+						return;
+					}
+				}
+				shouldContinue = test();
+				if (!shouldContinue) {
+					resolve(result);
+					return;
+				}
+				if (shouldContinue.then) {
+					shouldContinue.then(resumeAfterTest).catch(reject);
+					return;
+				}
+				result = body();
+			} while (!result || !result.then);
+			result.then(resumeAfterBody).catch(reject);
 		}
-		function dispatchBody(resolve) {
-			resolve(body());
-		}
-		function checkTestResult(shouldContinue) {
+		function resumeAfterTest(shouldContinue) {
 			if (shouldContinue) {
-				(new Promise(dispatchBody)).then(stashAndUpdate).then(cycle, reject);
+				result = body();
+				if (result && result.then) {
+					result.then(resumeAfterBody).catch(reject);
+				} else {
+					resumeAfterBody(result);
+				}
+			} else {
+				resolve(result);
+			}
+		}
+		function resumeAfterUpdate() {
+			if (shouldContinue = test()) {
+				if (shouldContinue.then) {
+					shouldContinue.then(resumeAfterTest).catch(reject);
+				} else {
+					resumeAfterTest(shouldContinue);
+				}
 			} else {
 				resolve(result);
 			}
@@ -170,25 +239,54 @@ export function _for(test, update, body) {
 
 // Asynchronously implement a do ... while loop
 export function _do(body, test) {
+	var awaitBody;
+	try {
+		do {
+			var result = body();
+			if (result && result.then) {
+				awaitBody = true;
+				break;
+			}
+			var shouldContinue = test();
+			if (!shouldContinue) {
+				return result;
+			}
+		} while (!shouldContinue.then);
+	} catch (e) {
+		return Promise.reject(e);
+	}
 	return new Promise(function(resolve, reject) {
-		var result;
-		cycle();
-		function dispatchBody(resolve) {
-			resolve(body());
-		}
-		function cycle() {
-			(new Promise(dispatchBody)).then(stashAndUpdate, reject);
-		}
-		function dispatchTest(resolve) {
-			resolve(test());
-		}
-		function stashAndUpdate(value) {
+		(awaitBody ? result.then(resumeAfterBody) : shouldContinue.then(resumeAfterTest)).catch(reject);
+		function resumeAfterBody(value) {
 			result = value;
-			(new Promise(dispatchTest)).then(checkTestResult, reject);
+			while (shouldContinue = test()) {
+				if (shouldContinue.then) {
+					shouldContinue.then(resumeAfterTest).catch(reject);
+					return;
+				}
+				result = body();
+				if (result && result.then) {
+					result.then(resumeAfterBody).catch(reject);
+					return;
+				}
+			}
+			resolve(result);
 		}
-		function checkTestResult(shouldContinue) {
+		function resumeAfterTest(shouldContinue) {
 			if (shouldContinue) {
-				cycle();
+				do {
+					result = body();
+					if (result && result.then) {
+						result.then(resumeAfterBody).catch(reject);
+						return;
+					}
+					shouldContinue = test();
+					if (!shouldContinue) {
+						resolve(result);
+						return;
+					}
+				} while (!shouldContinue.then);
+				shouldContinue.then(resumeAfterTest).catch(reject);
 			} else {
 				resolve(result);
 			}
@@ -252,12 +350,48 @@ export function _switch(discriminant, cases) {
 
 // Asynchronously call a function and pass the result to explicitly passed continuations
 export function _call(body, then, direct, recover) {
-	return (new Promise(function (resolve) { resolve(body()); })).then(then, recover);
+	try {
+		var result = body();
+		if (result && result.then) {
+			return result.then(then, recover);
+		}
+		if (!direct) {
+			return Promise.resolve(result).then(then, recover);
+		}
+	} catch(e) {
+		if (recover) {
+			try {
+				return Promise.resolve(recover(e));
+			} catch(e2) {
+				e = e2;
+			}
+		}
+		return Promise.reject(e);
+	}
+	return then ? then(result) : result;
 }
 
 // Asynchronously call a function and swallow the result
 export function _callIgnored(body, direct) {
 	return _call(body, _empty, void 0, direct);
+}
+
+// Asynchronously call a function and pass the result to explicitly passed continuations
+export function _invoke(body, then) {
+	try {
+		var result = body();
+		if (result && result.then) {
+			return result.then(then);
+		}
+	} catch(e) {
+		return Promise.reject(e);
+	}
+	return then ? then(result) : result;
+}
+
+// Asynchronously call a function and swallow the result
+export function _invokeIgnored(body) {
+	return _invoke(body, _empty);
 }
 
 // Asynchronously call a function and send errors to recovery continuation
@@ -266,13 +400,27 @@ export function _catch(body, recover, direct) {
 }
 
 // Asynchronously await a promise and pass the result to a finally continuation
-export function _finallyRethrows(promise, finalizer) {
-	return promise.then(finalizer.bind(null, false), finalizer.bind(null, true));
+export function _finallyRethrows(value, finalizer) {
+	if (value && value.then) {
+		return value.then(finalizer.bind(null, false), finalizer.bind(null, true));
+	}
+	try {
+		return finalizer(false, value);
+	} catch (e) {
+		return Promise.reject(e);
+	}
 }
 
 // Asynchronously await a promise and invoke a finally continuation that always overrides the result
-export function _finally(promise, finalizer) {
-	return promise.then(finalizer, finalizer);
+export function _finally(value, finalizer) {
+	if (value && value.then) {
+		return value.then(finalizer, finalizer);
+	}
+	try {
+		return finalizer();
+	} catch (e) {
+		return Promise.reject(e);
+	}
 }
 
 // Rethrow or return a value from a finally continuation

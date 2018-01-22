@@ -977,9 +977,6 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function rewriteFunctionBody(state, path, exitIdentifier) {
-		if (!path || !path.isFunction()) {
-			return;
-		}
 		path.traverse({
 			Function(path) {
 				path.skip();

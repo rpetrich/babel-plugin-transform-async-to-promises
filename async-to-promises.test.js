@@ -946,7 +946,7 @@ compiledTest("await break", {
 
 compiledTest("await complex switch", {
 	input: `async function(foo, bar, baz) { switch (foo) { case 1: case 2: return 0; case await bar(): if (foo) break; if (foo === 0) return 1; case 5: baz(); default: return 2; } return 3; }`,
-	output: `_async(function(foo,bar){var _exit,_interrupt;return _continue(_switch(foo,[[function(){return 1;}],[function(){return 2;},function(){_exit=1;return 0;}],[function(){return _call(bar);},function(){if(foo){_interrupt=1;return;}if(foo===0){_exit=1;return 1;}},function(){return _interrupt||_exit;}],[void 0,function(){_exit=1;return 2;}]]),function(_result){if(_exit)return _result;return 3;});})`,
+	output: `_async(function(foo,bar,baz){var _exit,_interrupt;return _continue(_switch(foo,[[function(){return 1;}],[function(){return 2;},function(){_exit=1;return 0;}],[function(){return _call(bar);},function(){if(foo){_interrupt=1;return;}if(foo===0){_exit=1;return 1;}},function(){return _interrupt||_exit;}],[function(){return 5;},function(){baz();},_empty],[void 0,function(){_exit=1;return 2;}]]),function(_result){if(_exit)return _result;return 3;});})`,
 	cases: {
 		fallthrough: async f => {
 			expect(await f(1)).toBe(0);
@@ -1096,6 +1096,18 @@ compiledTest("for of await double with break", {
 		single: async f => expect(await f([[1]])).toBe(1),
 		multiple: async f => expect(await f([[1,2],[3,4]])).toBe(10),
 		break: async f => expect(await f([[1,10,4],[5,4]])).toBe(11),
+	},
+});
+
+compiledTest("for of await double with break and two labels", {
+	input: `async function(matrix) { var result = 0; outer: for (var row of matrix) { inner: for (var value of row) { result += await value; if (result > 10) break outer; if (result < 0) break inner; } } return result; }`,
+	output: `_async(function(matrix){var _outerInterrupt;var result=0;return _continue(_forOf(matrix,function(row){var _innerInterrupt;return _continueIgnored(_forOf(row,function(value){return _await(value,function(_value){result+=_value;if(result>10){_outerInterrupt=_innerInterrupt=1;return;}if(result<0){_innerInterrupt=1;}});},function(){return _innerInterrupt||_outerInterrupt;}));},function(){return _outerInterrupt;}),function(){return result;});})`,
+	cases: {
+		empty: async f => expect(await f([])).toBe(0),
+		single: async f => expect(await f([[1]])).toBe(1),
+		multiple: async f => expect(await f([[1,2],[3,4]])).toBe(10),
+		outer: async f => expect(await f([[1,10,4],[5,4]])).toBe(11),
+		inner: async f => expect(await f([[-1,10],[5,4]])).toBe(8),
 	},
 });
 

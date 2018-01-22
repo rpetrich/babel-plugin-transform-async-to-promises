@@ -169,19 +169,6 @@ exports.default = function({ types, template, traverse }) {
 	function isCompatible(path) {
 		let result = true;
 		path.traverse({
-			BreakStatement(path) {
-				const label = path.node.label;
-				if (label) {
-					const labeledStatement = path.findParent(parent => parent.isLabeledStatement());
-					if (!labeledStatement || labeledStatement.node.label.name !== label.name) {
-						if (errorOnIncompatible) {
-							throw path.buildCodeFrameError("Only breaking out of the inner-most labeled scope is supported!");
-						}
-						result = false;
-						path.stop();
-					}
-				}
-			},
 			ContinueStatement(path) {
 				const label = path.node.label;
 				if (label) {
@@ -851,7 +838,7 @@ exports.default = function({ types, template, traverse }) {
 				const replace = returnStatement(null, path.node);
 				const index = path.node.label ? breakIdentifiers.findIndex(breakIdentifier => breakIdentifier.name === path.node.label.name) : 0;
 				if (index !== -1 && breakIdentifiers.length) {
-					const expression = breakIdentifiers.slice(0, index + 1).reduce((expression, breakIdentifier) => types.assignmentExpression("=", breakIdentifiers[0].identifier, expression), types.numericLiteral(1));
+					const expression = breakIdentifiers.slice(0, index + 1).reduce((expression, breakIdentifier) => types.assignmentExpression("=", breakIdentifier.identifier, expression), types.numericLiteral(1));
 					path.replaceWithMultiple([
 						types.expressionStatement(expression),
 						replace,
@@ -864,7 +851,7 @@ exports.default = function({ types, template, traverse }) {
 				const replace = returnStatement(null, path.node);
 				const index = path.node.label ? breakIdentifiers.findIndex(breakIdentifier => breakIdentifier.name === path.node.label.name) : 0;
 				if (index !== -1 && breakIdentifiers.length) {
-					const expression = breakIdentifiers.slice(0, index).reduce((expression, breakIdentifier) => types.assignmentExpression("=", breakIdentifiers[0].identifier, expression), types.numericLiteral(1));
+					const expression = breakIdentifiers.slice(0, index).reduce((expression, breakIdentifier) => types.assignmentExpression("=", breakIdentifier.identifier, expression), types.numericLiteral(1));
 					path.replaceWithMultiple([
 						types.expressionStatement(expression),
 						replace,

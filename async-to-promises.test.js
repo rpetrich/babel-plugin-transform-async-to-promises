@@ -6,6 +6,7 @@ const runTestCasesOnInput = false;
 const checkTestCases = true;
 const checkOutputMatches = true;
 const logCompiledOutput = false;
+const onlyRunTestName = undefined;
 
 const stripHelpersVisitor = {
 	Statement(path) {
@@ -25,10 +26,13 @@ function extractJustFunction(result) {
 }
 
 function compiledTest(name, { input, output, cases }) {
+	if (onlyRunTestName && onlyRunTestName !== name) {
+		return;
+	}
 	describe(name, () => {
 		const inputReturned = "return " + input;
 		const ast = babylon.parse(inputReturned, { allowReturnOutsideFunction: true });
-		const result = babel.transformFromAst(ast, inputReturned, { plugins: [pluginUnderTest], compact: true });
+		const result = babel.transformFromAst(ast, inputReturned, { plugins: [[pluginUnderTest, {}]], compact: true });
 		const strippedResult = extractJustFunction(result);
 		if (logCompiledOutput) {
 			console.log(name + " input", input);
@@ -61,6 +65,8 @@ function compiledTest(name, { input, output, cases }) {
 			test("output", () => {
 				expect(strippedResult).toBe(output);
 			});
+		} else if (strippedResult !== output) {
+			console.log(name + ": " + strippedResult);
 		}
 	});
 }

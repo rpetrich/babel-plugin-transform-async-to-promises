@@ -83,7 +83,7 @@ compiledTest("basic async", {
 
 compiledTest("call chains", {
 	input: `async function(a, b, c) { return await a(await b(), await c()); }`,
-	output: `_async(function(a,b,c){return _call(b,function(_b){return _call(c,function(_c){return a(_b,_c);});});})`,
+	output: `_async(function(a,b,c){return _call(b,function(_b){return _call(c,function(_c){return _await(a(_b,_c));});});})`,
 	cases: {
 		result: async f => expect(await f((b, c) => b + c, async _ => 2, async _ => 3)).toBe(5),
 	},
@@ -91,7 +91,7 @@ compiledTest("call chains", {
 
 compiledTest("argument evaluation order", {
 	input: `async function(a, b, c) { return await a(1, b() + 1, await c()); }`,
-	output: `_async(function(a,b,c){var _temp=b()+1;return _call(c,function(_c){return a(1,_temp,_c);});})`,
+	output: `_async(function(a,b,c){var _temp=b()+1;return _call(c,function(_c){return _await(a(1,_temp,_c));});})`,
 	cases: {
 		result: async f => expect(await f(async (a, b, c) => a + b + c, () => 1, async _ => 2)).toBe(5),
 	},
@@ -151,6 +151,24 @@ compiledTest("await logical both", {
 	cases: {
 		false: async f => expect(await f(async _ => 0, async _ => 2)).toBe(0),
 		true: async f => expect(await f(async _ => 5, async _ => 2)).toBe(2),
+	},
+});
+
+compiledTest("await logical complex right", {
+	input: `async function(left, right) { return left() && 1 + await right(); }`,
+	output: `_async(function(left,right){var _left=left();return _await(_left&&right(),function(_right){return _left&&1+_right;},!_left);})`,
+	cases: {
+		false: async f => expect(await f(_ => 0, async _ => 2)).toBe(0),
+		true: async f => expect(await f(_ => 5, async _ => 2)).toBe(3),
+	},
+});
+
+compiledTest("await logical complex left", {
+	input: `async function(left, right) { return await left() + 1 && right(); }`,
+	output: `_async(function(left,right){return _call(left,function(_left){return _left+1&&right();});})`,
+	cases: {
+		false: async f => expect(await f(async _ => -1, _ => 2)).toBe(0),
+		true: async f => expect(await f(async _ => 5, _ => 2)).toBe(2),
 	},
 });
 
@@ -224,7 +242,7 @@ compiledTest("if predicate", {
 
 compiledTest("if body returns", {
 	input: `async function(foo, bar, baz) { if (foo()) { return await bar(); } else { return await baz(); } }`,
-	output: `_async(function(foo,bar,baz){if(foo()){return bar();}else{return baz();}})`,
+	output: `_async(function(foo,bar,baz){if(foo()){return _call(bar);}else{return _call(baz);}})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 1, async _ => 0)).toBe(0),
@@ -242,7 +260,7 @@ compiledTest("if body assignments", {
 
 compiledTest("ternary consequent", {
 	input: `async function(foo, bar, baz) { return foo() ? await bar() : baz(); }`,
-	output: `_async(function(foo,bar,baz){var _foo=foo();return _await(_foo?bar():0,function(_bar){return _foo?_bar:baz();},!_foo);})`,
+	output: `_async(function(foo,bar,baz){var _foo=foo();return _await(_foo?bar():baz(),void 0,!_foo);})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 1, _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 1, _ => 0)).toBe(0),
@@ -251,7 +269,7 @@ compiledTest("ternary consequent", {
 
 compiledTest("ternary alternate", {
 	input: `async function(foo, bar, baz) { return foo() ? bar() : await baz(); }`,
-	output: `_async(function(foo,bar,baz){var _foo=foo();return _await(_foo?0:baz(),function(_baz){return _foo?bar():_baz;},_foo);})`,
+	output: `_async(function(foo,bar,baz){var _foo=foo();return _await(_foo?bar():baz(),void 0,_foo);})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, _ => 1, async _ => 0)).toBe(0),
@@ -260,10 +278,28 @@ compiledTest("ternary alternate", {
 
 compiledTest("ternary body", {
 	input: `async function(foo, bar, baz) { return foo() ? await bar() : await baz(); }`,
-	output: `_async(function(foo,bar,baz){var _foo=foo();return _foo?bar():baz();})`,
+	output: `_async(function(foo,bar,baz){var _foo=foo();return _await(_foo?bar():baz());})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 1, async _ => 0)).toBe(0),
+	},
+});
+
+compiledTest("ternary body complex left", {
+	input: `async function(a, b, c, d) { return a() ? b() && await c() : await d(); }`,
+	output: `_async(function(a,b,c,d){var _a=a(),_b=_a&&b();return _await(_a?_b&&c():d(),function(_c){return _a?_b&&_c:_c;},!_b);})`,
+	cases: {
+		consequent: async f => expect(await f(_ => true, _ => 1, async _ => 1, async _ => 0)).toBe(1),
+		alternate: async f => expect(await f(_ => false, _ => 1, async _ => 1, async _ => 0)).toBe(0),
+	},
+});
+
+compiledTest("ternary body complex right", {
+	input: `async function(a, b, c, d) { return a() ? await b() : c() && await d(); }`,
+	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _a2=_a,_c=_a2||c();return _await(_a2?_b:_c&&d(),function(_d){return _a2?_d:_c&&_d;},_a2||!_c);},!_a);})`,
+	cases: {
+		consequent: async f => expect(await f(_ => true, _ => 1, async _ => 1, async _ => 0)).toBe(1),
+		alternate: async f => expect(await f(_ => false, _ => 1, async _ => 1, async _ => 0)).toBe(0),
 	},
 });
 
@@ -377,7 +413,7 @@ compiledTest("calling member functions", {
 
 compiledTest("catch and recover via return", {
 	input: `async function(foo) { try { return await foo(); } catch(e) { return "fallback"; } }`,
-	output: `_async(function(foo){return _catch(foo,function(e){return"fallback";});})`,
+	output: `_async(function(foo){return _catch(function(){return _call(foo);},function(e){return"fallback";});})`,
 	cases: {
 		success: async f => expect(await f(async _ => "success")).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; })).toBe("fallback"),
@@ -386,7 +422,7 @@ compiledTest("catch and recover via return", {
 
 compiledTest("catch and ignore", {
 	input: `async function(foo) { try { return await foo(); } catch(e) { } }`,
-	output: `_async(function(foo){return _catch(foo,_empty);})`,
+	output: `_async(function(foo){return _catch(function(){return _call(foo);},_empty);})`,
 	cases: {
 		success: async f => expect(await f(async _ => "success")).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; })).toBe(undefined),
@@ -395,7 +431,7 @@ compiledTest("catch and ignore", {
 
 compiledTest("catch and await", {
 	input: `async function(foo, bar) { try { return await foo(); } catch(e) { await bar(); } }`,
-	output: `_async(function(foo,bar){return _catch(foo,function(e){return _callIgnored(bar);});})`,
+	output: `_async(function(foo,bar){return _catch(function(){return _call(foo);},function(e){return _callIgnored(bar);});})`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", async _ => false)).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; }, async _ => false)).toBe(undefined),
@@ -413,7 +449,7 @@ compiledTest("catch and recover via variable", {
 
 compiledTest("finally passthrough", {
 	input: `async function(value, log) { try { return await value(); } finally { log("finished value(), might rethrow"); } }`,
-	output: `_async(function(value,log){return _finallyRethrows(_call(value),function(_wasThrown,_result){log("finished value(), might rethrow");return _rethrow(_wasThrown,_result);});})`,
+	output: `_async(function(value,log){return _finallyRethrows(_call(function(){return _call(value);}),function(_wasThrown,_result){log("finished value(), might rethrow");return _rethrow(_wasThrown,_result);});})`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", _ => undefined)).toBe("success"),
 		throw: async f => {
@@ -430,7 +466,7 @@ compiledTest("finally passthrough", {
 
 compiledTest("finally suppress original return", {
 	input: `async function(value) { try { return await value(); } finally { return "suppressed"; } }`,
-	output: `_async(function(value){return _finally(_call(value),function(){return"suppressed";});})`,
+	output: `_async(function(value){return _finally(_call(function(){return _call(value);}),function(){return"suppressed";});})`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", _ => undefined)).toBe("suppressed"),
 		recover: async f => expect(await f(async _ => { throw "test"; }, _ => undefined)).toBe("suppressed"),
@@ -439,7 +475,7 @@ compiledTest("finally suppress original return", {
 
 compiledTest("finally double", {
 	input: `async function(func) { try { try { return await value(); } finally { if (0) { return "not this"; } } } finally { return "suppressed"; } }`,
-	output: `_async(function(func){return _finally(_call(function(){return _finallyRethrows(_call(value),function(_wasThrown,_result){if(0){return"not this";}return _rethrow(_wasThrown,_result);});}),function(){return"suppressed";});})`,
+	output: `_async(function(func){return _finally(_call(function(){return _finallyRethrows(_call(function(){return _call(value);}),function(_wasThrown,_result){if(0){return"not this";}return _rethrow(_wasThrown,_result);});}),function(){return"suppressed";});})`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", _ => undefined)).toBe("suppressed"),
 		recover: async f => expect(await f(async _ => { throw "test"; }, _ => undefined)).toBe("suppressed"),
@@ -448,7 +484,7 @@ compiledTest("finally double", {
 
 compiledTest("try catch finally", {
 	input: `async function(foo, bar, baz) { var result; try { return await foo(); } catch (e) { return await bar(); } finally { baz(); } }`,
-	output: `_async(function(foo,bar,baz){var result;return _finallyRethrows(_catch(foo,function(e){return bar();}),function(_wasThrown,_result){baz();return _rethrow(_wasThrown,_result);});})`,
+	output: `_async(function(foo,bar,baz){var result;return _finallyRethrows(_catch(function(){return _call(foo);},function(e){return _call(bar);}),function(_wasThrown,_result){baz();return _rethrow(_wasThrown,_result);});})`,
 	cases: {
 		normal: async f => {
 			const foo = async () => true;
@@ -645,7 +681,7 @@ compiledTest("while loop", {
 
 compiledTest("while predicate", {
 	input: `async function(foo) { var count = 0; while(await foo()) { count++; } return count }`,
-	output: `_async(function(foo){var count=0;return _continue(_for(foo,void 0,function(){count++;}),function(){return count;});})`,
+	output: `_async(function(foo){var count=0;return _continue(_for(function(){return _call(foo);},void 0,function(){count++;}),function(){return count;});})`,
 	cases: {
 		one: async f => {
 			var count = 0;
@@ -772,7 +808,7 @@ compiledTest("await for discriminant", {
 
 compiledTest("await for body", {
 	input: `async function(foo, bar) { switch (foo()) { case 1: return await bar(); default: return false; } }`,
-	output: `_async(function(foo,bar){switch(foo()){case 1:return bar();default:return false;}})`,
+	output: `_async(function(foo,bar){switch(foo()){case 1:return _call(bar);default:return false;}})`,
 	cases: {
 		zero: async f => {
 			expect(await f(() => 1, async () => 0)).toBe(0);
@@ -788,7 +824,7 @@ compiledTest("await for body", {
 
 compiledTest("await for body indirect optimized", {
 	input: `async function(foo, bar) { switch (foo()) { case 1: var result = await bar(); return result; default: return false; } }`,
-	output: `_async(function(foo,bar){switch(foo()){case 1:return bar();default:return false;}})`,
+	output: `_async(function(foo,bar){switch(foo()){case 1:return _call(bar);default:return false;}})`,
 	cases: {
 		zero: async f => {
 			expect(await f(() => 1, async () => 0)).toBe(0);
@@ -820,7 +856,7 @@ compiledTest("await for body indirect unoptimized", {
 
 compiledTest("await case", {
 	input: `async function(foo, bar) { switch (await foo()) { case await bar(): return true; default: return false; } }`,
-	output: `_async(function(foo,bar){return _call(foo,function(_foo){return _switch(_foo,[[function(){return bar();},function(){return true;}],[void 0,function(){return false;}]]);});})`,
+	output: `_async(function(foo,bar){return _call(foo,function(_foo){return _switch(_foo,[[function(){return _call(bar);},function(){return true;}],[void 0,function(){return false;}]]);});})`,
 	cases: {
 		true: async f => {
 			expect(await f(async () => 1, async () => 1)).toBe(true);
@@ -833,7 +869,7 @@ compiledTest("await case", {
 
 compiledTest("await break", {
 	input: `async function(foo, bar) { var result; switch (await foo()) { case await bar(): result = true; break; default: result = false; break; } return result; }`,
-	output: `_async(function(foo,bar){var result;return _call(foo,function(_foo){var _interrupt;return _continue(_switch(_foo,[[function(){return bar();},function(){result=true;_interrupt=1;}],[void 0,function(){result=false;_interrupt=1;}]]),function(){return result;});});})`,
+	output: `_async(function(foo,bar){var result;return _call(foo,function(_foo){var _interrupt;return _continue(_switch(_foo,[[function(){return _call(bar);},function(){result=true;_interrupt=1;}],[void 0,function(){result=false;_interrupt=1;}]]),function(){return result;});});})`,
 	cases: {
 		true: async f => {
 			expect(await f(async () => 1, async () => 1)).toBe(true);
@@ -846,7 +882,7 @@ compiledTest("await break", {
 
 compiledTest("await complex switch", {
 	input: `async function(foo, bar) { switch (foo) { case 1: case 2: return 0; case await bar(): if (foo) break; if (foo === 0) return 1; default: return 2; } return 3; }`,
-	output: `_async(function(foo,bar){var _exit,_interrupt;return _continue(_switch(foo,[[function(){return 1;}],[function(){return 2;},function(){_exit=1;return 0;}],[function(){return bar();},function(){if(foo){_interrupt=1;return;}if(foo===0){_exit=1;return 1;}},function(){return _interrupt||_exit;}],[void 0,function(){_exit=1;return 2;}]]),function(_result){if(_exit)return _result;return 3;});})`,
+	output: `_async(function(foo,bar){var _exit,_interrupt;return _continue(_switch(foo,[[function(){return 1;}],[function(){return 2;},function(){_exit=1;return 0;}],[function(){return _call(bar);},function(){if(foo){_interrupt=1;return;}if(foo===0){_exit=1;return 1;}},function(){return _interrupt||_exit;}],[void 0,function(){_exit=1;return 2;}]]),function(_result){if(_exit)return _result;return 3;});})`,
 	cases: {
 		fallthrough: async f => {
 			expect(await f(1)).toBe(0);
@@ -928,7 +964,7 @@ compiledTest("sequence expression", {
 
 compiledTest("class methods", {
 	input: `function() { return class { async foo(baz) { return await baz(); } static async bar(baz) { return await baz(); } } }`,
-	output: `function(){return class{foo(baz){return _call(function(){return baz();});}static bar(baz){return _call(function(){return baz();});}};}`,
+	output: `function(){return class{foo(baz){return _call(function(){return _call(baz);});}static bar(baz){return _call(function(){return _call(baz);});}};}`,
 	cases: {
 		method: async f => expect(await (new (f())).foo(async () => true)).toBe(true),
 		"class method": async f => expect(await f().bar(async () => true)).toBe(true),
@@ -952,7 +988,7 @@ compiledTest("class methods with pseudo-variables", {
 
 compiledTest("object method syntax", {
 	input: `function() { return { async foo(bar) { return await bar(); } }; }`,
-	output: `function(){return{foo:_async(function(bar){return bar();})};}`,
+	output: `function(){return{foo:_async(function(bar){return _call(bar);})};}`,
 	cases: {
 		method: async f => expect(await f().foo(async () => true)).toBe(true),
 	}
@@ -1013,7 +1049,7 @@ const orderCases = {
 
 compiledTest("ternary alternate event loop ordering", {
 	input: `async function(delay, callback) { delay ? await 0 : true; callback(); }`,
-	output: `_async(function(delay,callback){return _await(delay?0:0,function(){callback();},!delay);})`,
+	output: `_async(function(delay,callback){return _await(delay?0:true,function(){callback();},!delay);})`,
 	cases: orderCases,
 });
 

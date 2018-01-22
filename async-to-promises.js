@@ -452,7 +452,7 @@ exports.default = function({ types, template, traverse }) {
 		target.replaceWith(returnStatement(expression, originalNode));
 	}
 
-	function catchHelper(state, path, blockStatement, catchContinuation, directExpression) {
+	function catchHelper(state, path, blockStatement, catchContinuation) {
 		let target;
 		const expression = expressionInSingleReturnStatement(blockStatement.body);
 		if (expression && types.isCallExpression(expression) && expression.arguments.length === 0) {
@@ -463,12 +463,6 @@ exports.default = function({ types, template, traverse }) {
 		const catchArgs = [target || types.functionExpression(null, [], blockStatement)];
 		if (catchContinuation) {
 			catchArgs.push(catchContinuation);
-		}
-		if (!types.isBooleanLiteral(directExpression) || directExpression.value) {
-			if (!catchContinuation) {
-				catchArgs.push(voidExpression());
-			}
-			catchArgs.push(directExpression);
 		}
 		return types.callExpression(helperReference(state, path, catchArgs.length > 1 ? "_catch" : "_call"), [].concat(catchArgs));
 	}
@@ -1060,7 +1054,7 @@ exports.default = function({ types, template, traverse }) {
 										rewriteCatch = catchClause.body.body.length;
 										catchExpression = rewriteCatch ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(state, parent, "_empty");
 									}
-									const evalBlock = catchHelper(state, parent, parent.node.block, catchExpression, types.booleanLiteral(false));
+									const evalBlock = catchHelper(state, parent, parent.node.block, catchExpression);
 									relocateTail(state, evalBlock, success, parent, temporary, exitIdentifier);
 									if (finallyFunction && finallyName) {
 										parent.get("argument").replaceWith(types.callExpression(helperReference(state, parent, finallyName), [parent.node.argument, finallyFunction]));
@@ -1071,8 +1065,8 @@ exports.default = function({ types, template, traverse }) {
 						} else if (parent.isForStatement() || parent.isWhileStatement() || parent.isDoWhileStatement() || parent.isForInStatement() || parent.isForOfStatement()) {
 							const breaks = pathsBreak(parent);
 							const label = parent.parentPath.isLabeledStatement() ? parent.parent.label.name : null;
-							if (!exitIdentifier && explicitExits.any) {
-								path.scope.push({ id: exitIdentifier = awaitPath.scope.generateUidIdentifier(label ? label + "Exit" : "exit") });
+							if (!exitIdentifier && explicitExits.any && !explicitExits.all) {
+								path.scope.push({ id: exitIdentifier = awaitPath.scope.generateUidIdentifier("exit") });
 							}
 							const breakIdentifiers = replaceReturnsAndBreaks(parent.get("body"), exitIdentifier);
 							const isForIn = parent.isForInStatement();
@@ -1081,10 +1075,6 @@ exports.default = function({ types, template, traverse }) {
 							if (isForIn || isForOf) {
 								const right = parent.get("right");
 								if (awaitPath !== right) {
-									if (!explicitExits.all && explicitExits.any && !exitIdentifier) {
-										exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
-										path.scope.push({ id: exitIdentifier });
-									}
 									relocatedBlocks.push({
 										relocate() {
 											const left = parent.get("left");

@@ -339,8 +339,8 @@ compiledTest("arguments expression", {
 });
 
 compiledTest("this expressions", {
-	input: `async function() { return await this.foo() + await this.bar() }`,
-	output: `_async(function(){var _this=this;return _await(_this.foo(),function(_this$foo){return _await(_this.bar(),function(_this$bar){return _this$foo+_this$bar;});});})`,
+	input: `async function() { const test = () => this; return await this.foo() + await this.bar() }`,
+	output: `_async(function(){var _this=this;const test=()=>_this;return _await(_this.foo(),function(_this$foo){return _await(_this.bar(),function(_this$bar){return _this$foo+_this$bar;});});})`,
 	cases: {
 		direct: async f => expect(await f.call({ foo: _ => 1, bar: _ => 2 })).toBe(3),
 		async: async f => expect(await f.call({ foo: async _ => 2, bar: async _ => 4 })).toBe(6),
@@ -383,9 +383,21 @@ compiledTest("arrow functions with this", {
 		true: async f => {
 			const object = {};
 			expect(await f.call(object)()).toBe(object);
-		}
+		},
 	},
 });
+
+compiledTest("arrow functions with this inner", {
+	input: `function () { return async () => () => this; }`,
+	output: `function(){var _this=this;return _async(function(){return()=>_this;});}`,
+	cases: {
+		true: async f => {
+			const object = {};
+			expect((await f.call(object)())()).toBe(object);
+		},
+	},
+});
+
 
 compiledTest("inner functions", {
 	input: `function (value) { return async other => value + other; }`,
@@ -544,6 +556,14 @@ compiledTest("throw test", {
 	},
 });
 
+compiledTest("throw from switch and catch", {
+	input: `async function() { try { switch (true) { case true: throw await 1; } return false; } catch (e) { return true; } }`,
+	output: `_async(function(){var _exit;return _catch(function(){return _continue(_switch(true,[[function(){return true;},function(){return _await(1,function(_){throw _;});}]]),function(_result){if(_exit)return _result;return false;});},function(e){return true;});})`,
+	cases: {
+		result: async f => { expect(await f()).toBe(true) },
+	},
+});
+
 
 compiledTest("for to length iteration", {
 	input: `async function(list) { var result = 0; for (var i = 0; i < list.length; i++) { result += await list[i](); } return result;}`,
@@ -559,6 +579,33 @@ compiledTest("for to length iteration", {
 compiledTest("for to length with break", {
 	input: `async function(list) { for (var i = 0; i < list.length; i++) { if (await list[i]()) { break; } }}`,
 	output: `_async(function(list){var _interrupt;var i=0;return _continueIgnored(_for(function(){return!_interrupt&&i<list.length;},function(){return i++;},function(){return _await(list[i](),function(_list$i){if(_list$i){_interrupt=1;}});}));})`,
+	cases: {
+		none: async f => expect(await f([])).toBe(undefined),
+		single: async f => {
+			let called = false;
+			await f([async _ => called = true]);
+			expect(called).toBe(true);
+		},
+		both: async f => {
+			let called1 = false;
+			let called2 = false;
+			await f([async _ => { called1 = true }, async _ => called2 = true]);
+			expect(called1).toBe(true);
+			expect(called2).toBe(true);
+		},
+		stop: async f => {
+			let called1 = false;
+			let called2 = false;
+			await f([async _ => called1 = true, async _ => called2 = true]);
+			expect(called1).toBe(true);
+			expect(called2).toBe(false);
+		},
+	},
+});
+
+compiledTest("for to length with return", {
+	input: `async function(list) { for (var i = 0; i < list.length; i++) { if (await list[i]()) { return; } }}`,
+	output: `_async(function(list){var _exit;var i=0;return _continue(_for(function(){return!_exit&&i<list.length;},function(){return i++;},function(){return _await(list[i](),function(_list$i){if(_list$i){_exit=1;}});}),function(_result){if(_exit)return _result;});})`,
 	cases: {
 		none: async f => expect(await f([])).toBe(undefined),
 		single: async f => {
@@ -773,8 +820,19 @@ compiledTest("for in await value", {
 	},
 });
 
-compiledTest("for in own await value", {
+compiledTest("for in own await value on Object prototype", {
 	input: `async function(foo) { var values = []; for (var key in foo) { if (Object.prototype.hasOwnProperty.call(foo, key)) { values.push(await foo[key]()); } } return values.sort(); }`,
+	output: `_async(function(foo){var values=[];return _continue(_forOwn(foo,function(key){var _push=values.push;return _await(foo[key](),function(_foo$key){_push.call(values,_foo$key);});}),function(){return values.sort();});})`,
+	cases: {
+		two: async f => {
+			var obj = { bar: async _ => 0, baz: async _ => 1 };
+			expect(JSON.stringify(await f(obj))).toBe(`[0,1]`);
+		},
+	},
+});
+
+compiledTest("for in own await value on literal", {
+	input: `async function(foo) { var values = []; for (var key in foo) { if ({}.hasOwnProperty.call(foo, key)) { values.push(await foo[key]()); } } return values.sort(); }`,
 	output: `_async(function(foo){var values=[];return _continue(_forOwn(foo,function(key){var _push=values.push;return _await(foo[key](),function(_foo$key){_push.call(values,_foo$key);});}),function(){return values.sort();});})`,
 	cases: {
 		two: async f => {
@@ -887,7 +945,7 @@ compiledTest("await break", {
 });
 
 compiledTest("await complex switch", {
-	input: `async function(foo, bar) { switch (foo) { case 1: case 2: return 0; case await bar(): if (foo) break; if (foo === 0) return 1; default: return 2; } return 3; }`,
+	input: `async function(foo, bar, baz) { switch (foo) { case 1: case 2: return 0; case await bar(): if (foo) break; if (foo === 0) return 1; case 5: baz(); default: return 2; } return 3; }`,
 	output: `_async(function(foo,bar){var _exit,_interrupt;return _continue(_switch(foo,[[function(){return 1;}],[function(){return 2;},function(){_exit=1;return 0;}],[function(){return _call(bar);},function(){if(foo){_interrupt=1;return;}if(foo===0){_exit=1;return 1;}},function(){return _interrupt||_exit;}],[void 0,function(){_exit=1;return 2;}]]),function(_result){if(_exit)return _result;return 3;});})`,
 	cases: {
 		fallthrough: async f => {
@@ -904,6 +962,11 @@ compiledTest("await complex switch", {
 		},
 		default: async f => {
 			expect(await f(0, async () => 2)).toBe(2);
+		},
+		"fallthrough with code": async f => {
+			let called = false;
+			expect(await f(5, async () => 2, () => called = true)).toBe(2);
+			expect(called).toBe(true);
 		},
 	},
 });

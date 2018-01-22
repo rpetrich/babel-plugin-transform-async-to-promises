@@ -28,12 +28,14 @@ export const _async = (function() {
 
 // Awaits on a value that may or may not be a Promise (equivalent to the await keyword in ES2015, with continuations passed explicitly)
 export function _await(value, then, direct) {
-	return direct ? then(value) : Promise.resolve(value).then(then);
+	return direct ? (then ? then(value) : value) : Promise.resolve(value).then(then);
 }
 
 // Awaits on a value that may or may not be a Promise, then ignores it
 export function _awaitIgnored(value, direct) {
-	return _await(value, _empty, direct);
+	if (!direct) {
+		return Promise.resolve(value).then(_empty);
+	}
 }
 
 // Proceeds after a value has resolved, or proceeds immediately if the value is not thenable

@@ -25,13 +25,24 @@ function extractJustFunction(result) {
 	return code.match(/return\s*(.*);$/)[1];
 }
 
-function compiledTest(name, { input, output, cases }) {
+function compiledTest(name, { input, output, cases, error }) {
 	if (onlyRunTestName && onlyRunTestName !== name) {
 		return;
 	}
 	describe(name, () => {
 		const inputReturned = "return " + input;
 		const ast = babylon.parse(inputReturned, { allowReturnOutsideFunction: true });
+		if (error) {
+			test("error", () => {
+				try {
+					babel.transformFromAst(ast, inputReturned, { plugins: [[pluginUnderTest, {}]], compact: true })
+					throw new Error("Expected error: " + error.toString());
+				} catch (e) {
+					expect(e.toString()).toBe(error);
+				}
+			});
+			return;
+		}
 		const result = babel.transformFromAst(ast, inputReturned, { plugins: [[pluginUnderTest, {}]], compact: true });
 		const strippedResult = extractJustFunction(result);
 		if (logCompiledOutput) {
@@ -1187,4 +1198,10 @@ compiledTest("switch event loop ordering", {
 	input: `async function(delay, callback) { switch(delay) { case false: break; case true: await true; break; } callback(); }`,
 	output: `_async(function(delay,callback){var _interrupt;return _continue(_switch(delay,[[function(){return false;},function(){_interrupt=1;}],[function(){return true;},function(){return _await(true,function(){_interrupt=1;});}]]),function(){callback();});})`,
 	cases: orderCases,
+});
+
+
+compiledTest("eval is evil", {
+	input: `async function(code) { return await eval(code); }`,
+	error: `SyntaxError: unknown: Calling eval from inside an async function is not supported!`,
 });

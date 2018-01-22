@@ -1,4 +1,5 @@
 const errorOnIncompatible = true;
+let helpers;
 
 exports.default = function({ types, template, traverse }) {
 
@@ -1243,8 +1244,6 @@ exports.default = function({ types, template, traverse }) {
 			},
 		});
 	}
-
-	let helpers;
 
 	function getHelperDependencies(path) {
 		const dependencies = [];

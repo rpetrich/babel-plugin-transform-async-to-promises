@@ -1101,7 +1101,7 @@ compiledTest("for of await double with break", {
 
 compiledTest("for of await double with break and two labels", {
 	input: `async function(matrix) { var result = 0; outer: for (var row of matrix) { inner: for (var value of row) { result += await value; if (result > 10) break outer; if (result < 0) break inner; } } return result; }`,
-	output: `_async(function(matrix){var _outerInterrupt;var result=0;return _continue(_forOf(matrix,function(row){var _innerInterrupt;return _continueIgnored(_forOf(row,function(value){return _await(value,function(_value){result+=_value;if(result>10){_outerInterrupt=_innerInterrupt=1;return;}if(result<0){_innerInterrupt=1;}});},function(){return _innerInterrupt||_outerInterrupt;}));}),function(){return result;});})"`,
+	output: `_async(function(matrix){var _outerInterrupt;var result=0;return _continue(_forOf(matrix,function(row){var _innerInterrupt;return _continueIgnored(_forOf(row,function(value){return _await(value,function(_value){result+=_value;if(result>10){_outerInterrupt=_innerInterrupt=1;return;}if(result<0){_innerInterrupt=1;}});},function(){return _innerInterrupt||_outerInterrupt;}));}),function(){return result;});})`,
 	cases: {
 		empty: async f => expect(await f([])).toBe(0),
 		single: async f => expect(await f([[1]])).toBe(1),

@@ -294,35 +294,15 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function awaitAndContinue(state, path, value, continuation, directExpression) {
-		const useCallHelper = types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee);
-		let ignoreResult = false;
-		let firstArg;
-		if (useCallHelper) {
-			firstArg = value.callee;
-			if (types.isFunctionExpression(firstArg)) {
-				const expression = expressionInSingleReturnStatement(firstArg.body.body);
-				if (expression && types.isCallExpression(expression) && expression.callee._helperName === "_callIgnored") {
-					firstArg = expression.arguments[0];
-					if (expression.arguments.length > 1) {
-						if (directExpression) {
-							directExpression = logicalOr(expression.arguments[1], directExpression);
-						} else {
-							directExpression = expression.arguments[1];
-						}
-					}
-				}
-			}
-		} else {
-			firstArg = value;
-		}
 		if (continuation && isPassthroughContinuation(continuation)) {
 			continuation = null;
 		}
 		if (!continuation && directExpression && types.isBooleanLiteral(directExpression) && directExpression.value) {
 			return value;
 		}
-		let args = [firstArg];
-		ignoreResult = types.isIdentifier(continuation) && continuation === path.hub.file.declarations["_empty"];
+		const useCallHelper = types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee);
+		const args = [useCallHelper ? value.callee : value];
+		const ignoreResult = types.isIdentifier(continuation) && continuation === path.hub.file.declarations["_empty"];
 		if (!ignoreResult && continuation) {
 			args.push(continuation);
 		}

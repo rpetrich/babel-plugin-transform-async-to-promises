@@ -397,9 +397,6 @@ exports.default = function({ types, template, traverse }) {
 
 	function relocateTail(state, awaitExpression, statementNode, target, temporary, exitIdentifier, directExpression) {
 		const tail = borrowTail(target);
-		if (statementNode && types.isExpressionStatement(statementNode) && types.isIdentifier(statementNode.expression)) {
-			statementNode = null;
-		}
 		let expression;
 		let originalNode = target.node;
 		const blocks = removeUnnecessaryReturnStatements((statementNode ? [statementNode].concat(tail) : tail).filter(isNonEmptyStatement));
@@ -1194,7 +1191,7 @@ exports.default = function({ types, template, traverse }) {
 								originalAwaitPath.replaceWith(voidExpression());
 								relocatedBlocks.push({
 									relocate() {
-										relocateTail(state, originalArgument, types.emptyStatement(), parent, null, exitIdentifier, types.booleanLiteral(false));
+										relocateTail(state, originalArgument, null, parent, null, exitIdentifier, types.booleanLiteral(false));
 									},
 									path: parent,
 								});
@@ -1226,7 +1223,7 @@ exports.default = function({ types, template, traverse }) {
 											}
 										}
 										const isUnused = parent.isExpressionStatement() && isExpressionOfLiterals(parent.get("expression"), resultIdentifier.name);
-										relocateTail(state, awaitExpression, isUnused ? types.emptyStatement() : parent.node, parent, isUnused ? null : resultIdentifier, exitIdentifier, directExpression);
+										relocateTail(state, awaitExpression, isUnused ? null : parent.node, parent, isUnused ? null : resultIdentifier, exitIdentifier, directExpression);
 									},
 									path: parent,
 								});

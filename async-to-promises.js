@@ -749,7 +749,7 @@ exports.default = function({ types, template, traverse }) {
 						break;
 					}
 					if (prop.isObjectProperty()) {
-						if (prop.computed) {
+						if (prop.node.computed) {
 							const propKey = prop.get("key");
 							if (!isExpressionOfLiterals(propKey)) {
 								const keyIdentifier = generateIdentifierForPath(propKey);

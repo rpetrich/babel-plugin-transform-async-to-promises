@@ -666,8 +666,9 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function extractDeclarations(awaitPath, awaitExpression) {
-		const declarations = [];
+		let declarations = [];
 		let directExpression = types.booleanLiteral(false);
+		const resultIdentifier = awaitPath.node;
 		do {
 			const parent = awaitPath.parentPath;
 			if (parent.isVariableDeclarator()) {
@@ -678,25 +679,26 @@ exports.default = function({ types, template, traverse }) {
 					sibling.remove();
 				}
 				if (beforeDeclarations.length) {
-					parent.parentPath.insertBefore(types.variableDeclaration(parent.parent.kind, beforeDeclarations));
+					declarations = beforeDeclarations.concat(declarations);
 				}
 			} else if (parent.isLogicalExpression()) {
 				const left = parent.get("left");
 				if (awaitPath !== left) {
 					if (!isExpressionOfLiterals(left)) {
 						const leftIdentifier = generateIdentifierForPath(left);
-						declarations.push(types.variableDeclarator(leftIdentifier, left.node));
+						declarations = declarations.map(declaration => types.variableDeclarator(declaration.id, types.logicalExpression("&&", parent.node.operator === "||" ? logicalNot(leftIdentifier) : leftIdentifier, declaration.init)));
+						declarations.unshift(types.variableDeclarator(leftIdentifier, left.node));
 						left.replaceWith(leftIdentifier);
 					}
 					awaitExpression = types.logicalExpression(parent.node.operator, left.node, awaitExpression);
-					directExpression =  logicalOr(parent.node.operator === "||" ? left.node : logicalNot(left.node), directExpression);
+					directExpression = logicalOr(parent.node.operator === "||" ? left.node : logicalNot(left.node), directExpression);
 				}
 			} else if (parent.isBinaryExpression()) {
 				const left = parent.get("left");
 				if (awaitPath !== left) {
 					if (!isExpressionOfLiterals(left)) {
 						const leftIdentifier = generateIdentifierForPath(left);
-						declarations.push(types.variableDeclarator(leftIdentifier, left.node));
+						declarations.unshift(types.variableDeclarator(leftIdentifier, left.node));
 						left.replaceWith(leftIdentifier);
 					}
 				}
@@ -707,7 +709,7 @@ exports.default = function({ types, template, traverse }) {
 					const expression = children[i];
 					if (!isExpressionOfLiterals(expression)) {
 						const sequenceIdentifier = generateIdentifierForPath(expression);
-						declarations.push(types.variableDeclarator(sequenceIdentifier, expression.node));
+						declarations.unshift(types.variableDeclarator(sequenceIdentifier, expression.node));
 					}
 					expression.remove();
 				}
@@ -715,19 +717,29 @@ exports.default = function({ types, template, traverse }) {
 				const test = parent.get("test");
 				if (awaitPath !== test) {
 					let testNode = test.node;
+					const consequent = parent.get("consequent");
+					const alternate = parent.get("alternate");
+					const other = consequent === awaitPath ? alternate : consequent;
+					let testIdentifier;
 					if (!isExpressionOfLiterals(test)) {
-						const testIdentifier = generateIdentifierForPath(test);
-						declarations.push(types.variableDeclarator(testIdentifier, testNode));
+						testIdentifier = generateIdentifierForPath(test);
+					}
+					declarations = declarations.map(declaration => types.variableDeclarator(declaration.id, types.logicalExpression(consequent === awaitPath ? "&&" : "||", testIdentifier || testNode, declaration.init)));
+					if (testIdentifier) {
+						declarations.unshift(types.variableDeclarator(testIdentifier, testNode));
 						test.replaceWith(testIdentifier);
 						testNode = testIdentifier;
 					}
-					const consequent = parent.get("consequent");
-					const alternate = parent.get("alternate");
 					if (consequent === awaitPath && alternate.isAwaitExpression()) {
 						awaitExpression = conditionalExpression(testNode, awaitExpression, alternate.node.argument);
-						parent.replaceWith(consequent.node);
+						alternate.replaceWith(resultIdentifier);
 					} else {
-						awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, types.numericLiteral(0), awaitExpression) : conditionalExpression(testNode, awaitExpression, types.numericLiteral(0));
+						if (findAwaitPath(other)) {
+							awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, types.numericLiteral(0), awaitExpression) : conditionalExpression(testNode, awaitExpression, types.numericLiteral(0));
+						} else {
+							awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, other.node, awaitExpression) : conditionalExpression(testNode, awaitExpression, other.node);
+							other.replaceWith(resultIdentifier);
+						}
 						directExpression = logicalOr(consequent !== awaitPath ? testNode : logicalNot(testNode), directExpression);
 					}
 				}
@@ -740,7 +752,7 @@ exports.default = function({ types, template, traverse }) {
 						}
 						if (!isExpressionOfLiterals(arg)) {
 							const argIdentifier = generateIdentifierForPath(arg);
-							declarations.push(types.variableDeclarator(argIdentifier, arg.node));
+							declarations.unshift(types.variableDeclarator(argIdentifier, arg.node));
 							arg.replaceWith(argIdentifier);
 						}
 					}
@@ -749,19 +761,19 @@ exports.default = function({ types, template, traverse }) {
 							const object = callee.get("object");
 							if (!isExpressionOfLiterals(object)) {
 								const objectIdentifier = generateIdentifierForPath(object);
-								declarations.push(types.variableDeclarator(objectIdentifier, object.node));
+								declarations.unshift(types.variableDeclarator(objectIdentifier, object.node));
 								object.replaceWith(objectIdentifier);
 							}
 							const property = callee.get("property");
 							const calleeIdentifier = generateIdentifierForPath(property);
 							const calleeNode = callee.node;
 							parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), [object.node].concat(parent.node.arguments)));
-							declarations.push(types.variableDeclarator(calleeIdentifier, calleeNode));
+							declarations.unshift(types.variableDeclarator(calleeIdentifier, calleeNode));
 						} else if (!callee.isIdentifier() || !(!callee.node.name._helperName || (awaitPath.scope.getBinding(callee.node.name) || {}).constant)) {
 							const calleeIdentifier = generateIdentifierForPath(callee);
 							const calleeNode = callee.node;
 							callee.replaceWith(calleeIdentifier);
-							declarations.push(types.variableDeclarator(calleeIdentifier, calleeNode));
+							declarations.unshift(types.variableDeclarator(calleeIdentifier, calleeNode));
 						}
 					}
 				}
@@ -772,7 +784,7 @@ exports.default = function({ types, template, traverse }) {
 					}
 					if (!isExpressionOfLiterals(element)) {
 						const elementIdentifier = generateIdentifierForPath(element);
-						declarations.push(types.variableDeclarator(elementIdentifier, element.node));
+						declarations.unshift(types.variableDeclarator(elementIdentifier, element.node));
 						element.replaceWith(elementIdentifier);
 					}
 				}
@@ -786,14 +798,14 @@ exports.default = function({ types, template, traverse }) {
 							const propKey = prop.get("key");
 							if (!isExpressionOfLiterals(propKey)) {
 								const keyIdentifier = generateIdentifierForPath(propKey);
-								declarations.push(types.variableDeclarator(keyIdentifier, propKey.node));
+								declarations.unshift(types.variableDeclarator(keyIdentifier, propKey.node));
 								propKey.replaceWith(keyIdentifier);
 							}
 						}
 						const propValue = prop.get("value");
 						if (!isExpressionOfLiterals(propValue)) {
 							const propIdentifier = generateIdentifierForPath(propValue);
-							declarations.push(types.variableDeclarator(propIdentifier, propValue.node));
+							declarations.unshift(types.variableDeclarator(propIdentifier, propValue.node));
 							propValue.replaceWith(propIdentifier);
 						}
 					}

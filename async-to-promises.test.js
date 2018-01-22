@@ -409,6 +409,17 @@ compiledTest("arrow functions with this inner", {
 	},
 });
 
+compiledTest("arrow functions with unbridged this inner", {
+	input: `function () { return async () => function() { return this; }; }`,
+	output: `function(){return _async(function(){return function(){return this;};});}`,
+	cases: {
+		true: async f => {
+			const object = {};
+			expect((await f.call(object)())()).toBe((function(){ return this; })());
+		},
+	},
+});
+
 
 compiledTest("inner functions", {
 	input: `function (value) { return async other => value + other; }`,

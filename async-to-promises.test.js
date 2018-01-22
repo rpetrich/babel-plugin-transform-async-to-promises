@@ -1033,15 +1033,15 @@ compiledTest("array literal", {
 });
 
 compiledTest("object literal", {
-	input: `async function(left, right) { return { zero: 0, one: left(), two: 2, three: await right(), four: 4 } }`,
-	output: `_async(function(left,right){var _left=left();return _call(right,function(_right){return{zero:0,one:_left,two:2,three:_right,four:4};});})`,
+	input: `async function(left, right, two) { return { zero: 0, one: left(), [two()]: 2, three: await right(), four: 4 } }`,
+	output: `_async(function(left,right,two){var _left=left();return _call(right,function(_right){return{zero:0,one:_left,[two()]:2,three:_right,four:4};});})`,
 	cases: {
 		value: async f => {
-			expect(await f(() => 1, async () => 3)).toEqual({ zero: 0, one: 1, two: 2, three: 3, four: 4 });
+			expect(await f(() => 1, async () => 3, () => "two")).toEqual({ zero: 0, one: 1, two: 2, three: 3, four: 4 });
 		},
 		order: async f => {
 			var leftCalled = false;
-			await f(() => (expect(leftCalled).toBe(false), leftCalled = true), () => expect(leftCalled).toBe(true));
+			await f(() => (expect(leftCalled).toBe(false), leftCalled = true), () => expect(leftCalled).toBe(true), () => "two");
 			expect(leftCalled).toBe(true);
 		},
 	}

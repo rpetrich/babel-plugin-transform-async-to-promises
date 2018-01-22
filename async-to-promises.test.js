@@ -476,6 +476,15 @@ compiledTest("catch and recover via variable", {
 	},
 });
 
+compiledTest("catch and recover via optimized return", {
+	input: `async function(foo, bar) { try { return foo(); } catch(e) { return await bar(); } }`,
+	output: `_async(function(foo,bar){return _catch(foo,function(e){return _call(bar);});})`,
+	cases: {
+		success: async f => expect(await f(_ => "success")).toBe("success"),
+		fallback: async f => expect(await f(_ => { throw "test"; }, () => "fallback")).toBe("fallback"),
+	},
+});
+
 compiledTest("finally passthrough", {
 	input: `async function(value, log) { try { return await value(); } finally { log("finished value(), might rethrow"); } }`,
 	output: `_async(function(value,log){return _finallyRethrows(_call(function(){return _call(value);}),function(_wasThrown,_result){log("finished value(), might rethrow");return _rethrow(_wasThrown,_result);});})`,

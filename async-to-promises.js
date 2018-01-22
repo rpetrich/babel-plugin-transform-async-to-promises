@@ -351,16 +351,19 @@ exports.default = function({ types, template, traverse }) {
 		} else {
 			firstArg = value;
 		}
-		if (!continuation || isPassthroughContinuation(continuation)) {
+		if (continuation && isPassthroughContinuation(continuation)) {
+			continuation = null;
+		}
+		if (!continuation && directExpression && types.isBooleanLiteral(directExpression) && directExpression.value) {
 			return value;
 		}
 		let args = [firstArg];
 		ignoreResult = types.isIdentifier(continuation) && continuation === path.hub.file.declarations["_empty"];
-		if (!ignoreResult) {
+		if (!ignoreResult && continuation) {
 			args.push(continuation);
 		}
 		if (directExpression && !(types.isBooleanLiteral(directExpression) && !directExpression.value)) {
-			if (ignoreResult) {
+			if (!ignoreResult && !continuation) {
 				args.push(voidExpression());
 			}
 			args.push(directExpression);
@@ -368,6 +371,9 @@ exports.default = function({ types, template, traverse }) {
 		let helperName = directExpression ? (useCallHelper ? "_call" : "_await") : (useCallHelper ? "_invoke" : "_continue");
 		if (ignoreResult) {
 			helperName += "Ignored";
+		}
+		if (helperName === "_continue" && args.length === 1) {
+			return args[0];
 		}
 		return types.callExpression(helperReference(state, path, helperName), args);
 	}
@@ -430,17 +436,20 @@ exports.default = function({ types, template, traverse }) {
 		if (statementNode && types.isExpressionStatement(statementNode) && types.isIdentifier(statementNode.expression)) {
 			statementNode = null;
 		}
+		let expression;
+		let originalNode = target.node;
 		const blocks = removeUnnecessaryReturnStatements((statementNode ? [statementNode].concat(tail) : tail).filter(isNonEmptyStatement));
 		if (blocks.length) {
 			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
 			const rewritten = rewriteFunctionNode(state, target, fn, exitIdentifier);
-			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, rewritten, directExpression), types.blockStatement([target.node].concat(tail))));
+			expression = awaitAndContinue(state, target, awaitExpression, rewritten, directExpression);
+			originalNode = types.blockStatement([target.node].concat(tail));
 		} else if (pathsReturnOrThrow(target).any) {
-			target.replaceWith(returnStatement(awaitExpression, target.node));
-			return target.get("argument");
+			expression = awaitAndContinue(state, target, awaitExpression, null, directExpression);
 		} else {
-			target.replaceWith(returnStatement(awaitAndContinue(state, target, awaitExpression, helperReference(state, target, "_empty"), directExpression), target.node));
+			expression = awaitAndContinue(state, target, awaitExpression, helperReference(state, target, "_empty"), directExpression);
 		}
+		target.replaceWith(returnStatement(expression, originalNode));
 	}
 
 	function catchHelper(state, path, blockStatement, catchContinuation, directExpression) {

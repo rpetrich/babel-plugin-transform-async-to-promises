@@ -206,15 +206,12 @@ exports.default = function({ types, template, traverse }) {
 		return !types.isEmptyStatement(statement);
 	}
 
-	function awaitedExpressionInSingleReturnStatement(statements) {
+	function expressionInSingleReturnStatement(statements) {
 		statements = statements.filter(isNonEmptyStatement);
 		if (statements.length === 1) {
 			if (types.isReturnStatement(statements[0])) {
 				let argument = statements[0].argument;
 				if (argument) {
-					while (types.isAwaitExpression(argument)) {
-						argument = argument.argument;
-					}
 					return argument;
 				}
 			}
@@ -318,9 +315,15 @@ exports.default = function({ types, template, traverse }) {
 			return false;
 		}
 		if (continuation.params.length === 1) {
-			const expression = awaitedExpressionInSingleReturnStatement(continuation.body.body);
-			if (expression && types.isIdentifier(expression) && expression.name === continuation.params[0].name) {
-				return true;
+			const expression = expressionInSingleReturnStatement(continuation.body.body);
+			if (expression) {
+				const valueName = continuation.params[0].name;
+				if (types.isIdentifier(expression) && expression.name === valueName) {
+					return true;
+				}
+				if (types.isConditionalExpression(expression) && types.isIdentifier(expression.test) && types.isIdentifier(expression.consequent) && expression.consequent.name === valueName && types.isIdentifier(expression.alternate) && expression.alternate.name === valueName) {
+					return true;
+				}
 			}
 		}
 		return false;
@@ -333,7 +336,7 @@ exports.default = function({ types, template, traverse }) {
 		if (useCallHelper) {
 			firstArg = value.callee;
 			if (types.isFunctionExpression(firstArg)) {
-				const expression = awaitedExpressionInSingleReturnStatement(firstArg.body.body);
+				const expression = expressionInSingleReturnStatement(firstArg.body.body);
 				if (expression && types.isCallExpression(expression) && expression.callee._helperName === "_callIgnored") {
 					firstArg = expression.arguments[0];
 					if (expression.arguments.length > 1) {
@@ -442,7 +445,7 @@ exports.default = function({ types, template, traverse }) {
 
 	function catchHelper(state, path, blockStatement, catchContinuation, directExpression) {
 		let target;
-		const expression = awaitedExpressionInSingleReturnStatement(blockStatement.body);
+		const expression = expressionInSingleReturnStatement(blockStatement.body);
 		if (expression && types.isCallExpression(expression) && expression.arguments.length === 0) {
 			if (types.isIdentifier(expression.callee) || types.isFunctionExpression(expression.callee)) {
 				target = expression.callee;

@@ -166,29 +166,6 @@ exports.default = function({ types, template, traverse }) {
 	const pathsBreak = pathsReachNodeTypes(["BreakStatement"]);
 	const pathsBreakReturnOrThrow = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement", "BreakStatement"]);
 
-	function isCompatible(path) {
-		let result = true;
-		path.traverse({
-			ContinueStatement(path) {
-				const label = path.node.label;
-				if (label) {
-					const labeledStatement = path.findParent(parent => parent.isLabeledStatement());
-					if (!labeledStatement || labeledStatement.node.label.name !== label.name) {
-						if (errorOnIncompatible) {
-							throw path.buildCodeFrameError("Only continuing the inner-most labeled scope is supported!");
-						}
-						result = false;
-						path.stop();
-					}
-				}
-			},
-			Function(path) {
-				path.skip();
-			}
-		});
-		return result;
-	}
-
 	function isNonEmptyStatement(statement) {
 		return !types.isEmptyStatement(statement);
 	}
@@ -917,11 +894,11 @@ exports.default = function({ types, template, traverse }) {
 				this.references.push(path);
 			}
 		},
-		// ContinueStatement(path) {
-		// 	if (path.node.label && path.node.label.name === this.name) {
-		// 		this.references.push(path);
-		// 	}
-		// },
+		ContinueStatement(path) {
+			if (path.node.label && path.node.label.name === this.name) {
+				this.references.push(path);
+			}
+		},
 		ReturnStatement(path) {
 			const originalNode = path.node._originalNode;
 			if (originalNode) {
@@ -1327,7 +1304,7 @@ exports.default = function({ types, template, traverse }) {
 		visitor: {
 			FunctionDeclaration(path) {
 				const node = path.node;
-				if (node.async && isCompatible(path.get("body"))) {
+				if (node.async) {
 					const expression = types.functionExpression(null, node.params, node.body, node.generator, node.async);
 					if (path.parentPath.isExportDeclaration() || path.parentPath.isExportDefaultDeclaration()) {
 						path.replaceWith(types.variableDeclaration("const", [types.variableDeclarator(node.id, expression)]));
@@ -1339,14 +1316,14 @@ exports.default = function({ types, template, traverse }) {
 			},
 			ArrowFunctionExpression(path) {
 				const node = path.node;
-				if (node.async && isCompatible(path.get("body"))) {
+				if (node.async) {
 					rewriteThisExpressions(path, path.getFunctionParent());
 					const body = path.get("body").isBlockStatement() ? path.node.body : blockStatement([types.returnStatement(path.node.body)]);
 					path.replaceWith(types.functionExpression(null, node.params, body, false, node.async));
 				}
 			},
 			FunctionExpression(path) {
-				if (path.node.async && isCompatible(path.get("body"))) {
+				if (path.node.async) {
 					rewriteThisArgumentsAndHoistFunctions(path, path);
 					rewriteFunctionBody(this, path);
 					path.replaceWith(types.callExpression(helperReference(this, path, "_async"), [
@@ -1355,7 +1332,7 @@ exports.default = function({ types, template, traverse }) {
 				}
 			},
 			ClassMethod(path) {
-				if (path.node.async && isCompatible(path.get("body"))) {
+				if (path.node.async) {
 					if (path.node.kind === "method") {
 						const body = path.get("body");
 						body.replaceWith(types.blockStatement([types.returnStatement(types.callExpression(helperReference(this, path, "_call"), [types.functionExpression(null, [], body.node)]))]));
@@ -1367,7 +1344,7 @@ exports.default = function({ types, template, traverse }) {
 				}
 			},
 			ObjectMethod(path) {
-				if (path.node.async && isCompatible(path.get("body"))) {
+				if (path.node.async) {
 					if (path.node.kind === "method") {
 						path.replaceWith(types.objectProperty(path.node.key, types.functionExpression(null, path.node.params, path.node.body, path.node.generator, path.node.async), path.node.computed, false, path.node.decorators));
 					}

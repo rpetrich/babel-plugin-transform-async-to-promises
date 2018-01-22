@@ -1111,6 +1111,19 @@ compiledTest("for of await double with break and two labels", {
 	},
 });
 
+compiledTest("for of await double with continue", {
+	input: `async function(matrix) { var result = 0; outer: for (var row of matrix) { inner: for (var value of row) { const value = await value; if (value > 10) continue inner; result += value; if (result < 0) continue outer; } } return result; }`,
+	output: `_async(function(matrix){var _outerInterrupt;var result=0;return _continue(_forOf(matrix,function(row){var _innerInterrupt;return _continueIgnored(_forOf(row,function(value){return _await(value,function(value){if(value>10){1;return;}result+=value;if(result<0){_innerInterrupt=1;}});},function(){return _innerInterrupt||_outerInterrupt;}));},function(){return _outerInterrupt;}),function(){return result;});})`,
+	cases: {
+		empty: async f => expect(await f([])).toBe(0),
+		single: async f => expect(await f([[1]])).toBe(1),
+		multiple: async f => expect(await f([[1,2],[3,4]])).toBe(10),
+		outer: async f => expect(await f([[-1,10],[5,4]])).toBe(8),
+		inner: async f => expect(await f([[11,10],[5,4]])).toBe(19),
+	},
+});
+
+
 const orderCases = {
 	immediate: async f => {
 		var state;

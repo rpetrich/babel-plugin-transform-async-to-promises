@@ -20,12 +20,14 @@ exports.default = function({ types, template, traverse }) {
 		return state.path;
 	}
 
-	function pathsPassTest(matchingNodeTest) {
+	function pathsPassTest(matchingNodeTest, referenceOriginalNodes) {
 		function visit(path, result) {
-			const originalNode = path.node._originalNode;
-			if (originalNode) {
-				traverse(wrapNodeInStatement(originalNode), visitor, path.scope, { match: result }, path);
-				return false;
+			if (referenceOriginalNodes) {
+				const originalNode = path.node._originalNode;
+				if (originalNode) {
+					traverse(wrapNodeInStatement(originalNode), visitor, path.scope, { match: result }, path);
+					return false;
+				}
 			}
 			if (matchingNodeTest(path)) {
 				result.any = true;
@@ -158,13 +160,14 @@ exports.default = function({ types, template, traverse }) {
 		return match;
 	}
 
-	function pathsReachNodeTypes(matchingNodeTypes) {
-		return pathsPassTest(path => matchingNodeTypes.indexOf(path.node.type) !== -1);
+	function pathsReachNodeTypes(matchingNodeTypes, referenceOriginalNodes) {
+		return pathsPassTest(path => matchingNodeTypes.indexOf(path.node.type) !== -1, referenceOriginalNodes);
 	}
 
-	const pathsReturnOrThrow = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement"]);
-	const pathsBreak = pathsReachNodeTypes(["BreakStatement"]);
-	const pathsBreakReturnOrThrow = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement", "BreakStatement"]);
+	const pathsReturnOrThrow = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement"], true);
+	const pathsReturnOrThrowCurrentNodes = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement"], false);
+	const pathsBreak = pathsReachNodeTypes(["BreakStatement"], true);
+	const pathsBreakReturnOrThrow = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement", "BreakStatement"], true);
 
 	function isNonEmptyStatement(statement) {
 		return !types.isEmptyStatement(statement);
@@ -1303,6 +1306,16 @@ exports.default = function({ types, template, traverse }) {
 		return result;
 	}
 
+	const inlineAsyncVisitor = {
+		Function(path) {
+			path.skip();
+		},
+		ReturnStatement(path) {
+			const argument = path.node.argument;
+			path.get("argument").replaceWith(types.callExpression(helperReference(this, path, "_await"), argument ? [argument] : []));
+		},
+	};
+
 	return {
 		visitor: {
 			FunctionDeclaration(path) {
@@ -1329,9 +1342,19 @@ exports.default = function({ types, template, traverse }) {
 				if (path.node.async) {
 					rewriteThisArgumentsAndHoistFunctions(path, path);
 					rewriteFunctionBody(this, path);
-					path.replaceWith(types.callExpression(helperReference(this, path, "_async"), [
-						types.functionExpression(null, path.node.params, path.node.body)
-					]));
+					// if (this.opts.inlineAsync) {
+						const reach = pathsReturnOrThrowCurrentNodes(path.get("body"));
+						console.log(reach);
+						if (!reach.all) {
+							path.node.body.body.push(types.returnStatement());
+						}
+						path.traverse(inlineAsyncVisitor, this);
+						path.replaceWith(types.functionExpression(null, path.node.params, blockStatement(types.tryStatement(path.node.body, types.catchClause(types.identifier("e"), blockStatement([types.returnStatement(types.callExpression(types.memberExpression(types.identifier("Promise"), types.identifier("reject")), [types.identifier("e")]))]))))));
+					// } else {
+					// 	path.replaceWith(types.callExpression(helperReference(this, path, "_async"), [
+					// 		types.functionExpression(null, path.node.params, path.node.body)
+					// 	]));
+					// }
 				}
 			},
 			ClassMethod(path) {

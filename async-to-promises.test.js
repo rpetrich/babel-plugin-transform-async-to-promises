@@ -1018,8 +1018,8 @@ compiledTest("fetch example", {
 });
 
 compiledTest("array literal", {
-	input: `async function(left, right) { return [undefined | 0, left(), 2, await right(), 4] }`,
-	output: `_async(function(left,right){var _left=left();return _call(right,function(_right){return[undefined|0,_left,2,_right,4];});})`,
+	input: `async function(left, right) { return [undefined | 0, left(), [true,"",{foo:1}]&&2, await right(), 4] }`,
+	output: `_async(function(left,right){var _left=left();return _call(right,function(_right){return[undefined|0,_left,[true,"",{foo:1}]&&2,_right,4];});})`,
 	cases: {
 		value: async f => {
 			expect(await f(() => 1, async () => 3)).toEqual([0, 1, 2, 3, 4]);

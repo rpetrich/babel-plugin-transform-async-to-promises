@@ -307,7 +307,7 @@ exports.default = function({ types, template, traverse }) {
 		const args = [useCallHelper ? value.callee : value];
 		const ignoreResult = types.isIdentifier(continuation) && continuation === path.hub.file.declarations["_empty"];
 		if (!ignoreResult && continuation) {
-			args.push(continuation);
+			args.push(unwrapReturnCallWithPassthroughArgument(continuation, path.scope));
 		}
 		if (directExpression && !(types.isBooleanLiteral(directExpression) && !directExpression.value)) {
 			if (!ignoreResult && !continuation) {
@@ -524,6 +524,19 @@ exports.default = function({ types, template, traverse }) {
 		return node;
 	}
 
+	function unwrapReturnCallWithPassthroughArgument(node, scope) {
+		if (types.isFunctionExpression(node) && node.params.length >= 1 && node.body.body.length === 1 && types.isReturnStatement(node.body.body[0])) {
+			const expression = node.body.body[0].argument;
+			if (types.isCallExpression(expression) && expression.arguments.length === 1 && types.isIdentifier(expression.arguments[0]) && expression.arguments[0].name === node.params[0].name && types.isIdentifier(expression.callee)) {
+				const binding = scope.getBinding(expression.callee.name);
+				if (binding && binding.constant) {
+					return expression.callee;
+				}
+			}
+		}
+		return node;
+	}
+
 	function isExpressionOfLiterals(path, literalName) {
 		if (path.isIdentifier()) {
 			if (path.node.name === "undefined") {
@@ -654,8 +667,14 @@ exports.default = function({ types, template, traverse }) {
 						declarations.unshift(types.variableDeclarator(leftIdentifier, left.node));
 						left.replaceWith(leftIdentifier);
 					}
-					awaitExpression = parent.node.operator == "||" ? logicalOr(left.node, awaitExpression) : types.logicalExpression(parent.node.operator, left.node, awaitExpression);
-					directExpression = logicalOr(parent.node.operator === "||" ? left.node : logicalNot(left.node), directExpression);
+					const isOr = parent.node.operator === "||";
+					awaitExpression = (isOr ? logicalOr : logicalAnd)(left.node, awaitExpression);
+					directExpression = logicalOr(isOr ? left.node : logicalNot(left.node), directExpression);
+					if (awaitPath.node === resultIdentifier) {
+						parent.replaceWith(resultIdentifier);
+						awaitPath = parent;
+						continue;
+					}
 				}
 			} else if (parent.isBinaryExpression()) {
 				const left = parent.get("left");
@@ -694,17 +713,23 @@ exports.default = function({ types, template, traverse }) {
 						test.replaceWith(testIdentifier);
 						testNode = testIdentifier;
 					}
-					if (consequent === awaitPath && alternate.isAwaitExpression()) {
+					const otherAwaitPath = findAwaitPath(other);
+					if (consequent === awaitPath && otherAwaitPath === alternate) {
 						awaitExpression = conditionalExpression(testNode, awaitExpression, alternate.node.argument);
 						alternate.replaceWith(resultIdentifier);
 					} else {
-						if (findAwaitPath(other)) {
+						directExpression = logicalOr(consequent !== awaitPath ? testNode : logicalNot(testNode), directExpression);
+						if (otherAwaitPath) {
 							awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, types.numericLiteral(0), awaitExpression) : conditionalExpression(testNode, awaitExpression, types.numericLiteral(0));
 						} else {
 							awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, other.node, awaitExpression) : conditionalExpression(testNode, awaitExpression, other.node);
+							if (awaitPath.node === resultIdentifier) {
+								parent.replaceWith(resultIdentifier);
+								awaitPath = parent;
+								continue;
+							}
 							other.replaceWith(resultIdentifier);
 						}
-						directExpression = logicalOr(consequent !== awaitPath ? testNode : logicalNot(testNode), directExpression);
 					}
 				}
 			} else if (parent.isCallExpression()) {

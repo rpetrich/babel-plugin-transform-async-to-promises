@@ -141,7 +141,7 @@ compiledTest("await logical left", {
 
 compiledTest("await logical right", {
 	input: `async function(left, right) { return left() && await right(); }`,
-	output: `_async(function(left,right){var _left=left();return _await(_left&&right(),function(_right){return _left&&_right;},!_left);})`,
+	output: `_async(function(left,right){var _left=left();return _await(_left&&right(),void 0,!_left);})`,
 	cases: {
 		false: async f => expect(await f(_ => 0, async _ => 2)).toBe(0),
 		true: async f => expect(await f(_ => 5, async _ => 2)).toBe(2),
@@ -150,7 +150,7 @@ compiledTest("await logical right", {
 
 compiledTest("await logical statement scope", {
 	input: `async function(left, right) { if (true) return left() && await right(); else return false; }`,
-	output: `_async(function(left,right){if(true){var _left=left();return _await(_left&&right(),function(_right){return _left&&_right;},!_left);}else return false;})`,
+	output: `_async(function(left,right){if(true){var _left=left();return _await(_left&&right(),void 0,!_left);}else return false;})`,
 	cases: {
 		false: async f => expect(await f(_ => 0, async _ => 2)).toBe(0),
 		true: async f => expect(await f(_ => 5, async _ => 2)).toBe(2),
@@ -164,7 +164,7 @@ compiledTest("await logical statement scope", {
 
 compiledTest("await logical both", {
 	input: `async function(left, right) { return await left() && await right(); }`,
-	output: `function(left,right){return _call(left,function(_left){return _await(_left&&right(),function(_right){return _left&&_right;},!_left);});}`,
+	output: `function(left,right){return _call(left,function(_left){return _await(_left&&right(),void 0,!_left);});}`,
 	cases: {
 		false: async f => expect(await f(async _ => 0, async _ => 2)).toBe(0),
 		true: async f => expect(await f(async _ => 5, async _ => 2)).toBe(2),
@@ -232,7 +232,7 @@ compiledTest("await binary both", {
 
 compiledTest("await binary and logical", {
 	input: `async function(left, middle, right) { return await left() + !(await middle()) && await right(); }`,
-	output: `function(left,middle,right){return _call(left,function(_left){return _call(middle,function(_middle){var _temp=_left+!_middle;return _await(_temp&&right(),function(_right){return _temp&&_right;},!_temp);});});}`,
+	output: `function(left,middle,right){return _call(left,function(_left){return _call(middle,function(_middle){var _temp=_left+!_middle;return _await(_temp&&right(),void 0,!_temp);});});}`,
 	cases: {
 		two: async f => expect(await f(async _ => 3, async _ => false, async _ => 5)).toBe(5),
 		seven: async f => expect(await f(async _ => 0, async _ => true, async _ => 2)).toBe(0),
@@ -304,7 +304,7 @@ compiledTest("ternary body", {
 
 compiledTest("ternary body complex left", {
 	input: `async function(a, b, c, d) { return a() ? b() && await c() : await d(); }`,
-	output: `_async(function(a,b,c,d){var _a=a(),_b=_a&&b();return _await(_a?_b&&c():d(),function(_c){return _a?_b&&_c:_c;},!_b);})`,
+	output: `_async(function(a,b,c,d){var _a=a(),_b=_a&&b();return _await(_a?_b&&c():d(),void 0,!_b);})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, _ => 1, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, _ => 1, async _ => 1, async _ => 0)).toBe(0),
@@ -313,7 +313,7 @@ compiledTest("ternary body complex left", {
 
 compiledTest("ternary body complex right", {
 	input: `async function(a, b, c, d) { return a() ? await b() : c() && await d(); }`,
-	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _a2=_a,_c=_a2||c();return _await(_a2?_b:_c&&d(),function(_d){return _a2?_d:_c&&_d;},_a2||!_c);},!_a);})`,
+	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _a2=_a,_c=_a2||c();return _await(_a2?_b:_c&&d(),void 0,_a2||!_c);},!_a);})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, _ => 1, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, _ => 1, async _ => 1, async _ => 0)).toBe(0),
@@ -1173,50 +1173,50 @@ const orderCases = {
 };
 
 compiledTest("ternary alternate event loop ordering", {
-	input: `async function(delay, callback) { delay ? await 0 : 0; callback(); }`,
-	output: `_async(function(delay,callback){return _await(0,function(){callback();},!delay);})`,
+	input: `async function(delay, callback) { return callback(delay ? await 0 : 0); }`,
+	output: `_async(function(delay,callback){return _await(0,callback,!delay);})`,
 	cases: orderCases,
 });
 
 compiledTest("ternary consequent event loop ordering", {
-	input: `async function(delay, callback) { !delay ? 0 : await 0; callback(); }`,
-	output: `_async(function(delay,callback){return _await(0,function(){callback();},!delay);})`,
+	input: `async function(delay, callback) { return callback(!delay ? 0 : await 0); }`,
+	output: `_async(function(delay,callback){return _await(0,callback,!delay);})`,
 	cases: orderCases,
 });
 
 compiledTest("logical and alternate event loop ordering", {
-	input: `async function(delay, callback) { delay && await 0; callback(); }`,
-	output: `_async(function(delay,callback){return _await(delay&&0,function(){callback();},!delay);})`,
+	input: `async function(delay, callback) { return callback(delay && await 0); }`,
+	output: `_async(function(delay,callback){return _await(delay&&0,callback,!delay);})`,
 	cases: orderCases,
 });
 
 compiledTest("logical or consequent event loop ordering", {
-	input: `async function(delay, callback) { !delay || await 0; callback(); }`,
-	output: `_async(function(delay,callback){return _await(!delay||0,function(){callback();},!delay);})`,
+	input: `async function(delay, callback) { return callback(!delay || await 0); }`,
+	output: `_async(function(delay,callback){return _await(!delay||0,callback,!delay);})`,
 	cases: orderCases,
 });
 
 compiledTest("if consequent event loop ordering", {
-	input: `async function(delay, callback) { if (delay) await 0; callback(); }`,
-	output: `_async(function(delay,callback){return _invoke(function(){if(delay)return _awaitIgnored(0);},function(){callback();});})`,
+	input: `async function(delay, callback) { if (delay) await 0; return callback(); }`,
+	output: `_async(function(delay,callback){return _invoke(function(){if(delay)return _awaitIgnored(0);},function(){return callback();});})`,
 	cases: orderCases,
 });
 
 compiledTest("if alternate event loop ordering", {
-	input: `async function(delay, callback) { if (!delay) { } else { await 0 }; callback(); }`,
-	output: `_async(function(delay,callback){return _invoke(function(){if(!delay){}else{return _awaitIgnored(0);}},function(){callback();});})`,
+	input: `async function(delay, callback) { if (!delay) { } else { await 0 }; return callback(); }`,
+	output: `_async(function(delay,callback){return _invoke(function(){if(!delay){}else{return _awaitIgnored(0);}},function(){return callback();});})`,
 	cases: orderCases,
 });
 
 compiledTest("for to event loop ordering", {
-	input: `async function(delay, callback) { var array = [0,1,2,3,4]; for (var i = 0; i < array.length; i++) { if (delay) { await array[i]; } }; callback(); }`,
-	output: `_async(function(delay,callback){var array=[0,1,2,3,4];return _continue(_forTo(array,function(i){return _invokeIgnored(function(){if(delay){return _awaitIgnored(array[i]);}});}),function(){callback();});})`,
+	input: `async function(delay, callback) { var array = [0,1,2,3,4]; for (var i = 0; i < array.length; i++) { if (delay) { await array[i]; } }; return callback(); }`,
+	output: `_async(function(delay,callback){var array=[0,1,2,3,4];return _continue(_forTo(array,function(i){return _invokeIgnored(function(){if(delay){return _awaitIgnored(array[i]);}});}),function(){return callback();});})`,
 	cases: orderCases,
 });
 
 compiledTest("switch event loop ordering", {
-	input: `async function(delay, callback) { switch(delay) { case false: break; case true: await true; break; } callback(); }`,
-	output: `_async(function(delay,callback){var _interrupt;return _continue(_switch(delay,[[function(){return false;},function(){_interrupt=1;}],[function(){return true;},function(){return _await(true,function(){_interrupt=1;});}]]),function(){callback();});})`,
+	input: `async function(delay, callback) { switch(delay) { case false: break; case true: await true; break; } return callback(); }`,
+	output: `_async(function(delay,callback){var _interrupt;return _continue(_switch(delay,[[function(){return false;},function(){_interrupt=1;}],[function(){return true;},function(){return _await(true,function(){_interrupt=1;});}]]),function(){return callback();});})`,
 	cases: orderCases,
 });
 

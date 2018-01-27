@@ -573,7 +573,7 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function generateIdentifierForPath(path) {
-		return path.scope.generateUidIdentifierBasedOnNode(path.isAwaitExpression() ? path.node.argument : path.node, "temp");
+		return path.scope.generateUidIdentifierBasedOnNode(path.node, "temp");
 	}
 
 	function conditionalExpression(test, consequent, alternate) {

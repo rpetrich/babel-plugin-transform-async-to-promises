@@ -7,8 +7,8 @@ Transforms async/await functions to the equivalent chain of Promise calls with u
 
 ```javascript
 async function fetchAsObjectURL(url) {
-    var response = await fetch(url);
-    var blob = await response.blob();
+    const response = await fetch(url);
+    const blob = await response.blob();
     return URL.createObjectURL(blob);
 }
 ```

@@ -1013,7 +1013,7 @@ compiledTest("switch break with identifier", {
 });
 
 compiledTest("fetch example", {
-	input: `async function(url) { var response = await fetch(url); var blob = await response.blob(); return URL.createObjectURL(blob); }`,
+	input: `async function(url) { const response = await fetch(url); const blob = await response.blob(); return URL.createObjectURL(blob); }`,
 	output: `_async(function(url){return _await(fetch(url),function(response){return _await(response.blob(),function(blob){return URL.createObjectURL(blob);});});})`,
 });
 

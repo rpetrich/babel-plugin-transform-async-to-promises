@@ -583,22 +583,48 @@ exports.default = function({ types, template, traverse }) {
 			consequent = alternate;
 			alternate = consequent;
 		}
+		if (consequent.type === alternate.type && "value" in consequent && consequent.value === alternate.value && (types.isIdentifier(test) || types.isBooleanLiteral(test) || types.isNumericLiteral(test))) {
+			return consequent;
+		}
 		return types.conditionalExpression(test, consequent, alternate);
 	}
 
+	function extractBooleanValue(node) {
+		if (types.isBooleanLiteral(node)) {
+			return node.value;
+		}
+		if (types.isUnaryExpression(node) && node.operator === "!") {
+			if (types.isBooleanLiteral(node.argument) || types.isNumericLiteral(node.argument)) {
+				return !node.argument.value;
+			}
+		}
+	}
+
 	function logicalOr(left, right) {
-		if (types.isBooleanLiteral(left) && left.value === false) {
+		if (extractBooleanValue(left) === false) {
 			return right;
 		}
-		if (types.isBooleanLiteral(right) && right.value === false) {
+		if (extractBooleanValue(right) === false) {
 			return left;
 		}
 		return types.logicalExpression("||", left, right);
 	}
 
+	function logicalAnd(left, right) {
+		switch (extractBooleanValue(left)) {
+			case true:
+				return left;
+			case false:
+				return right;
+			default:
+				return types.logicalExpression("&&", left, right);
+		}
+	}
+
 	function logicalNot(node) {
-		if (types.isBooleanLiteral(node)) {
-			return types.booleanLiteral(!node.value);
+		const literalValue = extractBooleanValue(node);
+		if (typeof literalValue !== "undefined") {
+			return types.booleanLiteral(!literalValue);
 		}
 		return types.unaryExpression("!", node);
 	}
@@ -624,11 +650,11 @@ exports.default = function({ types, template, traverse }) {
 				if (awaitPath !== left) {
 					if (!isExpressionOfLiterals(left)) {
 						const leftIdentifier = generateIdentifierForPath(left);
-						declarations = declarations.map(declaration => types.variableDeclarator(declaration.id, types.logicalExpression("&&", parent.node.operator === "||" ? logicalNot(leftIdentifier) : leftIdentifier, declaration.init)));
+						declarations = declarations.map(declaration => types.variableDeclarator(declaration.id, logicalAnd(parent.node.operator === "||" ? logicalNot(leftIdentifier) : leftIdentifier, declaration.init)));
 						declarations.unshift(types.variableDeclarator(leftIdentifier, left.node));
 						left.replaceWith(leftIdentifier);
 					}
-					awaitExpression = types.logicalExpression(parent.node.operator, left.node, awaitExpression);
+					awaitExpression = parent.node.operator == "||" ? logicalOr(left.node, awaitExpression) : types.logicalExpression(parent.node.operator, left.node, awaitExpression);
 					directExpression = logicalOr(parent.node.operator === "||" ? left.node : logicalNot(left.node), directExpression);
 				}
 			} else if (parent.isBinaryExpression()) {
@@ -662,7 +688,7 @@ exports.default = function({ types, template, traverse }) {
 					if (!isExpressionOfLiterals(test)) {
 						testIdentifier = generateIdentifierForPath(test);
 					}
-					declarations = declarations.map(declaration => types.variableDeclarator(declaration.id, types.logicalExpression(consequent === awaitPath ? "&&" : "||", testIdentifier || testNode, declaration.init)));
+					declarations = declarations.map(declaration => types.variableDeclarator(declaration.id, (consequent === awaitPath ? logicalAnd : logicalOr)(testIdentifier || testNode, declaration.init)));
 					if (testIdentifier) {
 						declarations.unshift(types.variableDeclarator(testIdentifier, testNode));
 						test.replaceWith(testIdentifier);
@@ -773,7 +799,7 @@ exports.default = function({ types, template, traverse }) {
 	function buildBreakExitCheck(exitIdentifier, breakIdentifiers) {
 		let expressions = (breakIdentifiers.map(identifier => identifier.identifier) || []).concat(exitIdentifier ? [exitIdentifier] : []);
 		if (expressions.length) {
-			return expressions.reduce((accumulator, identifier) => types.logicalExpression("||", accumulator, identifier));
+			return expressions.reduce((accumulator, identifier) => logicalOr(accumulator, identifier));
 		}
 	}
 
@@ -1071,7 +1097,7 @@ exports.default = function({ types, template, traverse }) {
 								const breakExitCheck = buildBreakExitCheck(exitIdentifier, breakIdentifiers);
 								if (breakExitCheck) {
 									const inverted = logicalNot(breakExitCheck);
-									testExpression = testExpression && (!types.isBooleanLiteral(testExpression) || !testExpression.value) ? types.logicalExpression("&&", inverted, testExpression) : inverted;
+									testExpression = testExpression && (!types.isBooleanLiteral(testExpression) || !testExpression.value) ? logicalAnd(inverted, testExpression) : inverted;
 								}
 								if (testExpression) {
 									const testPath = parent.get("test");

@@ -148,7 +148,7 @@ exports.default = function({ types, template, traverse }) {
 			}
 		};
 		function match(path) {
-			const match = { all: false, any: false, hasBreak: false, paths: [] };
+			const match = { all: false, any: false, hasBreak: false };
 			// const match = { all: false, any: false, hasBreak: false, paths: [] };
 			if (path && path.node) {
 				if (typeof visit(path, match) === "undefined") {
@@ -1306,15 +1306,49 @@ exports.default = function({ types, template, traverse }) {
 		return result;
 	}
 
-	const inlineAsyncVisitor = {
+	function isAsyncCallExpression(path) {
+		if (!path.isCallExpression()) {
+			return false;
+		}
+		switch (path.node.callee._helperName) {
+			case "_await":
+			case "_call":
+				return path.node.arguments.length < 3;
+			default:
+				return false;
+		}		
+	}
+
+	const checkForErrorsAndRewriteReturnsVisitor = {
 		Function(path) {
 			path.skip();
 		},
+		CallExpression(path) {
+			if (!isAsyncCallExpression(path)) {
+				this.canThrow = true;
+			}
+		},
+		ThrowStatement(path) {
+			this.canThrow = true;
+		},
+		MemberExpression(path) {
+			this.canThrow = true;
+		},
 		ReturnStatement(path) {
-			const argument = path.node.argument;
-			path.get("argument").replaceWith(types.callExpression(helperReference(this, path, "_await"), argument ? [argument] : []));
+			if (this.rewriteReturns) {
+				const argument = path.get("argument");
+				if (!argument.node || !isAsyncCallExpression(argument)) {
+					argument.replaceWith(types.callExpression(helperReference(this.plugin, path, "_await"), argument.node ? [argument.node] : []));
+				}
+			}
 		},
 	};
+
+	function checkForErrorsAndRewriteReturns(path, rewriteReturns, plugin) {
+		const state = { rewriteReturns, plugin, canThrow: false };
+		path.traverse(checkForErrorsAndRewriteReturnsVisitor, state);
+		return state.canThrow;
+	}
 
 	return {
 		visitor: {
@@ -1342,19 +1376,26 @@ exports.default = function({ types, template, traverse }) {
 				if (path.node.async) {
 					rewriteThisArgumentsAndHoistFunctions(path, path);
 					rewriteFunctionBody(this, path);
-					// if (this.opts.inlineAsync) {
-						const reach = pathsReturnOrThrowCurrentNodes(path.get("body"));
-						console.log(reach);
-						if (!reach.all) {
-							path.node.body.body.push(types.returnStatement());
+					const inlineAsync = this.opts.inlineAsync;
+					const bodyPath = path.get("body");
+					const canThrow = checkForErrorsAndRewriteReturns(bodyPath, inlineAsync, this);
+					if (inlineAsync && !pathsReturnOrThrowCurrentNodes(bodyPath).all) {
+						path.node.body.body.push(types.returnStatement());
+					}
+					if (canThrow) {
+						if (inlineAsync) {
+							path.replaceWith(types.functionExpression(null, path.node.params, blockStatement(types.tryStatement(bodyPath.node, types.catchClause(types.identifier("e"), blockStatement([types.returnStatement(types.callExpression(types.memberExpression(types.identifier("Promise"), types.identifier("reject")), [types.identifier("e")]))]))))));
+						} else {
+							path.replaceWith(types.callExpression(helperReference(this, path, "_async"), [
+								types.functionExpression(null, path.node.params, bodyPath.node)
+							]));
 						}
-						path.traverse(inlineAsyncVisitor, this);
-						path.replaceWith(types.functionExpression(null, path.node.params, blockStatement(types.tryStatement(path.node.body, types.catchClause(types.identifier("e"), blockStatement([types.returnStatement(types.callExpression(types.memberExpression(types.identifier("Promise"), types.identifier("reject")), [types.identifier("e")]))]))))));
-					// } else {
-					// 	path.replaceWith(types.callExpression(helperReference(this, path, "_async"), [
-					// 		types.functionExpression(null, path.node.params, path.node.body)
-					// 	]));
-					// }
+					} else {
+						if (!inlineAsync) {
+							checkForErrorsAndRewriteReturns(bodyPath, true, this)
+						}
+						path.replaceWith(types.functionExpression(null, path.node.params, bodyPath.node));
+					}
 				}
 			},
 			ClassMethod(path) {

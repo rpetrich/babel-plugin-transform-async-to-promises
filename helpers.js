@@ -438,13 +438,9 @@ export function _callIgnored(body, direct) {
 
 // Asynchronously call a function and pass the result to explicitly passed continuations
 export function _invoke(body, then) {
-	try {
-		var result = body();
-		if (result && result.then) {
-			return result.then(then);
-		}
-	} catch(e) {
-		return Promise.reject(e);
+	var result = body();
+	if (result && result.then) {
+		return result.then(then);
 	}
 	return then ? then(result) : result;
 }

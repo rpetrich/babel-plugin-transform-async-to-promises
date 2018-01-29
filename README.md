@@ -52,7 +52,7 @@ var fetchAsObjectURL = _async(function(url) {
  - `catch`/`finally` clauses are always dispatched asynchronously in the error path
  - `Promise` values in predicates will be awaited instead of merely checked for truthiness
 - `Function.length`
- - `async` functions will usually return a length of 0 (due to the use of the `_async` wrapper)
+ - `async` functions will often return a length of 0 (when the `_async` wrapper is used)
 
 ### No support
 - `eval`

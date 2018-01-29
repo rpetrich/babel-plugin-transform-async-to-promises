@@ -36,6 +36,7 @@ var fetchAsObjectURL = _async(function(url) {
 - conditional expressions
 - logical expressions
 - `try`/`catch`
+- `break`/`continue` statements (on both loops and labeled statements)
 - `throw` expressions
 - Function hoisting
 - Variable hoisting
@@ -50,9 +51,6 @@ var fetchAsObjectURL = _async(function(url) {
  - Compliant with respect to initial calls, conditionally called `await` expressions, and loops
  - `catch`/`finally` clauses are always dispatched asynchronously in the error path
  - `Promise` values in predicates will be awaited instead of merely checked for truthiness
-- `break`/`continue` statements on loops/labeled statements
- - Full support for basic `break`/`continue` statements
- - Some forms of labeled statements/loops are transformed incorrectly
 - `Function.length`
  - `async` functions will usually return a length of 0 (due to the use of the `_async` wrapper)
 

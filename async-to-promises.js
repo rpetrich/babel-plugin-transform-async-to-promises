@@ -21,92 +21,109 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function pathsPassTest(matchingNodeTest, referenceOriginalNodes) {
-		function visit(path, result) {
+		function visit(path, result, state) {
 			if (referenceOriginalNodes) {
 				const originalNode = path.node._originalNode;
 				if (originalNode) {
-					traverse(wrapNodeInStatement(originalNode), visitor, path.scope, { match: result }, path);
+					traverse(wrapNodeInStatement(originalNode), visitor, path.scope, { match: result, state }, path);
 					return false;
 				}
 			}
-			if (matchingNodeTest(path)) {
+			const doesMatch = matchingNodeTest(path);
+			if (doesMatch) {
 				result.any = true;
-				result.all = true;
-				result.hasBreak = result.hasBreak || path.isBreakStatement();
+				result.all = !(state.breakingLabels.length || state.unnamedBreak);
 				// result.paths.push(path);
+			}
+			if (path.isBreakStatement()) {
+				const label = path.node.label;
+				if (!label) {
+					state.unnamedBreak = true;
+				} else if (state.breakingLabels.indexOf(label.name) === -1) {
+					state.breakingLabels.push(label.name);
+				}
+			}
+			if (path.isLabeledStatement()) {
+				const index = state.breakingLabels.indexOf(path.node.label.name);
+				if (index !== -1) {
+					state.breakingLabels.splice(index, 1);
+				}
+			}
+			if (path.isLoop()) {
+				state.unnamedBreak = false;
+			}
+			if (doesMatch) {
 				return false;
 			}
 			if (path.isConditional()) {
-				const test = match(path.get("test"));
-				const consequent = match(path.get("consequent"));
-				const alternate = match(path.get("alternate"));
+				const test = match(path.get("test"), state);
+				const consequent = match(path.get("consequent"), state);
+				const alternate = match(path.get("alternate"), state);
 				result.any = result.any || test.any || consequent.any || alternate.any;
-				result.hasBreak = result.hasBreak || consequent.hasBreak || alternate.hasBreak;
 				// result.paths = result.paths.concat(test.paths).concat(consequent.paths).concat(alternate.paths);
-				return (result.all = (test.all || (consequent.all && alternate.all && !result.hasBreak)));
+				return (result.all = (test.all || (consequent.all && alternate.all)) && !(state.breakingLabels.length || state.unnamedBreak));
 			}
 			if (path.isSwitchStatement()) {
-				const discriminant = match(path.get("discriminant"));
+				const discriminant = match(path.get("discriminant"), state);
 				const cases = path.get("cases");
 				const caseMatches = cases.map((switchCase, i) => {
-					const result = match(switchCase);
-					for (i++; (!result.all || pathsBreakReturnOrThrow(switchCase).all) && i < cases.length; i++) {
-						const tailMatch = match(cases[i]);
-						result.all = result.all || tailMatch.all;
-						result.any = result.any || tailMatch.any;
-						result.hasBreak = result.hasBreak || tailMatch.hasBreak;
-						// result.paths = result.paths.concat(tailMatch.paths);
+					const newState = { unnamedBreak: false, breakingLabels: state.breakingLabels };
+					const newResult = match(switchCase, newState);
+					for (i++; (!newResult.all || pathsBreakReturnOrThrow(switchCase).all) && i < cases.length; i++) {
+						const tailMatch = match(cases[i], newState);
+						newResult.all = (newResult.all || tailMatch.all) && !(state.breakingLabels.length || state.unnamedBreak);
+						newResult.any = newResult.any || tailMatch.any;
+						// newResult.paths = newResult.paths.concat(tailMatch.paths);
 					}
-					return result;
+					return newResult;
 				});
 				result.any = result.any || discriminant.any || caseMatches.some(caseMatch => caseMatch.any);
-				result.hasBreak = result.hasBreak || caseMatches.some(caseMatch => caseMatch.hasBreak);
 				// result.paths = caseMatches.reduce((acc, match) => acc.concat(match.paths), result.paths.concat(discriminant.paths));
-				return result.all = discriminant.all || (cases.some(switchCase => !switchCase.node.test) && caseMatches.every(caseMatch => caseMatch.all && !caseMatch.hasBreak));
+				return result.all = ((discriminant.all || (cases.some(switchCase => !switchCase.node.test) && caseMatches.every(caseMatch => caseMatch.all))) && !(state.breakingLabels.length || state.unnamedBreak));
 			}
 			if (path.isDoWhileStatement()) {
-				const body = match(path.get("body"));
-				const test = match(path.get("test"));
+				const body = match(path.get("body"), state);
+				const test = match(path.get("test"), state);
 				result.any = result.any || body.any || test.any;
 				// result.paths = result.paths.concat(test.paths).concat(body.paths);
-				return result.all = (body.all || test.all);
+				return result.all = ((body.all || test.all) && !(state.breakingLabels.length || state.unnamedBreak));
 			}
 			if (path.isWhileStatement()) {
 				// TODO: Support detecting break/return statements
-				const test = match(path.get("test"));
-				const body = match(path.get("body"));
+				const test = match(path.get("test"), state);
+				const body = match(path.get("body"), state);
 				result.any = result.any || test.any || body.any;
 				// result.paths = result.paths.concat(test.paths).concat(body.paths);
-				return result.all = test.all;
+				return result.all = ((test.all || (!!extractBooleanValue(body.node) && body.all)) && !(state.breakingLabels.length || state.unnamedBreak));
 			}
 			if (path.isForXStatement()) {
-				const right = match(path.get("right"));
-				const body = match(path.get("body"));
+				const right = match(path.get("right"), state);
+				const body = match(path.get("body"), state);
 				result.any = result.any || right.any || body.any;
 				// result.paths = result.paths.concat(right.paths).concat(body.paths);
-				return result.all = right.all;
+				return result.all = (right.all && !(state.breakingLabels.length || state.unnamedBreak));
 			}
 			if (path.isForStatement()) {
-				const init = match(path.get("init"));
-				const test = match(path.get("test"));
-				const body = match(path.get("body"));
-				const update = match(path.get("update"));
+				const init = match(path.get("init"), state);
+				const test = match(path.get("test"), state);
+				const body = match(path.get("body"), state);
+				const update = match(path.get("update"), state);
 				result.any = result.any || init.any || test.any || body.any || update.any;
 				// result.paths = result.paths.concat(init.paths).concat(test.paths).concat(update.paths).concat(body.paths);
-				return result.all = (init.all || test.all);
+				return result.all = ((init.all || test.all) && !(state.breakingLabels.length || state.unnamedBreak));
 			}
 			if (path.isLogicalExpression()) {
-				const left = match(path.get("left"));
-				const right = match(path.get("right"));
+				const left = match(path.get("left"), state);
+				const right = match(path.get("right"), state);
 				result.any = result.any || left.any || right.any;
 				// result.paths = result.paths.concat(left.paths).concat(right.paths);
-				return result.all = left.all;
+				return result.all = (left.all && !(state.breakingLabels.length || state.unnamedBreak));
 			}
 			if (path.isReturnStatement()) {
 				return true;
 			}
 			if (path.isBreakStatement()) {
-				return result.hasBreak = true;
+				return true;
 			}
 			if (path.isContinueStatement()) {
 				return true;
@@ -116,18 +133,17 @@ exports.default = function({ types, template, traverse }) {
 				return true;
 			}
 			if (path.isTryStatement()) {
-				const blockMatch = match(path.get("block"));
+				const blockMatch = match(path.get("block"), state);
 				const finalizer = path.get("finalizer");
-				const finalizerMatch = match(finalizer);
+				const finalizerMatch = match(finalizer, state);
 				const handler = path.get("handler");
-				const handlerMatch = match(handler);
+				const handlerMatch = match(handler, state);
 				result.any = result.any || blockMatch.any || handlerMatch.any || finalizerMatch.any;
 				// result.paths = result.paths.concat(blockMatch.paths).concat(handlerMatch.paths).concat(finalizerMatch.paths);
-				result.hasBreak = result.hasBreak || blockMatch.hasBreak || finalizerMatch.hasBreak || handler.hasBreak;
 				if (finalizerMatch.all) {
-					return result.all = true;
+					return result.all = !(state.breakingLabels.length || state.unnamedBreak);
 				} else if (!finalizer.node) {
-					return result.all = handlerMatch.all && blockMatch.all;
+					return result.all = (handlerMatch.all && blockMatch.all && !(state.breakingLabels.length || state.unnamedBreak));
 				}
 				return false;
 			}
@@ -137,7 +153,7 @@ exports.default = function({ types, template, traverse }) {
 		}
 		const visitor = {
 			enter(path) {
-				switch (visit(path, this.match)) {
+				switch (visit(path, this.match, this.state)) {
 					case true:
 						path.stop();
 						break;
@@ -147,17 +163,19 @@ exports.default = function({ types, template, traverse }) {
 				}
 			}
 		};
-		function match(path) {
-			const match = { all: false, any: false, hasBreak: false };
-			// const match = { all: false, any: false, hasBreak: false, paths: [] };
+		function match(path, state) {
+			const match = { all: false, any: false };
+			// const match = { all: false, any: false, paths: [] };
 			if (path && path.node) {
-				if (typeof visit(path, match) === "undefined") {
-					path.traverse(visitor, { match });
+				if (typeof visit(path, match, state) === "undefined") {
+					path.traverse(visitor, { match, state });
 				}
 			}
 			return match;
 		}
-		return match;
+		return function(path) {
+			return match(path, { breakingLabels: [], unnamedBreak: false });
+		};
 	}
 
 	function pathsReachNodeTypes(matchingNodeTypes, referenceOriginalNodes) {
@@ -1216,6 +1234,29 @@ exports.default = function({ types, template, traverse }) {
 									path: parent,
 								});
 							}
+						} else if (parent.isLabeledStatement()) {
+							let resultIdentifier;
+							if (!exitIdentifier && explicitExits.any && !explicitExits.all) {
+								path.scope.push({ id: exitIdentifier = awaitPath.scope.generateUidIdentifier("exit") });
+							}
+							if (!explicitExits.all && explicitExits.any) {
+								resultIdentifier = path.scope.generateUidIdentifier("result");
+							}
+							const breakIdentifiers = replaceReturnsAndBreaks(parent.get("body"), exitIdentifier).filter(id => id.name !== parent.node.label.name);
+							relocatedBlocks.push({
+								relocate() {
+									if (resultIdentifier || breakIdentifiers.length) {
+										const fn = types.functionExpression(null, [], blockStatement(parent.node.body));
+										const rewritten = rewriteFunctionNode(state, parent, fn, exitIdentifier);
+										const exitCheck = buildBreakExitCheck(explicitExits.any ? exitIdentifier : null, breakIdentifiers);
+										if (exitCheck) {
+											parent.insertAfter(types.ifStatement(exitCheck, returnStatement(resultIdentifier)));
+										}
+										relocateTail(state, types.callExpression(rewritten, []), null, parent, resultIdentifier, exitIdentifier);
+									}
+								},
+								path: parent,
+							});
 						}
 					}
 					if (processExpressions && (parent.isStatement() || (parent.isSwitchCase() && awaitPath.node != parent.node.test))) {

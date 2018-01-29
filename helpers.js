@@ -452,7 +452,7 @@ export function _catch(body, recover) {
 		var result = body();
 	} catch(e) {
 		try {
-			return Promise.resolve(recover(e));
+			return recover(e);
 		} catch(e2) {
 			return Promise.reject(e2);
 		}
@@ -460,7 +460,7 @@ export function _catch(body, recover) {
 	if (result && result.then) {
 		return result.then(void 0, recover);
 	}
-	return Promise.resolve(result);
+	return result;
 }
 
 // Asynchronously await a promise and pass the result to a finally continuation

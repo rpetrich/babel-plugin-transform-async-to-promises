@@ -49,7 +49,7 @@ var fetchAsObjectURL = _async(function(url) {
 ### Partial Support
 - Standards-compliant event loop ordering
  - Compliant with respect to initial calls, conditionally called `await` expressions, and loops
- - `catch`/`finally` clauses are always dispatched asynchronously in the error path
+ - Rethrown errors from inside `catch`/`finally` clauses are dispatched asynchronously
  - `Promise` values in predicates will be awaited instead of merely checked for truthiness
 - `Function.length`
  - `async` functions will often return a length of 0 (when the `_async` wrapper is used)

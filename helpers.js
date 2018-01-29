@@ -433,7 +433,7 @@ export function _call(body, then, direct, recover) {
 
 // Asynchronously call a function and swallow the result
 export function _callIgnored(body, direct) {
-	return _call(body, _empty, void 0, direct);
+	return _call(body, _empty, direct);
 }
 
 // Asynchronously call a function and pass the result to explicitly passed continuations

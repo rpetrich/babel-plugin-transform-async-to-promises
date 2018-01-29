@@ -409,26 +409,19 @@ export function _switch(discriminant, cases) {
 }
 
 // Asynchronously call a function and pass the result to explicitly passed continuations
-export function _call(body, then, direct, recover) {
+export function _call(body, then, direct) {
 	try {
 		var result = body();
-		if (result && result.then) {
-			return result.then(then, recover);
-		}
-		if (!direct) {
-			return Promise.resolve(result).then(then, recover);
+		if (direct) {
+			return then ? then(result) : result;
 		}
 	} catch(e) {
-		if (recover) {
-			try {
-				return Promise.resolve(recover(e));
-			} catch(e2) {
-				e = e2;
-			}
-		}
 		return Promise.reject(e);
 	}
-	return then ? then(result) : result;
+	if (!result || !result.then) {
+		result = Promise.resolve(result);
+	}
+	return then ? result.then(then) : result;
 }
 
 // Asynchronously call a function and swallow the result
@@ -454,8 +447,20 @@ export function _invokeIgnored(body) {
 }
 
 // Asynchronously call a function and send errors to recovery continuation
-export function _catch(body, recover, direct) {
-	return _call(body, void 0, direct, recover);
+export function _catch(body, recover) {
+	try {
+		var result = body();
+	} catch(e) {
+		try {
+			return Promise.resolve(recover(e));
+		} catch(e2) {
+			return Promise.reject(e2);
+		}
+	}
+	if (result && result.then) {
+		return result.then(void 0, recover);
+	}
+	return Promise.resolve(result);
 }
 
 // Asynchronously await a promise and pass the result to a finally continuation

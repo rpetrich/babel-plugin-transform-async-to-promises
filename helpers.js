@@ -44,7 +44,7 @@ export function _awaitIgnored(value, direct) {
 
 // Proceeds after a value has resolved, or proceeds immediately if the value is not thenable
 export function _continue(value, then) {
-	return !value || !value.then ? then(value) : value.then(then);
+	return value && value.then ? value.then(then) : then(value);
 }
 
 // Proceeds after a value has resolved, or proceeds immediately if the value is not thenable

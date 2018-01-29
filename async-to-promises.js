@@ -373,8 +373,29 @@ exports.default = function({ types, template, traverse }) {
 	function removeUnnecessaryReturnStatements(blocks) {
 		while (blocks.length) {
 			const lastStatement = blocks[blocks.length - 1];
-			if (types.isReturnStatement(lastStatement) && lastStatement.argument === null) {
-				blocks.pop();
+			if (types.isReturnStatement(lastStatement)) {
+				if (lastStatement.argument === null) {
+					blocks.pop();
+				} else {
+					if (blocks.length > 1) {
+						const previousStatement = blocks[blocks.length - 2];
+						if (types.isIfStatement(previousStatement) && !previousStatement.alternate) {
+							let consequent = previousStatement.consequent;
+							while (types.isBlockStatement(consequent)) {
+								if (consequent.body.length !== 1) {
+									return blocks;
+								}
+								consequent = consequent.body[0];
+							}
+							if (types.isReturnStatement(consequent) && consequent.argument) {
+								blocks.pop();
+								blocks.pop();
+								blocks.push(types.returnStatement(conditionalExpression(previousStatement.test, consequent.argument, lastStatement.argument)));
+							}
+						}
+					}
+					break;
+				}
 			} else {
 				if (types.isIfStatement(lastStatement)) {
 					if (types.isBlockStatement(lastStatement.consequent)) {

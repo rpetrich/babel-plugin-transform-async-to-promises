@@ -61,13 +61,13 @@ export function _forTo(array, body) {
 			var result = body(i);
 			if (result && result.then) {
 				return new Promise(function(resolve, reject) {
-					result.then(cycle, reject);
-					function cycle(result) {
+					result.then(_cycle, reject);
+					function _cycle(result) {
 						try {
 							while (++i < array.length) {
 								result = body(i);
 								if (result && result.then) {
-									result.then(cycle, reject);
+									result.then(_cycle, reject);
 									return;
 								}
 							}
@@ -129,7 +129,7 @@ export function _forOf(target, body, check) {
 				return body(step.value);
 			});
 			if (iterator.return) {
-				var fixup = function(value) {
+				function _fixup(value) {
 					// Inform iterator of early exit
 					if ((!step || !step.done) && iterator.return) {
 						try {
@@ -140,11 +140,11 @@ export function _forOf(target, body, check) {
 					return value;
 				};
 				if (iteration && iteration.then) {
-					return iteration.then(fixup, function(error) {
-						throw fixup(error);
+					return iteration.then(_fixup, function(error) {
+						throw _fixup(error);
 					});
 				} else {
-					return fixup(iteration);
+					return _fixup(iteration);
 				}
 			} else {
 				return iteration;
@@ -193,14 +193,14 @@ export function _for(test, update, body) {
 		return Promise.reject(e);
 	}
 	return new Promise(function(resolve, reject) {
-		(stage === 0 ? shouldContinue.then(resumeAfterTest) : stage === 1 ? result.then(resumeAfterBody) : updateValue.then(resumeAfterUpdate)).catch(reject);
-		function resumeAfterBody(value) {
+		(stage === 0 ? shouldContinue.then(_resumeAfterTest) : stage === 1 ? result.then(_resumeAfterBody) : updateValue.then(_resumeAfterUpdate)).catch(reject);
+		function _resumeAfterBody(value) {
 			result = value;
 			do {
 				if (update) {
 					updateValue = update();
 					if (updateValue && updateValue.then) {
-						updateValue.then(resumeAfterUpdate).catch(reject);
+						updateValue.then(_resumeAfterUpdate).catch(reject);
 						return;
 					}
 				}
@@ -210,31 +210,31 @@ export function _for(test, update, body) {
 					return;
 				}
 				if (shouldContinue.then) {
-					shouldContinue.then(resumeAfterTest).catch(reject);
+					shouldContinue.then(_resumeAfterTest).catch(reject);
 					return;
 				}
 				result = body();
 			} while (!result || !result.then);
-			result.then(resumeAfterBody).catch(reject);
+			result.then(_resumeAfterBody).catch(reject);
 		}
-		function resumeAfterTest(shouldContinue) {
+		function _resumeAfterTest(shouldContinue) {
 			if (shouldContinue) {
 				result = body();
 				if (result && result.then) {
-					result.then(resumeAfterBody).catch(reject);
+					result.then(_resumeAfterBody).catch(reject);
 				} else {
-					resumeAfterBody(result);
+					_resumeAfterBody(result);
 				}
 			} else {
 				resolve(result);
 			}
 		}
-		function resumeAfterUpdate() {
+		function _resumeAfterUpdate() {
 			if (shouldContinue = test()) {
 				if (shouldContinue.then) {
-					shouldContinue.then(resumeAfterTest).catch(reject);
+					shouldContinue.then(_resumeAfterTest).catch(reject);
 				} else {
-					resumeAfterTest(shouldContinue);
+					_resumeAfterTest(shouldContinue);
 				}
 			} else {
 				resolve(result);
@@ -262,28 +262,28 @@ export function _do(body, test) {
 		return Promise.reject(e);
 	}
 	return new Promise(function(resolve, reject) {
-		(awaitBody ? result.then(resumeAfterBody) : shouldContinue.then(resumeAfterTest)).catch(reject);
-		function resumeAfterBody(value) {
+		(awaitBody ? result.then(_resumeAfterBody) : shouldContinue.then(_resumeAfterTest)).catch(reject);
+		function _resumeAfterBody(value) {
 			result = value;
 			while (shouldContinue = test()) {
 				if (shouldContinue.then) {
-					shouldContinue.then(resumeAfterTest).catch(reject);
+					shouldContinue.then(_resumeAfterTest).catch(reject);
 					return;
 				}
 				result = body();
 				if (result && result.then) {
-					result.then(resumeAfterBody).catch(reject);
+					result.then(_resumeAfterBody).catch(reject);
 					return;
 				}
 			}
 			resolve(result);
 		}
-		function resumeAfterTest(shouldContinue) {
+		function _resumeAfterTest(shouldContinue) {
 			if (shouldContinue) {
 				do {
 					result = body();
 					if (result && result.then) {
-						result.then(resumeAfterBody).catch(reject);
+						result.then(_resumeAfterBody).catch(reject);
 						return;
 					}
 					shouldContinue = test();
@@ -292,7 +292,7 @@ export function _do(body, test) {
 						return;
 					}
 				} while (!shouldContinue.then);
-				shouldContinue.then(resumeAfterTest).catch(reject);
+				shouldContinue.then(_resumeAfterTest).catch(reject);
 			} else {
 				resolve(result);
 			}
@@ -343,8 +343,8 @@ export function _switch(discriminant, cases) {
 		return Promise.reject(e);
 	}
 	return new Promise(function(resolve, reject) {
-		(awaitBody ? result.then(resumeAfterBody) : testValue.then(resumeAfterTest)).catch(reject);
-		function resumeAfterTest(value) {
+		(awaitBody ? result.then(_resumeAfterBody) : testValue.then(_resumeAfterTest)).catch(reject);
+		function _resumeAfterTest(value) {
 			for (;;) {
 				if (value === discriminant) {
 					dispatchIndex = i;
@@ -362,7 +362,7 @@ export function _switch(discriminant, cases) {
 				if (test) {
 					value = test();
 					if (value && value.then) {
-						value.then(resumeAfterTest).catch(reject);
+						value.then(_resumeAfterTest).catch(reject);
 						return;
 					}
 				} else {
@@ -377,7 +377,7 @@ export function _switch(discriminant, cases) {
 				}
 				var result = body();
 				if (result && result.then) {
-					result.then(resumeAfterBody).catch(reject);
+					result.then(_resumeAfterBody).catch(reject);
 					return;
 				}
 				var fallthroughCheck = cases[dispatchIndex][2];
@@ -385,7 +385,7 @@ export function _switch(discriminant, cases) {
 			} while (fallthroughCheck && !fallthroughCheck());
 			resolve(result);
 		}
-		function resumeAfterBody(result) {
+		function _resumeAfterBody(result) {
 			for (;;) {
 				var fallthroughCheck = cases[dispatchIndex][2];
 				if (!fallthroughCheck || fallthroughCheck()) {
@@ -399,7 +399,7 @@ export function _switch(discriminant, cases) {
 				}
 				result = body();
 				if (result && result.then) {
-					result.then(resumeAfterBody).catch(reject);
+					result.then(_resumeAfterBody).catch(reject);
 					return;
 				}
 			}

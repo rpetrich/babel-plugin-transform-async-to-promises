@@ -442,7 +442,7 @@ export function _invoke(body, then) {
 	if (result && result.then) {
 		return result.then(then);
 	}
-	return then ? then(result) : result;
+	return then(result);
 }
 
 // Asynchronously call a function and swallow the result

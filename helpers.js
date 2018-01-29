@@ -447,7 +447,10 @@ export function _invoke(body, then) {
 
 // Asynchronously call a function and swallow the result
 export function _invokeIgnored(body) {
-	return _invoke(body, _empty);
+	var result = body();
+	if (result && result.then) {
+		return result.then(_empty);
+	}
 }
 
 // Asynchronously call a function and send errors to recovery continuation

@@ -331,7 +331,7 @@ compiledTest("ternary predicate", {
 
 compiledTest("return in consequent", {
 	input: `async function(foo, bar) { if (foo) { var baz = await bar(); if (baz) { return baz; } }; return 0; }`,
-	output: `_async(function(foo,bar){var _exit;return _invoke(function(){if(foo){return _call(bar,function(baz){if(baz){_exit=1;return baz;}});}},function(_result){if(_exit)return _result;return 0;});})`,
+	output: `function(foo,bar){var _exit;return _invoke(function(){if(foo){return _call(bar,function(baz){if(baz){_exit=1;return baz;}});}},function(_result){if(_exit)return _await(_result);return _await(0);});}`,
 	cases: {
 		"inner if": async f => expect(await f(true, async _ => 1)).toBe(1),
 		"outer if": async f => expect(await f(true, async _ => 0)).toBe(0),
@@ -1014,7 +1014,7 @@ compiledTest("switch break with identifier", {
 
 compiledTest("break labeled statement", {
 	input: `async function(foo) { labeled: { if (await foo()) { break labeled; } return false; } return true; }`,
-	output: `_async(function(foo){var _exit,_labeledInterrupt;return _invoke(function(){return _call(foo,function(_foo){if(_foo){_labeledInterrupt=1;return;}_exit=1;return false;});},function(_result){if(_exit)return _result;return true;});})`,
+	output: `function(foo){var _exit,_labeledInterrupt;return _invoke(function(){return _call(foo,function(_foo){if(_foo){_labeledInterrupt=1;return;}_exit=1;return false;});},function(_result){if(_exit)return _await(_result);return _await(true);});}`,
 	cases: {
 		true: async f => expect(await f(() => 1)).toEqual(true),
 		false: async f => expect(await f(() => 0)).toEqual(false),
@@ -1023,7 +1023,7 @@ compiledTest("break labeled statement", {
 
 compiledTest("break with multiple labeled statements", {
 	input: `async function(foo) { outer: { inner: { if (await foo()) { break outer; } } return false; } return true; }`,
-	output: `_async(function(foo){var _outerInterrupt,_exit;return _invoke(function(){return _invoke(function(){return _call(foo,function(_foo){if(_foo){_outerInterrupt=1;}});},function(){if(_outerInterrupt)return;_exit=1;return false;});},function(_result){if(_exit)return _result;return true;});})`,
+	output: `function(foo){var _outerInterrupt,_exit;return _invoke(function(){return _invoke(function(){return _call(foo,function(_foo){if(_foo){_outerInterrupt=1;}});},function(){if(_outerInterrupt)return;_exit=1;return false;});},function(_result){if(_exit)return _await(_result);return _await(true);});}`,
 	cases: {
 		true: async f => expect(await f(() => 1)).toEqual(true),
 		false: async f => expect(await f(() => 0)).toEqual(false),

@@ -1411,13 +1411,33 @@ exports.default = function({ types, template, traverse }) {
 		}		
 	}
 
+	function isInvokeCallExpression(path) {
+		if (!path.isCallExpression()) {
+			return false;
+		}
+		switch (path.node.callee._helperName) {
+			case "_invoke":
+				return types.isFunctionExpression(path.node.arguments[0]) && types.isFunctionExpression(path.node.arguments[1]);
+			default:
+				return false;
+		}		
+	}
+
 	const checkForErrorsAndRewriteReturnsVisitor = {
 		Function(path) {
 			path.skip();
 		},
 		CallExpression(path) {
 			if (!isAsyncCallExpression(path)) {
-				this.canThrow = true;
+				if (isInvokeCallExpression(path)) {
+					const args = path.get("arguments");
+					if (checkForErrorsAndRewriteReturns(args[0])) {
+						this.canThrow = true;
+					}
+					args[1].traverse(checkForErrorsAndRewriteReturnsVisitor, this);
+				} else {
+					this.canThrow = true;
+				}
 			}
 		},
 		ThrowStatement(path) {
@@ -1429,7 +1449,7 @@ exports.default = function({ types, template, traverse }) {
 		ReturnStatement(path) {
 			if (this.rewriteReturns) {
 				const argument = path.get("argument");
-				if (!argument.node || !isAsyncCallExpression(argument)) {
+				if (!argument.node || !(isAsyncCallExpression(argument) || isInvokeCallExpression(argument))) {
 					argument.replaceWith(types.callExpression(helperReference(this.plugin, path, "_await"), argument.node ? [argument.node] : []));
 				}
 			}

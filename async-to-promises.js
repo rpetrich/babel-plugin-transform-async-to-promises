@@ -425,6 +425,30 @@ exports.default = function({ types, template, traverse }) {
 		return path.node;
 	}
 
+	function deepestScopeForFunctionNode(path) {
+		const paths = [];
+		path.traverse({
+			Identifier(path) {
+				const binding = path.parentPath.scope.getBinding(path.node.name);
+				if (binding && binding.scope != path.scope) {
+					paths.push(binding.scope.path);
+				}
+			}
+		});
+		let scope;
+		if (paths.length) {
+			try {
+				scope = path.getDeepestCommonAncestorFrom(paths).scope;
+			} catch (e) {
+				return;
+			}
+			// console.log(paths.map(path => JSON.stringify(path.node)), JSON.stringify(scope.path.node));
+		} else {
+			scope = path.scope.getProgramParent();
+		}
+		path.hoist(scope);
+	}
+
 	function relocateTail(state, awaitExpression, statementNode, target, temporary, exitIdentifier, directExpression) {
 		const tail = borrowTail(target);
 		let expression;
@@ -441,6 +465,15 @@ exports.default = function({ types, template, traverse }) {
 			expression = awaitAndContinue(state, target, awaitExpression, helperReference(state, target, "_empty"), directExpression);
 		}
 		target.replaceWith(returnStatement(expression, originalNode));
+		const returnArg = target.get("argument");
+		if (returnArg.isCallExpression()) {
+			for (const arg of returnArg.get("arguments")) {
+				if (arg.isFunctionExpression()) {
+					deepestScopeForFunctionNode(arg);
+					// console.log(arg);
+				}
+			}
+		}
 	}
 
 	function catchHelper(state, path, blockStatement, catchContinuation) {

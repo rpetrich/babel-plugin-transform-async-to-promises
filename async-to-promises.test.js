@@ -10,7 +10,7 @@ const onlyRunTestName = undefined;
 
 const stripHelpersVisitor = {
 	Statement(path) {
-		if (path.isReturnStatement()) {
+		if (path.isReturnStatement() || (path.isFunction() && path.id)) {
 			path.skip();
 		} else {
 			path.remove();

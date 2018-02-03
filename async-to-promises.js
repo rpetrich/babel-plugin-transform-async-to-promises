@@ -1444,9 +1444,42 @@ exports.default = function({ types, template, traverse }) {
 		}		
 	}
 
+	function isEvalOrArguments(path) {
+		return path.isIdentifier() && (path.name === "arguments" || path.name === "eval");
+	}
+
+	function identifierSearchesScope(path) {
+		const parent = path.parentPath;
+		if (parent.isVariableDeclarator() && parent.get("id") === path) {
+			return false;
+		}
+		if (parent.isCallExpression() && parent.get("callee") === path) {
+			return false;
+		}
+		if (parent.isLabeledStatement() && parent.get("label") === path) {
+			return false;
+		}
+		return true;
+	}
+
+	function canThrow() {
+		this.canThrow = true;
+	}
+
 	const checkForErrorsAndRewriteReturnsVisitor = {
 		Function(path) {
 			path.skip();
+		},
+		ThrowStatement: canThrow,
+		ForInStatement: canThrow,
+		ForOfStatement: canThrow,
+		WithStatement: canThrow,
+		MemberExpression: canThrow,
+		NewExpression: canThrow,
+		TryStatement(path) {
+			if (path.get("handler")) {
+				path.get("body").skip();
+			}
 		},
 		CallExpression(path) {
 			if (!isAsyncCallExpression(path)) {
@@ -1461,11 +1494,38 @@ exports.default = function({ types, template, traverse }) {
 				}
 			}
 		},
-		ThrowStatement(path) {
-			this.canThrow = true;
+		UnaryExpression(path) {
+			switch (path.node.operator) {
+				case "++":
+				case "--": {
+					if (isEvalOrArguments(path.get("argument"))) {
+						this.canThrow = true;
+					}
+					break;
+				}
+				case "delete":
+					// Not strictly true that all delete expressions can potentially throw, but better to be cautious
+					this.canThrow = true;
+					break;
+			}
 		},
-		MemberExpression(path) {
-			this.canThrow = true;
+		BinaryExpression(path) {
+			switch (path.node.operator) {
+				case "instanceof":
+				case "in":
+					this.canThrow = true;
+					break;
+			}
+		},
+		Identifier(path) {
+			if (identifierSearchesScope(path) && !path.scope.getBinding(path.node.name)) {
+				this.canThrow = true;
+			}
+		},
+		AssignmentExpression(path) {
+			if (isEvalOrArguments(path.get("left"))) {
+				this.canThrow = true;
+			}
 		},
 		ReturnStatement(path) {
 			if (this.rewriteReturns) {

@@ -740,6 +740,16 @@ compiledTest("for of await in body with break", {
 	},
 });
 
+compiledTest("for of in body", {
+	input: `async function(iter) { let result = 0; for (const value of iter) { result += value; } return result; }`,
+	output: `_async(function(iter){let result=0;for(const value of iter){result+=value;}return result;})`,
+	cases: {
+		empty: async f => expect(await f([])).toBe(0),
+		single: async f => expect(await f([1])).toBe(1),
+		multiple: async f => expect(await f([1,2])).toBe(3),
+		break: async f => expect(await f([1,10,4])).toBe(15),
+	},
+});
 
 compiledTest("while loop", {
 	input: `async function(foo) { let shouldContinue = true; while (shouldContinue) { shouldContinue = await foo(); } }`,

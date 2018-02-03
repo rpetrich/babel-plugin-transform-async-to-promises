@@ -163,6 +163,8 @@ export function _forOf(target, body, check) {
 	return _forValues(values, body, check);
 }
 
+export const _forAwaitOf = _forOf;
+
 // Asynchronously implement a generic for loop
 export function _for(test, update, body) {
 	try {

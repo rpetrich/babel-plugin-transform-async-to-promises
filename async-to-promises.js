@@ -886,60 +886,61 @@ exports.default = function({ types, template, traverse }) {
 		}
 	}
 
-	function replaceReturnsAndBreaks(path, exitIdentifier) {
-		const breakIdentifiers = breakContinueStackForPath(path);
-		const usedIdentifiers = [];
-		path.traverse({
-			Function: skipNode,
-			ReturnStatement(path) {
-				if (!path.node._skip && exitIdentifier) {
+	const replaceReturnsAndBreaksVisitor = {
+		Function: skipNode,
+		ReturnStatement(path) {
+			if (!path.node._skip && this.exitIdentifier) {
+				path.replaceWithMultiple([
+					types.expressionStatement(types.assignmentExpression("=", this.exitIdentifier, types.numericLiteral(1))),
+					returnStatement(path.node.argument, path.node),
+				]);
+			}
+		},
+		BreakStatement(path) {
+			const replace = returnStatement(null, path.node);
+			const index = path.node.label ? this.breakIdentifiers.findIndex(breakIdentifier => breakIdentifier.name === path.node.label.name) : 0;
+			if (index !== -1 && this.breakIdentifiers.length) {
+				const used = this.breakIdentifiers.slice(0, index + 1);
+				if (used.length) {
+					pushMissing(this.usedIdentifiers, used);
+					const expression = used.reduce((expression, breakIdentifier) => types.assignmentExpression("=", breakIdentifier.identifier, expression), types.numericLiteral(1));
 					path.replaceWithMultiple([
-						types.expressionStatement(types.assignmentExpression("=", exitIdentifier, types.numericLiteral(1))),
-						returnStatement(path.node.argument, path.node),
+						types.expressionStatement(expression),
+						replace,
 					]);
+					return;
 				}
-			},
-			BreakStatement(path) {
-				const replace = returnStatement(null, path.node);
-				const index = path.node.label ? breakIdentifiers.findIndex(breakIdentifier => breakIdentifier.name === path.node.label.name) : 0;
-				if (index !== -1 && breakIdentifiers.length) {
-					const used = breakIdentifiers.slice(0, index + 1);
-					if (used.length) {
-						pushMissing(usedIdentifiers, used);
-						const expression = used.reduce((expression, breakIdentifier) => types.assignmentExpression("=", breakIdentifier.identifier, expression), types.numericLiteral(1));
-						path.replaceWithMultiple([
-							types.expressionStatement(expression),
-							replace,
-						]);
-						return;
-					}
+			}
+			path.replaceWith(replace);
+		},
+		ContinueStatement(path) {
+			const replace = returnStatement(null, path.node);
+			const index = path.node.label ? this.breakIdentifiers.findIndex(breakIdentifier => breakIdentifier.name === path.node.label.name) : 0;
+			if (index !== -1 && this.breakIdentifiers.length) {
+				const used = this.breakIdentifiers.slice(0, index);
+				if (used.length) {
+					pushMissing(this.usedIdentifiers, used);
+					const expression = used.reduce((expression, breakIdentifier) => types.assignmentExpression("=", breakIdentifier.identifier, expression), types.numericLiteral(1));
+					path.replaceWithMultiple([
+						types.expressionStatement(expression),
+						replace,
+					]);
+					return;
 				}
-				path.replaceWith(replace);
-			},
-			ContinueStatement(path) {
-				const replace = returnStatement(null, path.node);
-				const index = path.node.label ? breakIdentifiers.findIndex(breakIdentifier => breakIdentifier.name === path.node.label.name) : 0;
-				if (index !== -1 && breakIdentifiers.length) {
-					const used = breakIdentifiers.slice(0, index);
-					if (used.length) {
-						pushMissing(usedIdentifiers, used);
-						const expression = used.reduce((expression, breakIdentifier) => types.assignmentExpression("=", breakIdentifier.identifier, expression), types.numericLiteral(1));
-						path.replaceWithMultiple([
-							types.expressionStatement(expression),
-							replace,
-						]);
-						return;
-					}
-				}
-				path.replaceWith(replace);
-			},
-		});
-		for (const identifier of usedIdentifiers) {
+			}
+			path.replaceWith(replace);
+		},
+	};
+
+	function replaceReturnsAndBreaks(path, exitIdentifier) {
+		const state = { exitIdentifier, breakIdentifiers: breakContinueStackForPath(path), usedIdentifiers: [] };
+		path.traverse(replaceReturnsAndBreaksVisitor, state);
+		for (const identifier of state.usedIdentifiers) {
 			if (!identifier.path.parentPath.scope.getBinding(identifier.identifier.name)) {
 				identifier.path.parentPath.scope.push({ id: identifier.identifier });
 			}
 		}
-		return usedIdentifiers;
+		return state.usedIdentifiers;
 	}
 
 	function breakIdentifierForPath(path) {
@@ -1046,318 +1047,326 @@ exports.default = function({ types, template, traverse }) {
 		return result;
 	}
 
-	function rewriteFunctionBody(state, path, exitIdentifier) {
-		function rewriteAwaitPath(awaitPath) {
-			let processExpressions = !awaitPath.isForAwaitStatement();
-			if (!processExpressions) {
-				awaitPath = awaitPath.get("left");
-			}
-			const relocatedBlocks = [];
-			const originalAwaitPath = awaitPath;
-			const originalExpression = awaitPath.node;
-			const node = awaitPath.node;
-			let expressionToAwait = node.argument;
-			do {
-				let parent = awaitPath.parentPath;
-				if (!relocatedBlocks.find(block => block.path === parent)) {
-					const explicitExits = pathsReturnOrThrow(parent);
-					if (parent.isIfStatement()) {
-						if (awaitPath !== parent.get("test")) {
-							if (!explicitExits.all && explicitExits.any && !exitIdentifier) {
-								exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
-								path.scope.push({ id: exitIdentifier });
-							}
-							replaceReturnsAndBreaks(parent.get("consequent"), exitIdentifier);
-							replaceReturnsAndBreaks(parent.get("alternate"), exitIdentifier);
-							relocatedBlocks.push({
-								relocate() {
-									let resultIdentifier = null;
-									if (!explicitExits.all && explicitExits.any) {
-										resultIdentifier = path.scope.generateUidIdentifier("result");
-										parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
-									}
-									if (!explicitExits.all) {
-										const fn = types.functionExpression(null, [], blockStatement([parent.node]));
-										const rewritten = rewriteFunctionNode(state, parent, fn, exitIdentifier);
-										relocateTail(state, types.callExpression(rewritten, []), null, parent, resultIdentifier, exitIdentifier);
-									}
-								},
-								path: parent,
-							});
+	function rewriteAwaitPath(awaitPath) {
+		const state = this;
+		const pluginState = state.pluginState;
+		const path = state.path;
+		let processExpressions = !awaitPath.isForAwaitStatement();
+		if (!processExpressions) {
+			awaitPath = awaitPath.get("left");
+		}
+		const relocatedBlocks = [];
+		const originalAwaitPath = awaitPath;
+		const originalExpression = awaitPath.node;
+		const node = awaitPath.node;
+		let expressionToAwait = node.argument;
+		do {
+			let parent = awaitPath.parentPath;
+			if (!relocatedBlocks.find(block => block.path === parent)) {
+				const explicitExits = pathsReturnOrThrow(parent);
+				if (parent.isIfStatement()) {
+					if (awaitPath !== parent.get("test")) {
+						if (!explicitExits.all && explicitExits.any && !state.exitIdentifier) {
+							state.exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
+							path.scope.push({ id: state.exitIdentifier });
 						}
-					} else if (parent.isTryStatement()) {
+						replaceReturnsAndBreaks(parent.get("consequent"), state.exitIdentifier);
+						replaceReturnsAndBreaks(parent.get("alternate"), state.exitIdentifier);
 						relocatedBlocks.push({
 							relocate() {
-								const temporary = explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
-								const success = explicitExits.all ? returnStatement(temporary) : null;
-								let finallyFunction;
-								let finallyName;
-								if (parent.node.finalizer) {
-									let finallyArgs = [];
-									let finallyBody = parent.node.finalizer.body;
-									if (!pathsReturnOrThrow(parent.get("finalizer")).all) {
-										const resultIdentifier = path.scope.generateUidIdentifier("result");
-										const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
-										finallyArgs = [wasThrownIdentifier, resultIdentifier];
-										finallyBody = finallyBody.concat(returnStatement(types.callExpression(helperReference(state, parent, "_rethrow"), [wasThrownIdentifier, resultIdentifier])));
-										finallyName = "_finallyRethrows";
-									} else {
-										finallyName = "_finally";
-									}
-									finallyFunction = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
+								let resultIdentifier = null;
+								if (!explicitExits.all && explicitExits.any) {
+									resultIdentifier = path.scope.generateUidIdentifier("result");
+									parent.insertAfter(types.ifStatement(state.exitIdentifier, returnStatement(resultIdentifier)));
 								}
-								let catchExpression;
-								let rewriteCatch;
-								if (parent.node.handler) {
-									const catchClause = parent.node.handler;
-									rewriteCatch = catchClause.body.body.length;
-									catchExpression = rewriteCatch ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(state, parent, "_empty");
-								}
-								const evalBlock = catchHelper(state, parent, parent.node.block, catchExpression);
-								relocateTail(state, evalBlock, success, parent, temporary, exitIdentifier);
-								if (finallyFunction && finallyName) {
-									parent.get("argument").replaceWith(types.callExpression(helperReference(state, parent, finallyName), [parent.node.argument, finallyFunction]));
+								if (!explicitExits.all) {
+									const fn = types.functionExpression(null, [], blockStatement([parent.node]));
+									const rewritten = rewriteFunctionNode(pluginState, parent, fn, state.exitIdentifier);
+									relocateTail(pluginState, types.callExpression(rewritten, []), null, parent, resultIdentifier, state.exitIdentifier);
 								}
 							},
 							path: parent,
 						});
-					} else if (parent.isForStatement() || parent.isWhileStatement() || parent.isDoWhileStatement() || parent.isForInStatement() || parent.isForOfStatement() || parent.isForAwaitStatement()) {
-						const breaks = pathsBreak(parent);
-						const label = parent.parentPath.isLabeledStatement() ? parent.parent.label.name : null;
-						if (!exitIdentifier && explicitExits.any && !explicitExits.all) {
-							path.scope.push({ id: exitIdentifier = awaitPath.scope.generateUidIdentifier("exit") });
-						}
-						const breakIdentifiers = replaceReturnsAndBreaks(parent.get("body"), exitIdentifier);
-						const isForIn = parent.isForInStatement();
-						const forOwnBodyPath = isForIn && extractForOwnBodyPath(parent);
-						const isForOf = parent.isForOfStatement();
-						const isForAwait = parent.isForAwaitStatement();
-						if (isForIn || isForOf || isForAwait) {
-							const right = parent.get("right");
-							if (awaitPath !== right) {
-								relocatedBlocks.push({
-									relocate() {
-										const left = parent.get("left");
-										const loopIdentifier = left.isVariableDeclaration() ? left.node.declarations[0].id : left.node;
-										const params = [right.node, types.functionExpression(null, [loopIdentifier], blockStatement((forOwnBodyPath || parent.get("body")).node))];
-										const exitCheck = buildBreakExitCheck(exitIdentifier, breakIdentifiers);
-										if (exitCheck) {
-											params.push(unwrapReturnCallWithEmptyArguments(types.functionExpression(null, [], types.blockStatement([returnStatement(exitCheck)])), path.scope));
-										}
-										const loopCall = types.callExpression(helperReference(state, parent, isForIn ? forOwnBodyPath ? "_forOwn" : "_forIn" : isForAwait ? "_forAwaitOf" : "_forOf"), params);
-										let resultIdentifier = null;
-										if (explicitExits.any) {
-											resultIdentifier = path.scope.generateUidIdentifier("result");
-											parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
-										}
-										relocateTail(state, loopCall, null, label ? parent.parentPath : parent, resultIdentifier, exitIdentifier);
-									},
-									path: parent,
-								})
+					}
+				} else if (parent.isTryStatement()) {
+					relocatedBlocks.push({
+						relocate() {
+							const temporary = explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
+							const success = explicitExits.all ? returnStatement(temporary) : null;
+							let finallyFunction;
+							let finallyName;
+							if (parent.node.finalizer) {
+								let finallyArgs = [];
+								let finallyBody = parent.node.finalizer.body;
+								if (!pathsReturnOrThrow(parent.get("finalizer")).all) {
+									const resultIdentifier = path.scope.generateUidIdentifier("result");
+									const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
+									finallyArgs = [wasThrownIdentifier, resultIdentifier];
+									finallyBody = finallyBody.concat(returnStatement(types.callExpression(helperReference(pluginState, parent, "_rethrow"), [wasThrownIdentifier, resultIdentifier])));
+									finallyName = "_finallyRethrows";
+								} else {
+									finallyName = "_finally";
+								}
+								finallyFunction = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
 							}
-						} else {
-							const forToIdentifiers = identifiersInForToLengthStatement(parent);
-							let testExpression = parent.node.test;
-							const breakExitCheck = buildBreakExitCheck(exitIdentifier, breakIdentifiers);
-							if (breakExitCheck) {
-								const inverted = logicalNot(breakExitCheck);
-								testExpression = testExpression && (!types.isBooleanLiteral(testExpression) || !testExpression.value) ? logicalAnd(inverted, testExpression) : inverted;
+							let catchExpression;
+							let rewriteCatch;
+							if (parent.node.handler) {
+								const catchClause = parent.node.handler;
+								rewriteCatch = catchClause.body.body.length;
+								catchExpression = rewriteCatch ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(pluginState, parent, "_empty");
 							}
-							if (testExpression) {
-								const testPath = parent.get("test");
-								testPath.replaceWith(rewriteFunctionNode(state, parent, functionize(testExpression), exitIdentifier));
+							const evalBlock = catchHelper(pluginState, parent, parent.node.block, catchExpression);
+							relocateTail(pluginState, evalBlock, success, parent, temporary, state.exitIdentifier);
+							if (finallyFunction && finallyName) {
+								parent.get("argument").replaceWith(types.callExpression(helperReference(pluginState, parent, finallyName), [parent.node.argument, finallyFunction]));
 							}
-							const update = parent.get("update");
-							if (update.node) {
-								update.replaceWith(functionize(update.node));
-							}
+						},
+						path: parent,
+					});
+				} else if (parent.isForStatement() || parent.isWhileStatement() || parent.isDoWhileStatement() || parent.isForInStatement() || parent.isForOfStatement() || parent.isForAwaitStatement()) {
+					const breaks = pathsBreak(parent);
+					const label = parent.parentPath.isLabeledStatement() ? parent.parent.label.name : null;
+					if (!state.exitIdentifier && explicitExits.any && !explicitExits.all) {
+						path.scope.push({ id: state.exitIdentifier = awaitPath.scope.generateUidIdentifier("exit") });
+					}
+					const breakIdentifiers = replaceReturnsAndBreaks(parent.get("body"), state.exitIdentifier);
+					const isForIn = parent.isForInStatement();
+					const forOwnBodyPath = isForIn && extractForOwnBodyPath(parent);
+					const isForOf = parent.isForOfStatement();
+					const isForAwait = parent.isForAwaitStatement();
+					if (isForIn || isForOf || isForAwait) {
+						const right = parent.get("right");
+						if (awaitPath !== right) {
 							relocatedBlocks.push({
 								relocate() {
-									const isDoWhile = parent.isDoWhileStatement();
-									if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
-										const loopCall = types.callExpression(helperReference(state, parent, "_forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
-										relocateTail(state, loopCall, null, parent, undefined, exitIdentifier);
-									} else {
-										const init = parent.get("init");
-										if (init.node) {
-											parent.insertBefore(init.node);
-										}
-										const forIdentifier = path.scope.generateUidIdentifier("for");
-										const bodyFunction = types.functionExpression(null, [], blockStatement(parent.node.body));
-										const testFunction = unwrapReturnCallWithEmptyArguments(parent.get("test").node || voidExpression(), path.scope);
-										const updateFunction = unwrapReturnCallWithEmptyArguments(parent.get("update").node || voidExpression(), path.scope);
-										const loopCall = isDoWhile ? types.callExpression(helperReference(state, parent, "_do"), [bodyFunction, testFunction]) : types.callExpression(helperReference(state, parent, "_for"), [testFunction, updateFunction, bodyFunction]);
-										let resultIdentifier = null;
-										if (explicitExits.any) {
-											resultIdentifier = path.scope.generateUidIdentifier("result");
-											parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
-										}
-										relocateTail(state, loopCall, null, parent, resultIdentifier, exitIdentifier);
+									const left = parent.get("left");
+									const loopIdentifier = left.isVariableDeclaration() ? left.node.declarations[0].id : left.node;
+									const params = [right.node, types.functionExpression(null, [loopIdentifier], blockStatement((forOwnBodyPath || parent.get("body")).node))];
+									const exitCheck = buildBreakExitCheck(state.exitIdentifier, breakIdentifiers);
+									if (exitCheck) {
+										params.push(unwrapReturnCallWithEmptyArguments(types.functionExpression(null, [], types.blockStatement([returnStatement(exitCheck)])), path.scope));
 									}
+									const loopCall = types.callExpression(helperReference(pluginState, parent, isForIn ? forOwnBodyPath ? "_forOwn" : "_forIn" : isForAwait ? "_forAwaitOf" : "_forOf"), params);
+									let resultIdentifier = null;
+									if (explicitExits.any) {
+										resultIdentifier = path.scope.generateUidIdentifier("result");
+										parent.insertAfter(types.ifStatement(state.exitIdentifier, returnStatement(resultIdentifier)));
+									}
+									relocateTail(pluginState, loopCall, null, label ? parent.parentPath : parent, resultIdentifier, state.exitIdentifier);
 								},
 								path: parent,
-							});
+							})
 						}
-					} else if (parent.isSwitchStatement()) {
-						// TODO: Support more complex switch statements
-						const label = parent.parentPath.isLabeledStatement() ? parent.parent.label.name : null;
-						const discriminant = parent.get("discriminant");
-						const testPaths = parent.get("cases").map(casePath => casePath.get("test"));
-						if (awaitPath !== discriminant && !(explicitExits.all && !testPaths.some(testPath => findAwaitPath(testPath)))) {
-							if (!explicitExits.all && explicitExits.any && !exitIdentifier) {
-								exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
-								path.scope.push({ id: exitIdentifier });
-							}
-							let defaultIndex;
-							testPaths.forEach((testPath, i) => {
-								if (testPath.node) {
-									testPath.replaceWith(rewriteFunctionNode(state, parent, functionize(testPath.node), exitIdentifier));
+					} else {
+						const forToIdentifiers = identifiersInForToLengthStatement(parent);
+						let testExpression = parent.node.test;
+						const breakExitCheck = buildBreakExitCheck(state.exitIdentifier, breakIdentifiers);
+						if (breakExitCheck) {
+							const inverted = logicalNot(breakExitCheck);
+							testExpression = testExpression && (!types.isBooleanLiteral(testExpression) || !testExpression.value) ? logicalAnd(inverted, testExpression) : inverted;
+						}
+						if (testExpression) {
+							const testPath = parent.get("test");
+							testPath.replaceWith(rewriteFunctionNode(pluginState, parent, functionize(testExpression), state.exitIdentifier));
+						}
+						const update = parent.get("update");
+						if (update.node) {
+							update.replaceWith(functionize(update.node));
+						}
+						relocatedBlocks.push({
+							relocate() {
+								const isDoWhile = parent.isDoWhileStatement();
+								if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
+									const loopCall = types.callExpression(helperReference(pluginState, parent, "_forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
+									relocateTail(pluginState, loopCall, null, parent, undefined, state.exitIdentifier);
 								} else {
-									defaultIndex = i;
-								}
-							});
-							const cases = parent.get("cases").map(casePath => ({
-								test: casePath.node.test,
-								consequent: casePath.node.consequent,
-								caseExits: pathsReturnOrThrow(casePath),
-								caseBreaks: pathsBreak(casePath),
-								breakIdentifiers: replaceReturnsAndBreaks(casePath, exitIdentifier),
-							}));
-							relocatedBlocks.push({
-								relocate() {
-									let resultIdentifier;
-									if (!explicitExits.all && explicitExits.any) {
-										resultIdentifier = path.scope.generateUidIdentifier("result");
-										parent.insertAfter(types.ifStatement(exitIdentifier, returnStatement(resultIdentifier)));
+									const init = parent.get("init");
+									if (init.node) {
+										parent.insertBefore(init.node);
 									}
-									const caseNodes = types.arrayExpression(cases.map(caseItem => {
-										const args = [];
-										if (caseItem.test) {
-											args.push(caseItem.test);
-										} else if (caseItem.consequent.length) {
-											args.push(voidExpression());
-										}
-										if (caseItem.consequent.length) {
-											const useBreakIdentifier = !caseItem.caseBreaks.all && caseItem.caseBreaks.any;
-											args.push(types.functionExpression(null, [], blockStatement(removeUnnecessaryReturnStatements(caseItem.consequent))));
-											if (!caseItem.caseExits.any && !caseItem.caseBreaks.any) {
-												args.push(helperReference(state, parent, "_empty"));
-											} else if (!(caseItem.caseExits.all || caseItem.caseBreaks.all)) {
-												const breakCheck = buildBreakExitCheck(caseItem.caseExits.any ? exitIdentifier : null, caseItem.breakIdentifiers);
-												if (breakCheck) {
-													args.push(types.functionExpression(null, [], types.blockStatement([returnStatement(breakCheck)])));
-												}
+									const forIdentifier = path.scope.generateUidIdentifier("for");
+									const bodyFunction = types.functionExpression(null, [], blockStatement(parent.node.body));
+									const testFunction = unwrapReturnCallWithEmptyArguments(parent.get("test").node || voidExpression(), path.scope);
+									const updateFunction = unwrapReturnCallWithEmptyArguments(parent.get("update").node || voidExpression(), path.scope);
+									const loopCall = isDoWhile ? types.callExpression(helperReference(pluginState, parent, "_do"), [bodyFunction, testFunction]) : types.callExpression(helperReference(pluginState, parent, "_for"), [testFunction, updateFunction, bodyFunction]);
+									let resultIdentifier = null;
+									if (explicitExits.any) {
+										resultIdentifier = path.scope.generateUidIdentifier("result");
+										parent.insertAfter(types.ifStatement(state.exitIdentifier, returnStatement(resultIdentifier)));
+									}
+									relocateTail(pluginState, loopCall, null, parent, resultIdentifier, state.exitIdentifier);
+								}
+							},
+							path: parent,
+						});
+					}
+				} else if (parent.isSwitchStatement()) {
+					// TODO: Support more complex switch pluginStatements
+					const label = parent.parentPath.isLabeledStatement() ? parent.parent.label.name : null;
+					const discriminant = parent.get("discriminant");
+					const testPaths = parent.get("cases").map(casePath => casePath.get("test"));
+					if (awaitPath !== discriminant && !(explicitExits.all && !testPaths.some(testPath => findAwaitPath(testPath)))) {
+						if (!explicitExits.all && explicitExits.any && !state.exitIdentifier) {
+							state.exitIdentifier = awaitPath.scope.generateUidIdentifier("exit");
+							path.scope.push({ id: state.exitIdentifier });
+						}
+						let defaultIndex;
+						testPaths.forEach((testPath, i) => {
+							if (testPath.node) {
+								testPath.replaceWith(rewriteFunctionNode(pluginState, parent, functionize(testPath.node), state.exitIdentifier));
+							} else {
+								defaultIndex = i;
+							}
+						});
+						const cases = parent.get("cases").map(casePath => ({
+							test: casePath.node.test,
+							consequent: casePath.node.consequent,
+							caseExits: pathsReturnOrThrow(casePath),
+							caseBreaks: pathsBreak(casePath),
+							breakIdentifiers: replaceReturnsAndBreaks(casePath, state.exitIdentifier),
+						}));
+						relocatedBlocks.push({
+							relocate() {
+								let resultIdentifier;
+								if (!explicitExits.all && explicitExits.any) {
+									resultIdentifier = path.scope.generateUidIdentifier("result");
+									parent.insertAfter(types.ifStatement(state.exitIdentifier, returnStatement(resultIdentifier)));
+								}
+								const caseNodes = types.arrayExpression(cases.map(caseItem => {
+									const args = [];
+									if (caseItem.test) {
+										args.push(caseItem.test);
+									} else if (caseItem.consequent.length) {
+										args.push(voidExpression());
+									}
+									if (caseItem.consequent.length) {
+										const useBreakIdentifier = !caseItem.caseBreaks.all && caseItem.caseBreaks.any;
+										args.push(types.functionExpression(null, [], blockStatement(removeUnnecessaryReturnStatements(caseItem.consequent))));
+										if (!caseItem.caseExits.any && !caseItem.caseBreaks.any) {
+											args.push(helperReference(pluginState, parent, "_empty"));
+										} else if (!(caseItem.caseExits.all || caseItem.caseBreaks.all)) {
+											const breakCheck = buildBreakExitCheck(caseItem.caseExits.any ? state.exitIdentifier : null, caseItem.breakIdentifiers);
+											if (breakCheck) {
+												args.push(types.functionExpression(null, [], types.blockStatement([returnStatement(breakCheck)])));
 											}
 										}
-										return types.arrayExpression(args);
-									}));
-									const switchCall = types.callExpression(helperReference(state, parent, "_switch"), [discriminant.node, caseNodes]);
-									relocateTail(state, switchCall, null, label ? parent.parentPath : parent, resultIdentifier, exitIdentifier);
-								},
-								path: parent,
-							});
-						}
-					} else if (parent.isLabeledStatement()) {
-						let resultIdentifier;
-						if (!exitIdentifier && explicitExits.any && !explicitExits.all) {
-							path.scope.push({ id: exitIdentifier = awaitPath.scope.generateUidIdentifier("exit") });
-						}
-						if (!explicitExits.all && explicitExits.any) {
-							resultIdentifier = path.scope.generateUidIdentifier("result");
-						}
-						const breakIdentifiers = replaceReturnsAndBreaks(parent.get("body"), exitIdentifier).filter(id => id.name !== parent.node.label.name);
+									}
+									return types.arrayExpression(args);
+								}));
+								const switchCall = types.callExpression(helperReference(pluginState, parent, "_switch"), [discriminant.node, caseNodes]);
+								relocateTail(pluginState, switchCall, null, label ? parent.parentPath : parent, resultIdentifier, state.exitIdentifier);
+							},
+							path: parent,
+						});
+					}
+				} else if (parent.isLabeledStatement()) {
+					let resultIdentifier;
+					if (!state.exitIdentifier && explicitExits.any && !explicitExits.all) {
+						path.scope.push({ id: state.exitIdentifier = awaitPath.scope.generateUidIdentifier("exit") });
+					}
+					if (!explicitExits.all && explicitExits.any) {
+						resultIdentifier = path.scope.generateUidIdentifier("result");
+					}
+					const breakIdentifiers = replaceReturnsAndBreaks(parent.get("body"), state.exitIdentifier).filter(id => id.name !== parent.node.label.name);
+					relocatedBlocks.push({
+						relocate() {
+							if (resultIdentifier || breakIdentifiers.length) {
+								const fn = types.functionExpression(null, [], blockStatement(parent.node.body));
+								const rewritten = rewriteFunctionNode(pluginState, parent, fn, state.exitIdentifier);
+								const exitCheck = buildBreakExitCheck(explicitExits.any ? state.exitIdentifier : null, breakIdentifiers);
+								if (exitCheck) {
+									parent.insertAfter(types.ifStatement(exitCheck, returnStatement(resultIdentifier)));
+								}
+								relocateTail(pluginState, types.callExpression(rewritten, []), null, parent, resultIdentifier, state.exitIdentifier);
+							}
+						},
+						path: parent,
+					});
+				}
+			}
+			if (processExpressions && (parent.isStatement() || (parent.isSwitchCase() && awaitPath.node != parent.node.test))) {
+				if (!awaitPath.isFunction() && !awaitPath.isSwitchCase()) {
+					const originalArgument = originalAwaitPath.node.argument;
+					if (originalAwaitPath.parentPath.isExpressionStatement()) {
+						originalAwaitPath.replaceWith(voidExpression());
 						relocatedBlocks.push({
 							relocate() {
-								if (resultIdentifier || breakIdentifiers.length) {
-									const fn = types.functionExpression(null, [], blockStatement(parent.node.body));
-									const rewritten = rewriteFunctionNode(state, parent, fn, exitIdentifier);
-									const exitCheck = buildBreakExitCheck(explicitExits.any ? exitIdentifier : null, breakIdentifiers);
-									if (exitCheck) {
-										parent.insertAfter(types.ifStatement(exitCheck, returnStatement(resultIdentifier)));
+								relocateTail(pluginState, originalArgument, null, parent, null, state.exitIdentifier, types.booleanLiteral(false));
+							},
+							path: parent,
+						});
+					} else {
+						const reusingExisting = originalAwaitPath.parentPath.isVariableDeclarator();
+						let resultIdentifier;
+						if (reusingExisting) {
+							resultIdentifier = originalAwaitPath.parent.id;
+						} else {
+							resultIdentifier = generateIdentifierForPath(originalAwaitPath.get("argument"));
+						}
+						originalAwaitPath.replaceWith(resultIdentifier);
+						const { declarations, awaitExpression, directExpression } = extractDeclarations(originalAwaitPath, originalArgument);
+						if (declarations.length) {
+							if (!parent.parentPath.isBlockStatement()) {
+								parent.replaceWithMultiple([types.variableDeclaration("var", declarations), parent.node]);
+								parent = parent.get("body.1");
+							} else {
+								parent.insertBefore(types.variableDeclaration("var", declarations));
+							}
+						}
+						relocatedBlocks.push({
+							relocate() {
+								if (reusingExisting) {
+									if (parent.node.declarations.length === 1) {
+										parent.replaceWith(types.emptyStatement());
+									} else {
+										originalAwaitPath.parentPath.remove();
 									}
-									relocateTail(state, types.callExpression(rewritten, []), null, parent, resultIdentifier, exitIdentifier);
 								}
+								const isUnused = parent.isExpressionStatement() && isExpressionOfLiterals(parent.get("expression"), resultIdentifier.name);
+								relocateTail(pluginState, awaitExpression, isUnused ? null : parent.node, parent, isUnused ? null : resultIdentifier, state.exitIdentifier, directExpression);
 							},
 							path: parent,
 						});
 					}
 				}
-				if (processExpressions && (parent.isStatement() || (parent.isSwitchCase() && awaitPath.node != parent.node.test))) {
-					if (!awaitPath.isFunction() && !awaitPath.isSwitchCase()) {
-						const originalArgument = originalAwaitPath.node.argument;
-						if (originalAwaitPath.parentPath.isExpressionStatement()) {
-							originalAwaitPath.replaceWith(voidExpression());
-							relocatedBlocks.push({
-								relocate() {
-									relocateTail(state, originalArgument, null, parent, null, exitIdentifier, types.booleanLiteral(false));
-								},
-								path: parent,
-							});
-						} else {
-							const reusingExisting = originalAwaitPath.parentPath.isVariableDeclarator();
-							let resultIdentifier;
-							if (reusingExisting) {
-								resultIdentifier = originalAwaitPath.parent.id;
-							} else {
-								resultIdentifier = generateIdentifierForPath(originalAwaitPath.get("argument"));
-							}
-							originalAwaitPath.replaceWith(resultIdentifier);
-							const { declarations, awaitExpression, directExpression } = extractDeclarations(originalAwaitPath, originalArgument);
-							if (declarations.length) {
-								if (!parent.parentPath.isBlockStatement()) {
-									parent.replaceWithMultiple([types.variableDeclaration("var", declarations), parent.node]);
-									parent = parent.get("body.1");
-								} else {
-									parent.insertBefore(types.variableDeclaration("var", declarations));
-								}
-							}
-							relocatedBlocks.push({
-								relocate() {
-									if (reusingExisting) {
-										if (parent.node.declarations.length === 1) {
-											parent.replaceWith(types.emptyStatement());
-										} else {
-											originalAwaitPath.parentPath.remove();
-										}
-									}
-									const isUnused = parent.isExpressionStatement() && isExpressionOfLiterals(parent.get("expression"), resultIdentifier.name);
-									relocateTail(state, awaitExpression, isUnused ? null : parent.node, parent, isUnused ? null : resultIdentifier, exitIdentifier, directExpression);
-								},
-								path: parent,
-							});
-						}
-					}
-					processExpressions = false;
-				}
-				awaitPath = parent;
-			} while (awaitPath !== path);
-			for (const block of relocatedBlocks) {
-				block.relocate();
+				processExpressions = false;
 			}
+			awaitPath = parent;
+		} while (awaitPath !== path);
+		for (const block of relocatedBlocks) {
+			block.relocate();
 		}
-		path.traverse({
-			Function: skipNode,
-			AwaitExpression: rewriteAwaitPath,
-			ForAwaitStatement: rewriteAwaitPath,
-			CallExpression(path) {
-				const callee = path.get("callee");
-				if (callee.isIdentifier() && callee.node.name === "eval") {
-					throw path.buildCodeFrameError("Calling eval from inside an async function is not supported!");
-				}
-			},
-		});
 	}
 
-	function getHelperDependencies(path) {
-		const dependencies = [];
-		path.traverse({
-			Identifier(path) {
-				if (path.hub.file.scope.getBinding(path.node.name) && dependencies.indexOf(path.node.name) === -1) {
-					dependencies.push(path.node.name);
-				}
+	const rewriteFunctionBodyVisitor = {
+		Function: skipNode,
+		AwaitExpression: rewriteAwaitPath,
+		ForAwaitStatement: rewriteAwaitPath,
+		CallExpression(path) {
+			const callee = path.get("callee");
+			if (callee.isIdentifier() && callee.node.name === "eval") {
+				throw path.buildCodeFrameError("Calling eval from inside an async function is not supported!");
 			}
-		});
-		return dependencies;
+		},
+	};
+
+	function rewriteFunctionBody(pluginState, path, exitIdentifier) {
+		path.traverse(rewriteFunctionBodyVisitor, { pluginState, path, exitIdentifier });
+	}
+
+	const getHelperDependenciesVisitor = {
+		Identifier(path) {
+			if (path.hub.file.scope.getBinding(path.node.name) && this.dependencies.indexOf(path.node.name) === -1) {
+				this.dependencies.push(path.node.name);
+			}
+		}
+	};
+
+	function getHelperDependencies(path) {
+		const state = { dependencies: [] };
+		path.traverse(getHelperDependenciesVisitor, state);
+		return state.dependencies;
 	}
 
 	const usesIdentifierVisitor = {

@@ -163,7 +163,31 @@ export function _forOf(target, body, check) {
 	return _forValues(values, body, check);
 }
 
-export const _forAwaitOf = _forOf;
+export function _forAwaitOf(target, body, check) {
+	if (typeof Symbol !== "undefined") {
+		var asyncIteratorSymbol = Symbol.asyncIterator;
+		if (asyncIteratorSymbol && (asyncIteratorSymbol in target)) {
+			return new Promise(function(resolve, reject) {
+				var iterator = target[asyncIteratorSymbol]();
+				function _resumeAfterBody(result) {
+					if (check && !check()) {
+						return resolve(result);
+					}
+					iterator.next().then(_resumeAfterNext).catch(reject);
+				}
+				function _resumeAfterNext(step) {
+					if (step.done) {
+						resolve();
+					} else {
+						Promise.resolve(body(step.value)).then(_resumeAfterBody).catch(reject);
+					}
+				}
+				iterator.next().then(_resumeAfterNext).catch(reject);
+			});
+		}
+	}
+	return Promise.resolve(_forOf(target, function(value) { return Promise.resolve(value).then(body); }, check));
+}
 
 // Asynchronously implement a generic for loop
 export function _for(test, update, body) {

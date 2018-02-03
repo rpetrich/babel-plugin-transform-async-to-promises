@@ -747,7 +747,6 @@ compiledTest("for of in body", {
 		empty: async f => expect(await f([])).toBe(0),
 		single: async f => expect(await f([1])).toBe(1),
 		multiple: async f => expect(await f([1,2])).toBe(3),
-		break: async f => expect(await f([1,10,4])).toBe(15),
 	},
 });
 
@@ -758,7 +757,17 @@ compiledTest("for await of in body", {
 		empty: async f => expect(await f([])).toBe(0),
 		single: async f => expect(await f([1])).toBe(1),
 		multiple: async f => expect(await f([1,2])).toBe(3),
-		break: async f => expect(await f([1,10,4])).toBe(15),
+	},
+});
+
+compiledTest("for await of in body with break", {
+	input: `async function(iter) { let result = 0; for await (const value of iter) { result += value; if (result > 10) break; } return result; }`,
+	output: `_async(function(iter){var _interrupt;let result=0;return _continue(_forAwaitOf(iter,function(value){result+=value;if(result>10){_interrupt=1;return;}},function(){return _interrupt;}),function(){return result;});})`,
+	cases: {
+		empty: async f => expect(await f([])).toBe(0),
+		single: async f => expect(await f([1])).toBe(1),
+		multiple: async f => expect(await f([1,2])).toBe(3),
+		break: async f => expect(await f([1,10,4])).toBe(11),
 	},
 });
 
@@ -1257,6 +1266,34 @@ compiledTest("switch event loop ordering", {
 	input: `async function(delay, callback) { switch(delay) { case false: break; case true: await true; break; } return callback(); }`,
 	output: `_async(function(delay,callback){var _interrupt;return _continue(_switch(delay,[[function(){return false;},function(){_interrupt=1;}],[function(){return true;},function(){return _await(true,function(){_interrupt=1;});}]]),function(){return callback();});})`,
 	cases: orderCases,
+});
+
+compiledTest("for await of event loop ordering", {
+	input: `async function(iter, callback) { for await (var value of iter) { }; return callback(); }`,
+	output: `_async(function(iter,callback){return _continue(_forAwaitOf(iter,function(value){}),function(){return callback();});})`,
+	cases: {
+		empty: async f => {
+			var state;
+			const promise = f([], () => state = true);
+			state = false;
+			await promise;
+			expect(state).toBe(true);
+		},
+		single: async f => {
+			var state;
+			const promise = f([1], () => state = true);
+			state = false;
+			await promise;
+			expect(state).toBe(true);
+		},
+		multiple: async f => {
+			var state;
+			const promise = f([1, 2], () => state = true);
+			state = false;
+			await promise;
+			expect(state).toBe(true);
+		},
+	}
 });
 
 

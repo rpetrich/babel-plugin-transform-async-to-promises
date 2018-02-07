@@ -446,9 +446,18 @@ exports.default = function({ types, template, traverse }) {
 	function catchHelper(state, path, blockStatement, catchContinuation) {
 		let target;
 		const expression = expressionInSingleReturnStatement(blockStatement.body);
-		if (expression && types.isCallExpression(expression) && expression.arguments.length === 0) {
-			if (types.isIdentifier(expression.callee) || types.isFunctionExpression(expression.callee)) {
-				target = expression.callee;
+		if (expression && types.isCallExpression(expression)) {
+			switch (expression.arguments.length) {
+				case 0:
+					if (types.isIdentifier(expression.callee) || types.isFunctionExpression(expression.callee)) {
+						target = expression.callee;
+					}
+					break;
+				case 1:
+					if (expression.callee._helperName === "_call" && (types.isIdentifier(expression.arguments[0]) || types.isFunctionExpression(expression.arguments[0]))) {
+						target = expression.arguments[0];
+					}
+					break;
 			}
 		}
 		const catchArgs = [target || types.functionExpression(null, [], blockStatement)];

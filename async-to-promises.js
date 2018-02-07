@@ -1463,10 +1463,10 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function isAsyncFunctionExpression(path) {
-		if (path.isFunction()) {
-			return path.node.async || path.node._async;
+		if (path.isFunction() && (path.node.async || path.node._async)) {
+			return true;
 		}
-		if (path.isCallExpression() && path.node._helperName === "_async") {
+		if (path.isCallExpression() && path.node.callee._helperName === "_async") {
 			return true;
 		}
 		return false;

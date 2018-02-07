@@ -439,8 +439,24 @@ compiledTest("forwarding to const async optimization", {
 });
 
 compiledTest("forwarding to async function optimization", {
+	input: `function (value) { const add = async (l, r) => l() + await r; return async (foo) => add(() => 1, foo); }`,
+	output: `function(value){const add=_async(function(l,r){var _l=l();return _await(r,function(_r){return _l+_r;});});return function(foo){return add(()=>1,foo);};}`,
+	cases: {
+		result: async f => expect(await f(1)(2)).toBe(3),
+	},
+});
+
+compiledTest("forwarding to async function optimization hoisted", {
 	input: `function (value) { return async (foo) => add(1, foo); async function add(l, r) { return await l + await r; } }`,
 	output: `function(value){var add=function(l,r){return _await(l,function(_l){return _await(r,function(_r){return _l+_r;});});};return function(foo){return add(1,foo);};}`,
+	cases: {
+		result: async f => expect(await f(1)(2)).toBe(3),
+	},
+});
+
+compiledTest("forwarding to const async optimization bail out", {
+	input: `function (value) { const add = (l, r) => l + r; return async (foo) => add(1, foo); }`,
+	output: `function(value){const add=(l,r)=>l+r;return _async(function(foo){return add(1,foo);});}`,
 	cases: {
 		result: async f => expect(await f(1)(2)).toBe(3),
 	},

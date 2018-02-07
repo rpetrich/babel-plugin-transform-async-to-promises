@@ -1337,8 +1337,7 @@ exports.default = function({ types, template, traverse }) {
 												originalAwaitPath.parentPath.remove();
 											}
 										}
-										const isUnused = parent.isExpressionStatement() && isExpressionOfLiterals(parent.get("expression"), resultIdentifier.name);
-										relocateTail(state, awaitExpression, isUnused ? null : parent.node, parent, isUnused ? null : resultIdentifier, exitIdentifier, directExpression);
+										relocateTail(state, awaitExpression, parent.node, parent, resultIdentifier, exitIdentifier, directExpression);
 									},
 									path: parent,
 								});

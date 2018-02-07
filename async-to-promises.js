@@ -428,25 +428,32 @@ exports.default = function({ types, template, traverse }) {
 	function deepestScopeForFunctionNode(path) {
 		const paths = [];
 		path.traverse({
-			Identifier(path) {
-				const binding = path.parentPath.scope.getBinding(path.node.name);
-				if (binding && binding.scope != path.scope) {
+			Identifier(identifierPath) {
+				const binding = identifierPath.parentPath.scope.getBinding(identifierPath.node.name);
+				if (binding && binding.scope) {
 					paths.push(binding.scope.path);
 				}
 			}
 		});
 		let scope;
 		if (paths.length) {
-			try {
-				scope = path.getDeepestCommonAncestorFrom(paths).scope;
-			} catch (e) {
-				return;
+			let path = paths[0];
+			let ancestry = path.getAncestry().map(path => path.scope).concat([path.scope]);
+			for (var i = 1; i < paths.length; i++) {
+				if (!ancestry.includes(paths[i].scope)) {
+					path = paths[i];
+					ancestry = path.getAncestry().map(path => path.scope).concat([path.scope]);
+				}
 			}
-			// console.log(paths.map(path => JSON.stringify(path.node)), JSON.stringify(scope.path.node));
+			scope = path.scope;
+		// 	// console.log(paths.map(path => JSON.stringify(path.node)), JSON.stringify(scope.path.node));
 		} else {
-			scope = path.scope.getProgramParent();
+			// scope = path.scpe.getProgramParent();
+			return;
 		}
-		path.hoist(scope);
+		if (scope !== path.scope) {
+			path.hoist(scope);
+		}
 	}
 
 	function relocateTail(state, awaitExpression, statementNode, target, temporary, exitIdentifier, directExpression) {

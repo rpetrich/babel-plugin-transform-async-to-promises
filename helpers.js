@@ -17,8 +17,12 @@ export const _async = (function() {
 	return function(f) {
 		// Pre-ES5.1 JavaScript runtimes don't accept array-likes in Function.apply
 		return function() {
+			var args = [];
+			for (var i = 0; i < arguments.length; i++) {
+				args[i] = arguments[i];
+			}
 			try {
-				return Promise.resolve(f.apply(this, Array.prototype.slice.call(arguments)));
+				return Promise.resolve(f.apply(this, args));
 			} catch(e) {
 				return Promise.reject(e);
 			}

@@ -429,6 +429,24 @@ compiledTest("inner functions", {
 	},
 });
 
+
+compiledTest("forwarding to const async optimization", {
+	input: `function (value) { const add = async (l, r) => await l + await r; return async (foo) => add(1, foo); }`,
+	output: `function(value){const add=function(l,r){return _await(l,function(_l){return _await(r,function(_r){return _l+_r;});});};return function(foo){return add(1,foo);};}`,
+	cases: {
+		result: async f => expect(await f(1)(2)).toBe(3),
+	},
+});
+
+compiledTest("forwarding to async function optimization", {
+	input: `function (value) { return async (foo) => add(1, foo); async function add(l, r) { return await l + await r; } }`,
+	output: `function(value){var add=function(l,r){return _await(l,function(_l){return _await(r,function(_r){return _l+_r;});});};return function(foo){return add(1,foo);};}`,
+	cases: {
+		result: async f => expect(await f(1)(2)).toBe(3),
+	},
+});
+
+
 compiledTest("compound variable declarator", {
 	input: `async function(foo) { var a = 1, b = await foo(), c = 3; return a + b + c; }`,
 	output: `function(foo){var a=1;return _call(foo,function(b){var c=3;return a+b+c;});}`,

@@ -1451,7 +1451,37 @@ exports.default = function({ types, template, traverse }) {
 				return types.isFunctionExpression(path.node.arguments[0]) && types.isFunctionExpression(path.node.arguments[1]);
 			default:
 				return false;
-		}		
+		}
+	}
+
+	function isAsyncFunctionExpression(path) {
+		if (path.isFunction()) {
+			return path.node.async || path.node._async;
+		}
+		if (path.isCallExpression() && path.node._helperName === "_async") {
+			return true;
+		}
+		return false;
+	}
+
+	function isAsyncFunctionIdentifier(path) {
+		if (path.isIdentifier()) {
+			const binding = path.scope.getBinding(path.node.name);
+			if (binding && binding.constant) {
+				const bindingPath = binding.path;
+				if (bindingPath.isVariableDeclarator()) {
+					const initPath = bindingPath.get("init");
+					if (initPath && isAsyncFunctionExpression(initPath)) {
+						return true;
+					}
+				} else if (bindingPath.isFunctionDeclaration()) {
+					if (isAsyncFunctionExpression(bindingPath)) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	const checkForErrorsAndRewriteReturnsVisitor = {
@@ -1467,7 +1497,10 @@ exports.default = function({ types, template, traverse }) {
 					}
 					args[1].traverse(checkForErrorsAndRewriteReturnsVisitor, this);
 				} else {
-					this.canThrow = true;
+					const callee = path.get("callee");
+					if (!isAsyncFunctionIdentifier(callee)) {
+						this.canThrow = true;
+					}
 				}
 			}
 		},
@@ -1480,7 +1513,7 @@ exports.default = function({ types, template, traverse }) {
 		ReturnStatement(path) {
 			if (this.rewriteReturns) {
 				const argument = path.get("argument");
-				if (!argument.node || !(isAsyncCallExpression(argument) || isInvokeCallExpression(argument))) {
+				if (!argument.node || !(isAsyncCallExpression(argument) || isInvokeCallExpression(argument) || (argument.isCallExpression() && isAsyncFunctionIdentifier(argument.get("callee"))))) {
 					argument.replaceWith(types.callExpression(helperReference(this.plugin, path, "_await"), argument.node ? [argument.node] : []));
 				}
 			}
@@ -1539,6 +1572,7 @@ exports.default = function({ types, template, traverse }) {
 						}
 						path.replaceWith(types.functionExpression(null, path.node.params, bodyPath.node));
 					}
+					path.node._async = true;
 				}
 			},
 			ClassMethod(path) {

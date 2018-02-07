@@ -759,26 +759,40 @@ compiledTest("for of await in body with break", {
 });
 
 
+const whileCases = {
+	one: async f => {
+		var count = 0;
+		expect(await f(async _ => { ++count })).toBe(undefined);
+		expect(count).toBe(1);
+	},
+	two: async f => {
+		var count = 0;
+		expect(await f(async _ => { ++count; return count < 2; })).toBe(undefined);
+		expect(count).toBe(2);
+	},
+	seven: async f => {
+		var count = 0;
+		expect(await f(async _ => { ++count; return count < 7; })).toBe(undefined);
+		expect(count).toBe(7);
+	},
+};
+
 compiledTest("while loop", {
 	input: `async function(foo) { let shouldContinue = true; while (shouldContinue) { shouldContinue = await foo(); } }`,
 	output: `_async(function(foo){let shouldContinue=true;return _continueIgnored(_for(function(){return shouldContinue;},void 0,function(){return _call(foo,function(_foo){shouldContinue=_foo;});}));})`,
-	cases: {
-		one: async f => {
-			var count = 0;
-			expect(await f(async _ => { ++count })).toBe(undefined);
-			expect(count).toBe(1);
-		},
-		two: async f => {
-			var count = 0;
-			expect(await f(async _ => { ++count; return count < 2; })).toBe(undefined);
-			expect(count).toBe(2);
-		},
-		seven: async f => {
-			var count = 0;
-			expect(await f(async _ => { ++count; return count < 7; })).toBe(undefined);
-			expect(count).toBe(7);
-		},
-	},
+	cases: whileCases,
+});
+
+compiledTest("while loop with predicate optimization", {
+	input: `async function(foo) { let shouldContinue = true; function shouldContinueAsCall() { return shouldContinue; } while (shouldContinueAsCall()) { shouldContinue = await foo(); } }`,
+	output: `_async(function(foo){function shouldContinueAsCall(){return shouldContinue;}let shouldContinue=true;return _continueIgnored(_for(shouldContinueAsCall,void 0,function(){return _call(foo,function(_foo){shouldContinue=_foo;});}));})`,
+	cases: whileCases,
+});
+
+compiledTest("while loop with predicate optimization bail out", {
+	input: `async function(foo) { let shouldContinue = true; let shouldContinueAsCall; shouldContinueAsCall = () => shouldContinue; while (shouldContinueAsCall()) { shouldContinue = await foo(); } }`,
+	output: `_async(function(foo){let shouldContinue=true;let shouldContinueAsCall;shouldContinueAsCall=()=>shouldContinue;return _continueIgnored(_for(function(){return shouldContinueAsCall();},void 0,function(){return _call(foo,function(_foo){shouldContinue=_foo;});}));})`,
+	cases: whileCases,
 });
 
 compiledTest("while predicate", {

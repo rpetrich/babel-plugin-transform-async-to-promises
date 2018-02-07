@@ -1161,6 +1161,15 @@ compiledTest("complex hoisting", {
 	},
 });
 
+compiledTest("for loop hoisting", {
+	input: `async function(foo) { i = await foo(); for (var i in {}) {} return i; }`,
+	output: `function(foo){var i;return _call(foo,function(_foo){i=_foo;for(i in{}){}return i;});}`,
+	cases: {
+		value: async f => expect(await f(() => true)).toBe(true),
+	}
+});
+
+
 compiledTest("helper names", {
 	input: `async function(_async, _await) { return await _async(0) && _await(); }`,
 	output: `_async3(function(_async,_await){return _await2(_async(0),function(_async2){return _async2&&_await();});})`,

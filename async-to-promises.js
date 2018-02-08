@@ -425,34 +425,43 @@ exports.default = function({ types, template, traverse }) {
 		return path.node;
 	}
 
-	function deepestScopeForFunctionNode(path) {
-		const paths = [];
-		path.traverse({
+	function allScopes(scope) {
+		const result = [];
+		while (scope) {
+			result.push(scope);
+			scope = scope.parent;
+		}
+		return result;
+	}
+
+	function hoistFunctionPath(path, referenceNode = path.node, name = "temp") {
+		const scopes = [];
+		const pathScopes = allScopes(path.scope.parent);
+		path.get("body").traverse({
 			Identifier(identifierPath) {
 				const binding = identifierPath.parentPath.scope.getBinding(identifierPath.node.name);
-				if (binding && binding.scope) {
-					paths.push(binding.scope.path);
+				if (binding && binding.scope && pathScopes.includes(binding.scope)) {
+					scopes.push(binding.scope);
 				}
 			}
 		});
 		let scope;
-		if (paths.length) {
-			let path = paths[0];
-			let ancestry = path.getAncestry().map(path => path.scope).concat([path.scope]);
-			for (var i = 1; i < paths.length; i++) {
-				if (!ancestry.includes(paths[i].scope)) {
-					path = paths[i];
-					ancestry = path.getAncestry().map(path => path.scope).concat([path.scope]);
+		if (scopes.length) {
+			scope = scopes[0];
+			let ancestry = allScopes(scope);
+			for (var i = 1; i < scopes.length; i++) {
+				if (!ancestry.includes(scopes[i].scope)) {
+					scope = scopes[i];
+					ancestry = allScopes(scope);
 				}
 			}
-			scope = path.scope;
-		// 	// console.log(paths.map(path => JSON.stringify(path.node)), JSON.stringify(scope.path.node));
 		} else {
-			// scope = path.scpe.getProgramParent();
-			return;
+			scope = path.scope.getProgramParent();
 		}
-		if (scope !== path.scope) {
-			path.hoist(scope);
+		if (!allScopes(scope).includes(path.scope.parent)) {
+			const identifier = path.scope.generateUidIdentifierBasedOnNode(referenceNode, name);
+			scope.push({ id: identifier, init: path.node });
+			path.replaceWith(identifier);
 		}
 	}
 
@@ -474,10 +483,19 @@ exports.default = function({ types, template, traverse }) {
 		target.replaceWith(returnStatement(expression, originalNode));
 		const returnArg = target.get("argument");
 		if (returnArg.isCallExpression()) {
-			for (const arg of returnArg.get("arguments")) {
-				if (arg.isFunctionExpression()) {
-					deepestScopeForFunctionNode(arg);
-					// console.log(arg);
+			const args = returnArg.get("arguments")
+			if (args.length) {
+				for (const arg of args) {
+					if (arg.isFunctionExpression()) {
+						hoistFunctionPath(arg, args[0].node);
+					}
+				}
+				if (args[0].isCallExpression() && args[0].node.callee._helperName) {
+					for (const arg of args[0].get("arguments")) {
+						if (arg.isFunctionExpression()) {
+							hoistFunctionPath(arg, args[0].node.callee);
+						}
+					}
 				}
 			}
 		}

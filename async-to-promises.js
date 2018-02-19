@@ -419,9 +419,9 @@ exports.default = function({ types, template, traverse }) {
 		return blocks;
 	}
 
-	function rewriteFunctionNode(state, parentPath, node, exitIdentifier) {
+	function rewriteFunctionNode(state, parentPath, node, exitIdentifier, booleanify) {
 		const path = pathForNewNode(node, parentPath);
-		rewriteFunctionBody(state, path, exitIdentifier);
+		rewriteFunctionBody(state, path, exitIdentifier, booleanify);
 		return path.node;
 	}
 
@@ -570,10 +570,11 @@ exports.default = function({ types, template, traverse }) {
 	function unwrapReturnCallWithEmptyArguments(node, scope) {
 		if (types.isFunctionExpression(node) && node.body.body.length === 1 && types.isReturnStatement(node.body.body[0])) {
 			const expression = node.body.body[0].argument;
-			if (types.isCallExpression(expression) && expression.arguments.length === 0 && types.isIdentifier(expression.callee)) {
-				const binding = scope.getBinding(expression.callee.name);
+			if (types.isCallExpression(expression) && expression.arguments.length === 1 && expression.callee._helperName === "_call" && types.isIdentifier(expression.arguments[0])) {
+				const identifier = expression.arguments[0]
+				const binding = scope.getBinding(identifier.name);
 				if (binding && binding.constant) {
-					return expression.callee;
+					return identifier;
 				}
 			}
 		}
@@ -694,6 +695,9 @@ exports.default = function({ types, template, traverse }) {
 		const literalValue = extractBooleanValue(node);
 		if (typeof literalValue !== "undefined") {
 			return types.booleanLiteral(!literalValue);
+		}
+		if (types.isUnaryExpression(node) && node.operator === "!" && types.isUnaryExpression(node.argument) && node.argument.operator === "!") {
+			return node.argument;
 		}
 		return types.unaryExpression("!", node);
 	}
@@ -1154,7 +1158,7 @@ exports.default = function({ types, template, traverse }) {
 									const params = [right.node, types.functionExpression(null, [loopIdentifier], blockStatement((forOwnBodyPath || parent.get("body")).node))];
 									const exitCheck = buildBreakExitCheck(state.exitIdentifier, breakIdentifiers);
 									if (exitCheck) {
-										params.push(unwrapReturnCallWithEmptyArguments(types.functionExpression(null, [], types.blockStatement([returnStatement(exitCheck)])), path.scope));
+										params.push(types.functionExpression(null, [], types.blockStatement([returnStatement(exitCheck)])));
 									}
 									const loopCall = types.callExpression(helperReference(pluginState, parent, isForIn ? forOwnBodyPath ? "_forOwn" : "_forIn" : isForAwait ? "_forAwaitOf" : "_forOf"), params);
 									let resultIdentifier = null;
@@ -1177,7 +1181,7 @@ exports.default = function({ types, template, traverse }) {
 						}
 						if (testExpression) {
 							const testPath = parent.get("test");
-							testPath.replaceWith(rewriteFunctionNode(pluginState, parent, functionize(testExpression), state.exitIdentifier));
+							testPath.replaceWith(rewriteFunctionNode(pluginState, parent, functionize(testExpression), state.exitIdentifier, true));
 						}
 						const update = parent.get("update");
 						if (update.node) {
@@ -1359,8 +1363,50 @@ exports.default = function({ types, template, traverse }) {
 		},
 	};
 
-	function rewriteFunctionBody(pluginState, path, exitIdentifier) {
+	function booleanify(path) {
+		if (path.isNumericLiteral()) {
+			path.replaceWith(types.booleanLiteral(!!path.node.value));
+			return;
+		}
+		if (path.isLogicalExpression()) {
+			booleanify(path.get("left"));
+			booleanify(path.get("right"));
+			return;
+		}
+		if (path.isCallExpression() && path.node.callee._helperName) {
+			return;
+		}
+		if (path.isBinaryExpression()) {
+			switch (path.node.operator) {
+				case "==":
+				case "===":
+				case "!=":
+				case "!==":
+				case "<":
+				case "<=":
+				case ">":
+				case ">=":
+					return;
+			}
+		}
+		path.replaceWith(logicalNot(logicalNot(path.node)));
+	}
+
+	const booleanifyVisitor = {
+		Function: skipNode,
+		ReturnStatement(path) {
+			if (path.node.argument) {
+				booleanify(path.get("argument"));
+			}
+		},
+	};
+
+	function rewriteFunctionBody(pluginState, path, exitIdentifier, booleanify) {
 		path.traverse(rewriteFunctionBodyVisitor, { pluginState, path, exitIdentifier });
+		if (booleanify) {
+			// Rewrite values that potentially could be promises to booleans so that they aren't awaited
+			path.traverse(booleanifyVisitor);
+		}
 	}
 
 	const getHelperDependenciesVisitor = {

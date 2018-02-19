@@ -1363,6 +1363,15 @@ exports.default = function({ types, template, traverse }) {
 		},
 	};
 
+	const unpromisifyVisitor = {
+		Function: skipNode,
+		ReturnStatement(path) {
+			if (path.node.argument) {
+				unpromisify(path.get("argument"));
+			}
+		},
+	};
+
 	function unpromisify(path) {
 		if (path.isNumericLiteral()) {
 			return;
@@ -1395,7 +1404,19 @@ exports.default = function({ types, template, traverse }) {
 			return;
 		}
 		if (path.isCallExpression() && path.node.callee._helperName) {
-			// TODO: Handle the return statements inside _call expressions, as they may be dispatched direct
+			switch (path.node.callee._helperName) {
+				case "_await":
+				case "_call": {
+					const args = path.get("arguments");
+					if (args.length > 2 && args[1].isFunctionExpression()) {
+						args[1].traverse(unpromisifyVisitor);
+					}
+					break;
+				}
+				case "_awaitIgnored":
+				case "_callIgnored":
+					break;
+			}
 			return;
 		}
 		if (path.isLogicalExpression()) {
@@ -1417,15 +1438,6 @@ exports.default = function({ types, template, traverse }) {
 		}
 		path.replaceWith(logicalNot(logicalNot(path.node)));
 	}
-
-	const unpromisifyVisitor = {
-		Function: skipNode,
-		ReturnStatement(path) {
-			if (path.node.argument) {
-				unpromisify(path.get("argument"));
-			}
-		},
-	};
 
 	function rewriteFunctionBody(pluginState, path, exitIdentifier, unpromisify) {
 		path.traverse(rewriteFunctionBodyVisitor, { pluginState, path, exitIdentifier });

@@ -873,9 +873,17 @@ compiledTest("while predicate", {
 	},
 });
 
-compiledTest("while promise", {
+compiledTest("while promise direct", {
 	input: `async function() { while (Promise.resolve(false)) { await 1; return true; } return false; }`,
 	output: `_async(function(){var _exit;return _continue(_for(function(){return!_exit&&!!Promise.resolve(false);},void 0,function(){return _await(1,function(){_exit=1;return true;});}),function(_result){return _exit?_result:false;});})`,
+	cases: {
+		result: async f => expect(await f()).toBe(true),
+	}
+});
+
+compiledTest("while promise indirect", {
+	input: `async function() { function passthrough(value) { return value; } while (passthrough(true ? Promise.resolve(false) : await false)) { return true; } return false; }`,
+	output: `_async(function(){var _exit;function passthrough(value){return value;}return _continue(_for(function(){return _await(!_exit&&(true?Promise.resolve(false):false),function(_false){return!_exit&&!!passthrough(_false);},!!_exit||true);},void 0,function(){_exit=1;return true;}),function(_result){return _exit?_result:false;});})`,
 	cases: {
 		result: async f => expect(await f()).toBe(true),
 	}

@@ -446,9 +446,18 @@ exports.default = function({ types, template, traverse }) {
 	function catchHelper(state, path, blockStatement, catchContinuation) {
 		let target;
 		const expression = expressionInSingleReturnStatement(blockStatement.body);
-		if (expression && types.isCallExpression(expression) && expression.arguments.length === 0) {
-			if (types.isIdentifier(expression.callee) || types.isFunctionExpression(expression.callee)) {
-				target = expression.callee;
+		if (expression && types.isCallExpression(expression)) {
+			switch (expression.arguments.length) {
+				case 0:
+					if (types.isIdentifier(expression.callee) || types.isFunctionExpression(expression.callee)) {
+						target = expression.callee;
+					}
+					break;
+				case 1:
+					if (expression.callee._helperName === "_call" && (types.isIdentifier(expression.arguments[0]) || types.isFunctionExpression(expression.arguments[0]))) {
+						target = expression.arguments[0];
+					}
+					break;
 			}
 		}
 		const catchArgs = [target || types.functionExpression(null, [], blockStatement)];
@@ -1323,8 +1332,7 @@ exports.default = function({ types, template, traverse }) {
 										originalAwaitPath.parentPath.remove();
 									}
 								}
-								const isUnused = parent.isExpressionStatement() && isExpressionOfLiterals(parent.get("expression"), resultIdentifier.name);
-								relocateTail(pluginState, awaitExpression, isUnused ? null : parent.node, parent, isUnused ? null : resultIdentifier, state.exitIdentifier, directExpression);
+								relocateTail(pluginState, awaitExpression, parent.node, parent, resultIdentifier, state.exitIdentifier, directExpression);
 							},
 							path: parent,
 						});
@@ -1456,7 +1464,37 @@ exports.default = function({ types, template, traverse }) {
 				return types.isFunctionExpression(path.node.arguments[0]) && types.isFunctionExpression(path.node.arguments[1]);
 			default:
 				return false;
-		}		
+		}
+	}
+
+	function isAsyncFunctionExpression(path) {
+		if (path.isFunction() && (path.node.async || path.node._async)) {
+			return true;
+		}
+		if (path.isCallExpression() && path.node.callee._helperName === "_async") {
+			return true;
+		}
+		return false;
+	}
+
+	function isAsyncFunctionIdentifier(path) {
+		if (path.isIdentifier()) {
+			const binding = path.scope.getBinding(path.node.name);
+			if (binding && binding.constant) {
+				const bindingPath = binding.path;
+				if (bindingPath.isVariableDeclarator()) {
+					const initPath = bindingPath.get("init");
+					if (initPath && isAsyncFunctionExpression(initPath)) {
+						return true;
+					}
+				} else if (bindingPath.isFunctionDeclaration()) {
+					if (isAsyncFunctionExpression(bindingPath)) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	function isEvalOrArguments(path) {
@@ -1503,7 +1541,10 @@ exports.default = function({ types, template, traverse }) {
 					}
 					args[1].traverse(checkForErrorsAndRewriteReturnsVisitor, this);
 				} else {
-					this.canThrow = true;
+					const callee = path.get("callee");
+					if (!isAsyncFunctionIdentifier(callee)) {
+						this.canThrow = true;
+					}
 				}
 			}
 		},
@@ -1543,7 +1584,7 @@ exports.default = function({ types, template, traverse }) {
 		ReturnStatement(path) {
 			if (this.rewriteReturns) {
 				const argument = path.get("argument");
-				if (!argument.node || !(isAsyncCallExpression(argument) || isInvokeCallExpression(argument))) {
+				if (!argument.node || !(isAsyncCallExpression(argument) || isInvokeCallExpression(argument) || (argument.isCallExpression() && isAsyncFunctionIdentifier(argument.get("callee"))))) {
 					argument.replaceWith(types.callExpression(helperReference(this.plugin, path, "_await"), argument.node ? [argument.node] : []));
 				}
 			}
@@ -1605,6 +1646,7 @@ exports.default = function({ types, template, traverse }) {
 						}
 						path.replaceWith(types.functionExpression(null, path.node.params, bodyPath.node));
 					}
+					path.node._async = true;
 				}
 			},
 			ClassMethod(path) {

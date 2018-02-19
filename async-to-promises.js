@@ -664,24 +664,48 @@ exports.default = function({ types, template, traverse }) {
 			return node.value;
 		}
 		if (types.isUnaryExpression(node) && node.operator === "!") {
-			if (types.isBooleanLiteral(node.argument) || types.isNumericLiteral(node.argument)) {
-				return !node.argument.value;
-			}
+			const result = extractLooseBooleanValue(node.argument);
+			return typeof result === "undefined" ? undefined : !result;
+		}
+	}
+
+	function extractLooseBooleanValue(node) {
+		if (types.isBooleanLiteral(node) || types.isNumericLiteral(node) || types.isNumericLiteral(node)) {
+			return !!node.value;
 		}
 	}
 
 	function logicalOr(left, right) {
-		if (extractBooleanValue(left) === false) {
-			return right;
+		switch (extractBooleanValue(left)) {
+			case true:
+				return left;
+			case false:
+				return right;
+			default:
+				return types.logicalExpression("||", left, right);
 		}
-		if (extractBooleanValue(right) === false) {
-			return left;
-		}
-		return types.logicalExpression("||", left, right);
 	}
 
-	function logicalAnd(left, right) {
-		switch (extractBooleanValue(left)) {
+	function logicalOrLoose(left, right) {
+		switch (extractLooseBooleanValue(left)) {
+			case false:
+				return extractLooseBooleanValue(right) === false ? types.booleanLiteral(false) : right;
+			case true:
+				return types.booleanLiteral(true);
+			default:
+				switch (extractLooseBooleanValue(right)) {
+					case false:
+						return left;
+					case true:
+						return types.booleanLiteral(true);
+					default:
+						return types.logicalExpression("||", left, right);
+				}
+		}
+	}
+
+	function logicalAnd(left, right, extract = extractBooleanValue) {
+		switch (extract(left)) {
 			case true:
 				return left;
 			case false:
@@ -729,7 +753,7 @@ exports.default = function({ types, template, traverse }) {
 					}
 					const isOr = parent.node.operator === "||";
 					awaitExpression = (isOr ? logicalOr : logicalAnd)(left.node, awaitExpression);
-					directExpression = logicalOr(isOr ? left.node : logicalNot(left.node), directExpression);
+					directExpression = logicalOrLoose(isOr ? left.node : logicalNot(left.node), directExpression, extractLooseBooleanValue);
 					if (awaitPath.node === resultIdentifier) {
 						parent.replaceWith(resultIdentifier);
 						awaitPath = parent;
@@ -778,7 +802,7 @@ exports.default = function({ types, template, traverse }) {
 						awaitExpression = conditionalExpression(testNode, awaitExpression, alternate.node.argument);
 						alternate.replaceWith(resultIdentifier);
 					} else {
-						directExpression = logicalOr(consequent !== awaitPath ? testNode : logicalNot(testNode), directExpression);
+						directExpression = logicalOrLoose(consequent !== awaitPath ? testNode : logicalNot(testNode), directExpression, extractLooseBooleanValue);
 						if (otherAwaitPath) {
 							awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, types.numericLiteral(0), awaitExpression) : conditionalExpression(testNode, awaitExpression, types.numericLiteral(0));
 						} else {
@@ -886,7 +910,7 @@ exports.default = function({ types, template, traverse }) {
 	function buildBreakExitCheck(exitIdentifier, breakIdentifiers) {
 		let expressions = (breakIdentifiers.map(identifier => identifier.identifier) || []).concat(exitIdentifier ? [exitIdentifier] : []);
 		if (expressions.length) {
-			return expressions.reduce((accumulator, identifier) => logicalOr(accumulator, identifier));
+			return expressions.reduce((accumulator, identifier) => logicalOrLoose(accumulator, identifier));
 		}
 	}
 
@@ -1177,7 +1201,7 @@ exports.default = function({ types, template, traverse }) {
 						const breakExitCheck = buildBreakExitCheck(state.exitIdentifier, breakIdentifiers);
 						if (breakExitCheck) {
 							const inverted = logicalNot(breakExitCheck);
-							testExpression = testExpression && (!types.isBooleanLiteral(testExpression) || !testExpression.value) ? logicalAnd(inverted, testExpression) : inverted;
+							testExpression = testExpression && (!types.isBooleanLiteral(testExpression) || !testExpression.value) ? logicalAnd(inverted, testExpression, extractLooseBooleanValue) : inverted;
 						}
 						if (testExpression) {
 							const testPath = parent.get("test");

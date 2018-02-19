@@ -419,9 +419,9 @@ exports.default = function({ types, template, traverse }) {
 		return blocks;
 	}
 
-	function rewriteFunctionNode(state, parentPath, node, exitIdentifier, booleanify) {
+	function rewriteFunctionNode(state, parentPath, node, exitIdentifier, unpromisify) {
 		const path = pathForNewNode(node, parentPath);
-		rewriteFunctionBody(state, path, exitIdentifier, booleanify);
+		rewriteFunctionBody(state, path, exitIdentifier, unpromisify);
 		return path.node;
 	}
 
@@ -1363,49 +1363,75 @@ exports.default = function({ types, template, traverse }) {
 		},
 	};
 
-	function booleanify(path) {
+	function unpromisify(path) {
 		if (path.isNumericLiteral()) {
-			path.replaceWith(types.booleanLiteral(!!path.node.value));
 			return;
 		}
-		if (path.isLogicalExpression()) {
-			booleanify(path.get("left"));
-			booleanify(path.get("right"));
+		if (path.isBooleanLiteral()) {
 			return;
 		}
-		if (path.isCallExpression() && path.node.callee._helperName) {
+		if (path.isStringLiteral()) {
+			return;
+		}
+		if (path.isNullLiteral()) {
+			return;
+		}
+		if (path.isIdentifier() && path.node.name === "undefined") {
+			return;
+		}
+		if (path.isArrayExpression()) {
+			return;
+		}
+		if (path.isObjectExpression() && !path.get("properties").some(property => property.computed || property.key.name === "then")) {
 			return;
 		}
 		if (path.isBinaryExpression()) {
-			switch (path.node.operator) {
-				case "==":
-				case "===":
-				case "!=":
-				case "!==":
-				case "<":
-				case "<=":
-				case ">":
-				case ">=":
-					return;
+			return;
+		}
+		if (path.isUnaryExpression()) {
+			return;
+		}
+		if (path.isUpdateExpression()) {
+			return;
+		}
+		if (path.isCallExpression() && path.node.callee._helperName) {
+			// TODO: Handle the return statements inside _call expressions, as they may be dispatched direct
+			return;
+		}
+		if (path.isLogicalExpression()) {
+			unpromisify(path.get("left"));
+			unpromisify(path.get("right"));
+			return;
+		}
+		if (path.isConditionalExpression()) {
+			unpromisify(path.get("consequent"));
+			unpromisify(path.get("alternate"));
+			return;
+		}
+		if (path.isSequenceExpression()) {
+			const expressions = path.get("expressions");
+			if (expressions.length) {
+				unpromisify(expressions[expressions.length - 1]);
 			}
+			return;
 		}
 		path.replaceWith(logicalNot(logicalNot(path.node)));
 	}
 
-	const booleanifyVisitor = {
+	const unpromisifyVisitor = {
 		Function: skipNode,
 		ReturnStatement(path) {
 			if (path.node.argument) {
-				booleanify(path.get("argument"));
+				unpromisify(path.get("argument"));
 			}
 		},
 	};
 
-	function rewriteFunctionBody(pluginState, path, exitIdentifier, booleanify) {
+	function rewriteFunctionBody(pluginState, path, exitIdentifier, unpromisify) {
 		path.traverse(rewriteFunctionBodyVisitor, { pluginState, path, exitIdentifier });
-		if (booleanify) {
+		if (unpromisify) {
 			// Rewrite values that potentially could be promises to booleans so that they aren't awaited
-			path.traverse(booleanifyVisitor);
+			path.traverse(unpromisifyVisitor);
 		}
 	}
 

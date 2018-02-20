@@ -726,11 +726,44 @@ exports.default = function({ types, template, traverse }) {
 		return types.unaryExpression("!", node);
 	}
 
+	function findDeclarationToReuse(path) {
+		for (;;) {
+			const parent = path.parentPath;
+			if (parent.isVariableDeclarator()) {
+				return parent;
+			}
+			let other;
+			if (parent.isConditionalExpression()) {
+				const test = parent.get("test");
+				if (path === test) {
+					break;
+				}
+				const consequent = parent.get("consequent");
+				const alternate = parent.get("alternate");
+				other = consequent === path ? alternate : consequent;
+			} else if (parent.isLogicalExpression()) {
+				const left = parent.get("left");
+				const right = parent.get("right");
+				other = left === path ? right : left;
+			} else {
+				break;
+			}
+			const otherAwaitPath = findAwaitPath(other);
+			if ((otherAwaitPath === other) || !otherAwaitPath) {
+				path = path.parentPath;
+			} else {
+				break;
+			}
+		}
+	}
+
 	function extractDeclarations(awaitPath, awaitExpression) {
-		let declarations = [];
 		const originalAwaitPath = awaitPath;
+		const reusingExisting = findDeclarationToReuse(awaitPath);//originalAwaitPath.parentPath.isVariableDeclarator() && originalAwaitPath.parentPath;
+		let resultIdentifier = reusingExisting ? reusingExisting.node.id : generateIdentifierForPath(originalAwaitPath.get("argument"));
+		let declarations = [];
+		originalAwaitPath.replaceWith(resultIdentifier);
 		let directExpression = types.booleanLiteral(false);
-		const resultIdentifier = awaitPath.node;
 		do {
 			const parent = awaitPath.parentPath;
 			if (parent.isVariableDeclarator()) {
@@ -755,7 +788,7 @@ exports.default = function({ types, template, traverse }) {
 					const isOr = parent.node.operator === "||";
 					awaitExpression = (isOr ? logicalOr : logicalAnd)(left.node, awaitExpression);
 					directExpression = logicalOrLoose(isOr ? left.node : logicalNot(left.node), directExpression, extractLooseBooleanValue);
-					if (awaitPath.node === resultIdentifier) {
+					if (awaitPath == originalAwaitPath) {
 						parent.replaceWith(resultIdentifier);
 						awaitPath = parent;
 						continue;
@@ -810,7 +843,7 @@ exports.default = function({ types, template, traverse }) {
 							awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, types.numericLiteral(0), awaitExpression) : conditionalExpression(testNode, awaitExpression, types.numericLiteral(0));
 						} else {
 							awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, other.node, awaitExpression) : conditionalExpression(testNode, awaitExpression, other.node);
-							if (awaitPath.node === resultIdentifier) {
+							if (awaitPath === originalAwaitPath) {
 								parent.replaceWith(resultIdentifier);
 								awaitPath = parent;
 								continue;
@@ -889,7 +922,7 @@ exports.default = function({ types, template, traverse }) {
 			}
 			awaitPath = parent;
 		} while (!awaitPath.isStatement());
-		return { declarations, awaitExpression, directExpression };
+		return { declarations, awaitExpression, directExpression, reusingExisting, resultIdentifier };
 	}
 
 	function skipNode(path) {
@@ -1337,15 +1370,7 @@ exports.default = function({ types, template, traverse }) {
 							path: parent,
 						});
 					} else {
-						const reusingExisting = originalAwaitPath.parentPath.isVariableDeclarator();
-						let resultIdentifier;
-						if (reusingExisting) {
-							resultIdentifier = originalAwaitPath.parent.id;
-						} else {
-							resultIdentifier = generateIdentifierForPath(originalAwaitPath.get("argument"));
-						}
-						originalAwaitPath.replaceWith(resultIdentifier);
-						const { declarations, awaitExpression, directExpression } = extractDeclarations(originalAwaitPath, originalArgument);
+						const { declarations, awaitExpression, directExpression, reusingExisting, resultIdentifier } = extractDeclarations(originalAwaitPath, originalArgument);
 						if (declarations.length) {
 							if (!parent.parentPath.isBlockStatement()) {
 								parent.replaceWithMultiple([types.variableDeclaration("var", declarations), parent.node]);
@@ -1357,10 +1382,10 @@ exports.default = function({ types, template, traverse }) {
 						relocatedBlocks.push({
 							relocate() {
 								if (reusingExisting) {
-									if (parent.node.declarations.length === 1) {
-										parent.replaceWith(types.emptyStatement());
+									if (reusingExisting.parent.declarations.length === 1) {
+										reusingExisting.parentPath.replaceWith(types.emptyStatement());
 									} else {
-										originalAwaitPath.parentPath.remove();
+										reusingExisting.remove();
 									}
 								}
 								relocateTail(pluginState, awaitExpression, parent.node, parent, resultIdentifier, state.exitIdentifier, directExpression);

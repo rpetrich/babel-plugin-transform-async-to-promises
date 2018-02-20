@@ -425,13 +425,14 @@ exports.default = function({ types, template, traverse }) {
 		return path.node;
 	}
 
-	function relocateTail(state, awaitExpression, statementNode, target, temporary, exitIdentifier, directExpression) {
+	function relocateTail(state, awaitExpression, statementNode, target, temporary, exitIdentifier, exitCheck, directExpression) {
 		const tail = borrowTail(target);
 		let expression;
 		let originalNode = target.node;
-		const blocks = removeUnnecessaryReturnStatements((statementNode ? [statementNode].concat(tail) : tail).filter(isNonEmptyStatement));
+		const blocks = removeUnnecessaryReturnStatements((statementNode ? [statementNode] : []).concat(tail).filter(isNonEmptyStatement));
 		if (blocks.length) {
-			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(blocks));
+			const moreBlocks = exitCheck ? removeUnnecessaryReturnStatements([types.ifStatement(exitCheck, returnStatement(temporary))].concat(blocks)) : blocks;
+			const fn = types.functionExpression(null, temporary ? [temporary] : [], blockStatement(moreBlocks));
 			const rewritten = rewriteFunctionNode(state, target, fn, exitIdentifier);
 			expression = awaitAndContinue(state, target, awaitExpression, rewritten, directExpression);
 			originalNode = types.blockStatement([target.node].concat(tail));
@@ -1150,12 +1151,11 @@ exports.default = function({ types, template, traverse }) {
 								let resultIdentifier = null;
 								if (!explicitExits.all && explicitExits.any) {
 									resultIdentifier = path.scope.generateUidIdentifier("result");
-									parent.insertAfter(types.ifStatement(state.exitIdentifier, returnStatement(resultIdentifier)));
 								}
 								if (!explicitExits.all) {
 									const fn = types.functionExpression(null, [], blockStatement([parent.node]));
 									const rewritten = rewriteFunctionNode(pluginState, parent, fn, state.exitIdentifier);
-									relocateTail(pluginState, types.callExpression(rewritten, []), null, parent, resultIdentifier, state.exitIdentifier);
+									relocateTail(pluginState, types.callExpression(rewritten, []), null, parent, resultIdentifier, state.exitIdentifier, explicitExits.any ? state.exitIdentifier : undefined);
 								}
 							},
 							path: parent,
@@ -1224,9 +1224,8 @@ exports.default = function({ types, template, traverse }) {
 									let resultIdentifier = null;
 									if (explicitExits.any) {
 										resultIdentifier = path.scope.generateUidIdentifier("result");
-										parent.insertAfter(types.ifStatement(state.exitIdentifier, returnStatement(resultIdentifier)));
 									}
-									relocateTail(pluginState, loopCall, null, label ? parent.parentPath : parent, resultIdentifier, state.exitIdentifier);
+									relocateTail(pluginState, loopCall, null, label ? parent.parentPath : parent, resultIdentifier, state.exitIdentifier, explicitExits.any ? exitCheck : undefined);
 								},
 								path: parent,
 							})
@@ -1252,7 +1251,7 @@ exports.default = function({ types, template, traverse }) {
 								const isDoWhile = parent.isDoWhileStatement();
 								if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
 									const loopCall = types.callExpression(helperReference(pluginState, parent, "_forTo"), [forToIdentifiers.array, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body))])
-									relocateTail(pluginState, loopCall, null, parent, undefined, state.exitIdentifier);
+									relocateTail(pluginState, loopCall, null, parent, undefined, state.exitIdentifier, !explicitExits.all && explicitExits.any ? state.exitIdentifier : undefined);
 								} else {
 									const init = parent.get("init");
 									if (init.node) {
@@ -1266,9 +1265,8 @@ exports.default = function({ types, template, traverse }) {
 									let resultIdentifier = null;
 									if (explicitExits.any) {
 										resultIdentifier = path.scope.generateUidIdentifier("result");
-										parent.insertAfter(types.ifStatement(state.exitIdentifier, returnStatement(resultIdentifier)));
 									}
-									relocateTail(pluginState, loopCall, null, parent, resultIdentifier, state.exitIdentifier);
+									relocateTail(pluginState, loopCall, null, parent, resultIdentifier, state.exitIdentifier, !explicitExits.all && explicitExits.any ? state.exitIdentifier : undefined);
 								}
 							},
 							path: parent,
@@ -1304,7 +1302,6 @@ exports.default = function({ types, template, traverse }) {
 								let resultIdentifier;
 								if (!explicitExits.all && explicitExits.any) {
 									resultIdentifier = path.scope.generateUidIdentifier("result");
-									parent.insertAfter(types.ifStatement(state.exitIdentifier, returnStatement(resultIdentifier)));
 								}
 								const caseNodes = types.arrayExpression(cases.map(caseItem => {
 									const args = [];
@@ -1328,7 +1325,7 @@ exports.default = function({ types, template, traverse }) {
 									return types.arrayExpression(args);
 								}));
 								const switchCall = types.callExpression(helperReference(pluginState, parent, "_switch"), [discriminant.node, caseNodes]);
-								relocateTail(pluginState, switchCall, null, label ? parent.parentPath : parent, resultIdentifier, state.exitIdentifier);
+								relocateTail(pluginState, switchCall, null, label ? parent.parentPath : parent, resultIdentifier, state.exitIdentifier, !explicitExits.all && explicitExits.any ? state.exitIdentifier : undefined);
 							},
 							path: parent,
 						});
@@ -1348,10 +1345,7 @@ exports.default = function({ types, template, traverse }) {
 								const fn = types.functionExpression(null, [], blockStatement(parent.node.body));
 								const rewritten = rewriteFunctionNode(pluginState, parent, fn, state.exitIdentifier);
 								const exitCheck = buildBreakExitCheck(explicitExits.any ? state.exitIdentifier : null, breakIdentifiers);
-								if (exitCheck) {
-									parent.insertAfter(types.ifStatement(exitCheck, returnStatement(resultIdentifier)));
-								}
-								relocateTail(pluginState, types.callExpression(rewritten, []), null, parent, resultIdentifier, state.exitIdentifier);
+								relocateTail(pluginState, types.callExpression(rewritten, []), null, parent, resultIdentifier, state.exitIdentifier, exitCheck);
 							}
 						},
 						path: parent,
@@ -1365,7 +1359,7 @@ exports.default = function({ types, template, traverse }) {
 						originalAwaitPath.replaceWith(voidExpression());
 						relocatedBlocks.push({
 							relocate() {
-								relocateTail(pluginState, originalArgument, null, parent, null, state.exitIdentifier, types.booleanLiteral(false));
+								relocateTail(pluginState, originalArgument, null, parent, null, state.exitIdentifier, undefined, types.booleanLiteral(false));
 							},
 							path: parent,
 						});
@@ -1388,7 +1382,7 @@ exports.default = function({ types, template, traverse }) {
 										reusingExisting.remove();
 									}
 								}
-								relocateTail(pluginState, awaitExpression, parent.node, parent, resultIdentifier, state.exitIdentifier, directExpression);
+								relocateTail(pluginState, awaitExpression, parent.node, parent, resultIdentifier, state.exitIdentifier, undefined, directExpression);
 							},
 							path: parent,
 						});

@@ -1708,6 +1708,23 @@ exports.default = function({ types, template, traverse }) {
 		return state.canThrow;
 	}
 
+	const rewriteTopLevelReturnsVisitor = {
+		Function: skipNode,
+		ReturnStatement(path) {
+			const argument = path.get("argument");
+			if (argument.isCallExpression() && (argument.node.arguments.length === 1 || (argument.node.arguments[1].type === "UnaryExpression" && argument.node.arguments[1].operator === "void"))) {
+				switch (argument.node.callee._helperName) {
+					case "_await":
+						argument.replaceWith(argument.node.arguments[0]);
+						break;
+					case "_call":
+						argument.replaceWith(types.callExpression(argument.node.arguments[0], []));
+						break;
+				}
+			}
+		}
+	}
+
 	return {
 		manipulateOptions(options, parserOptions) {
 			parserOptions.plugins.push("asyncGenerators");
@@ -1747,6 +1764,7 @@ exports.default = function({ types, template, traverse }) {
 						if (inlineAsync) {
 							path.replaceWith(types.functionExpression(null, path.node.params, blockStatement(types.tryStatement(bodyPath.node, types.catchClause(types.identifier("e"), blockStatement([types.returnStatement(types.callExpression(types.memberExpression(types.identifier("Promise"), types.identifier("reject")), [types.identifier("e")]))]))))));
 						} else {
+							bodyPath.traverse(rewriteTopLevelReturnsVisitor);
 							path.replaceWith(types.callExpression(helperReference(this, path, "_async"), [
 								types.functionExpression(null, path.node.params, bodyPath.node)
 							]));

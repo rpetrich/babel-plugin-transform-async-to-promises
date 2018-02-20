@@ -964,10 +964,14 @@ exports.default = function({ types, template, traverse }) {
 		Function: skipNode,
 		ReturnStatement(path) {
 			if (!path.node._skip && this.exitIdentifier) {
-				path.replaceWithMultiple([
-					types.expressionStatement(types.assignmentExpression("=", this.exitIdentifier, types.numericLiteral(1))),
-					returnStatement(path.node.argument, path.node),
-				]);
+				if (extractLooseBooleanValue(path.node.argument) === true) {
+					path.replaceWith(returnStatement(types.assignmentExpression("=", this.exitIdentifier, path.node.argument), path.node));
+				} else {
+					path.replaceWithMultiple([
+						types.expressionStatement(types.assignmentExpression("=", this.exitIdentifier, types.numericLiteral(1))),
+						returnStatement(path.node.argument, path.node),
+					]);
+				}
 			}
 		},
 		BreakStatement(path) {

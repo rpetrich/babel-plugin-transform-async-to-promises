@@ -943,7 +943,7 @@ compiledTest("while predicate", {
 
 compiledTest("while promise direct", {
 	input: `async function() { while (Promise.resolve(false)) { await 1; return true; } return false; }`,
-	output: `_async(function(){var _exit;return _continue(_for(function(){return!_exit&&!!Promise.resolve(false);},void 0,function(){return _await(1,function(){_exit=1;return true;});}),function(_result){return _exit?_result:false;});})`,
+	output: `_async(function(){var _exit;return _continue(_for(function(){return!_exit&&!!Promise.resolve(false);},void 0,function(){return _await(1,function(){return _exit=true;});}),function(_result){return _exit?_result:false;});})`,
 	cases: {
 		result: async f => expect(await f()).toBe(true),
 	}
@@ -951,7 +951,7 @@ compiledTest("while promise direct", {
 
 compiledTest("while promise indirect", {
 	input: `async function() { function passthrough(value) { return value; } while (passthrough(true ? Promise.resolve(false) : await false)) { return true; } return false; }`,
-	output: `_async(function(){var _exit;function passthrough(value){return value;}return _continue(_for(function(){return _await(!_exit&&(true?Promise.resolve(false):false),function(_false){return!_exit&&!!passthrough(_false);},true);},void 0,function(){_exit=1;return true;}),function(_result){return _exit?_result:false;});})`,
+	output: `_async(function(){var _exit;function passthrough(value){return value;}return _continue(_for(function(){return _await(!_exit&&(true?Promise.resolve(false):false),function(_false){return!_exit&&!!passthrough(_false);},true);},void 0,function(){return _exit=true;}),function(_result){return _exit?_result:false;});})`,
 	cases: {
 		result: async f => expect(await f()).toBe(true),
 	}
@@ -981,7 +981,7 @@ compiledTest("do while loop", {
 
 compiledTest("do while return loop", {
 	input: `async function(foo) { let shouldContinue; do { if (!await foo()) return true; } while(true); }`,
-	output: `_async(function(foo){var _exit;let shouldContinue;return _do(function(){return _call(foo,function(_foo){if(!_foo){_exit=1;return true;}});},function(){return!_exit;});})`,
+	output: `_async(function(foo){var _exit;let shouldContinue;return _do(function(){return _call(foo,function(_foo){if(!_foo)return _exit=true;});},function(){return!_exit;});})`,
 	cases: {
 		one: async f => {
 			var count = 0;
@@ -1047,7 +1047,7 @@ compiledTest("for in own await value on literal", {
 
 compiledTest("for in await value with return", {
 	input: `async function(foo) { for (var key in foo) { if (await foo[key]()) return true }; return false }`,
-	output: `_async(function(foo){var _exit;return _continue(_forIn(foo,function(key){return _await(foo[key](),function(_foo$key){if(_foo$key){_exit=1;return true;}});},function(){return _exit;}),function(_result){return _exit?_result:false;});})`,
+	output: `_async(function(foo){var _exit;return _continue(_forIn(foo,function(key){return _await(foo[key](),function(_foo$key){if(_foo$key)return _exit=true;});},function(){return _exit;}),function(_result){return _exit?_result:false;});})`,
 	cases: {
 		true: async f => {
 			var obj = { foo: async _ => 0, bar: async _ => 1, baz: async _ => 0 };
@@ -1149,7 +1149,7 @@ compiledTest("await break", {
 
 compiledTest("await complex switch", {
 	input: `async function(foo, bar, baz) { switch (foo) { case 1: case 2: return 0; case await bar(): if (foo) break; if (foo === 0) return 1; case 5: baz(); default: return 2; } return 3; }`,
-	output: `_async(function(foo,bar,baz){var _exit,_interrupt;return _continue(_switch(foo,[[function(){return 1;}],[function(){return 2;},function(){_exit=1;return 0;}],[function(){return _call(bar);},function(){if(foo){_interrupt=1;return;}if(foo===0){_exit=1;return 1;}},function(){return _interrupt||_exit;}],[function(){return 5;},function(){baz();},_empty],[void 0,function(){_exit=1;return 2;}]]),function(_result){return _exit?_result:3;});})`,
+	output: `_async(function(foo,bar,baz){var _exit,_interrupt;return _continue(_switch(foo,[[function(){return 1;}],[function(){return 2;},function(){_exit=1;return 0;}],[function(){return _call(bar);},function(){if(foo){_interrupt=1;return;}if(foo===0)return _exit=1;},function(){return _interrupt||_exit;}],[function(){return 5;},function(){baz();},_empty],[void 0,function(){return _exit=2;}]]),function(_result){return _exit?_result:3;});})`,
 	cases: {
 		fallthrough: async f => {
 			expect(await f(1)).toBe(0);

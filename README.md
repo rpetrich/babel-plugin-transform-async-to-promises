@@ -1,7 +1,7 @@
 babel-plugin-transform-async-to-promises
 ========================================
 
-Babel plugin to transform async/await functions to the equivalent chain of Promise calls with use of minimal helper functions.
+Babel plugin to transform `async` functions containing `await` expressions to the equivalent chain of `Promise` calls with use of minimal helper functions.
 
 [![Build Status](https://travis-ci.org/rpetrich/babel-plugin-transform-async-to-promises.svg?branch=master)](https://travis-ci.org/rpetrich/babel-plugin-transform-async-to-promises)
 

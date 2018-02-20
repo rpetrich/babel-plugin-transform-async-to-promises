@@ -295,7 +295,7 @@ compiledTest("ternary alternate", {
 
 compiledTest("ternary body", {
 	input: `async function(foo, bar, baz) { return foo() ? await bar() : await baz(); }`,
-	output: `_async(function(foo,bar,baz){var _foo=foo();return _await(_foo?bar():baz());})`,
+	output: `_async(function(foo,bar,baz){return _await(foo()?bar():baz());})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 1, async _ => 0)).toBe(0),

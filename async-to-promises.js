@@ -728,6 +728,7 @@ exports.default = function({ types, template, traverse }) {
 
 	function extractDeclarations(awaitPath, awaitExpression) {
 		let declarations = [];
+		const originalAwaitPath = awaitPath;
 		let directExpression = types.booleanLiteral(false);
 		const resultIdentifier = awaitPath.node;
 		do {
@@ -787,8 +788,10 @@ exports.default = function({ types, template, traverse }) {
 					const consequent = parent.get("consequent");
 					const alternate = parent.get("alternate");
 					const other = consequent === awaitPath ? alternate : consequent;
+					const otherAwaitPath = findAwaitPath(other);
 					let testIdentifier;
-					if (!isExpressionOfLiterals(test)) {
+					const isBoth = consequent === awaitPath && otherAwaitPath === alternate;
+					if (!(isBoth && awaitPath === originalAwaitPath) && !isExpressionOfLiterals(test)) {
 						testIdentifier = generateIdentifierForPath(test);
 					}
 					declarations = declarations.map(declaration => types.variableDeclarator(declaration.id, (consequent === awaitPath ? logicalAnd : logicalOr)(testIdentifier || testNode, declaration.init)));
@@ -797,10 +800,10 @@ exports.default = function({ types, template, traverse }) {
 						test.replaceWith(testIdentifier);
 						testNode = testIdentifier;
 					}
-					const otherAwaitPath = findAwaitPath(other);
-					if (consequent === awaitPath && otherAwaitPath === alternate) {
+					if (isBoth) {
 						awaitExpression = conditionalExpression(testNode, awaitExpression, alternate.node.argument);
 						alternate.replaceWith(resultIdentifier);
+						parent.replaceWith(resultIdentifier);
 					} else {
 						directExpression = logicalOrLoose(consequent !== awaitPath ? testNode : logicalNot(testNode), directExpression, extractLooseBooleanValue);
 						if (otherAwaitPath) {

@@ -1563,13 +1563,14 @@ exports.default = function({ types, template, traverse }) {
 					helperReference(state, path, dependency);
 				}
 				const value = types.cloneDeep(helper.value);
-				let traversePath = file.path.get("body.0");
-				if (types.isVariableDeclaration(value) && traversePath.isVariableDeclaration()) {
+				let traversePath;
+				if (types.isVariableDeclaration(value) && file.path.get("body.0").isVariableDeclaration()) {
 					// TODO: Support variable declaration that references another variable declaration (this case doesn't exist yet in our helpers, but may in the future)
-					traversePath.unshiftContainer("declarations", value.declarations[0]);
-					traversePath = traversePath.get("declarations.0");
+					file.path.get("body.0").unshiftContainer("declarations", value.declarations[0]);
+					traversePath = file.path.get("body.0.declarations.0");
 				} else {
 					file.path.unshiftContainer("body", value);
+					traversePath = file.path.get("body.0");
 				}
 				traversePath.traverse({
 					Identifier(path) {

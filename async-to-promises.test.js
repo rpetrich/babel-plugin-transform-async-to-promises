@@ -1253,7 +1253,7 @@ compiledTest("object literal", {
 
 compiledTest("sequence expression", {
 	input: `async function(left, right) { return ((await left()), 1, (await right())) }`,
-	output: `(function(left,right){return _call(left,function(_left){return _call(right,function(_right){return _right;});});})`,
+	output: `(function(left,right){return _call(left,function(_left){return _call(right);});})`,
 	cases: {
 		value: async f => {
 			expect(await f(async () => false, async () => true)).toEqual(true);

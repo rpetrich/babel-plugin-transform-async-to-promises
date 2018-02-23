@@ -489,22 +489,13 @@ exports.default = function({ types, template, traverse }) {
 		}
 		target.replaceWith(returnStatement(expression, originalNode));
 		const returnArg = target.get("argument");
-		if (returnArg.isCallExpression()) {
-			const args = returnArg.get("arguments")
-			if (args.length) {
-				for (const arg of args) {
-					if (arg.isFunctionExpression()) {
-						hoistFunctionPath(state, arg, args[0].node);
-					}
+		if (returnArg.isCallExpression() && returnArg.node.callee._helperName) {
+			returnArg.traverse({
+				Function(path) {
+					path.skip();
+					hoistFunctionPath(state, path);
 				}
-				if (args[0].isCallExpression() && args[0].node.callee._helperName) {
-					for (const arg of args[0].get("arguments")) {
-						if (arg.isFunctionExpression()) {
-							hoistFunctionPath(state, arg, args[0].node.callee);
-						}
-					}
-				}
-			}
+			});
 		}
 	}
 
@@ -878,6 +869,9 @@ exports.default = function({ types, template, traverse }) {
 						declarations.unshift(types.variableDeclarator(sequenceIdentifier, expression.node));
 					}
 					expression.remove();
+				}
+				if (position === children.length - 1) {
+					parent.replaceWith(children[position]);
 				}
 			} else if (parent.isConditionalExpression()) {
 				const test = parent.get("test");

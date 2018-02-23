@@ -1645,6 +1645,9 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function identifierSearchesScope(path) {
+		if (path.node.name === "undefined") {
+			return false;
+		}
 		const parent = path.parentPath;
 		if (parent.isVariableDeclarator() && parent.get("id") === path) {
 			return false;

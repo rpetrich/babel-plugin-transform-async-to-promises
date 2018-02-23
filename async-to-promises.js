@@ -439,9 +439,11 @@ exports.default = function({ types, template, traverse }) {
 		const pathScopes = allScopes(path.scope.parent);
 		path.get("body").traverse({
 			Identifier(identifierPath) {
-				const binding = identifierPath.parentPath.scope.getBinding(identifierPath.node.name);
-				if (binding && binding.scope && pathScopes.includes(binding.scope)) {
-					scopes.push(binding.scope);
+				if (identifierSearchesScope(identifierPath)) {
+					const binding = identifierPath.parentPath.scope.getBinding(identifierPath.node.name);
+					if (binding && binding.scope && pathScopes.includes(binding.scope)) {
+						scopes.push(binding.scope);
+					}
 				}
 			}
 		});

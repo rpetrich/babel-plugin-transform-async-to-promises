@@ -17,9 +17,14 @@ const stripHelpersVisitor = {
 		} else if (path.isFunction() && path.id) {
 			path.skip();
 		} else if (path.isVariableDeclaration()) {
-			if (path.node.declarations.length == 1 && /^_async/.test(path.node.declarations[0].id.name)) {
+			const allDeclarations = path.get("declarations");
+			const declarationsToRemove = allDeclarations.filter(declaration => /^_async/.test(declaration.node.id.name));
+			if (declarationsToRemove.length === allDeclarations.length) {
 				path.remove();
 			} else {
+				for (const declaration of allDeclarations) {
+					declaration.remove();
+				}
 				path.skip();
 			}
 		} else if (!path.node.ignored) {

@@ -1,7 +1,7 @@
 babel-plugin-transform-async-to-promises
 ========================================
 
-Babel plugin to transform async/await functions to the equivalent chain of Promise calls with use of minimal helper functions.
+Babel plugin to transform `async` functions containing `await` expressions to the equivalent chain of `Promise` calls with use of minimal helper functions.
 
 [![Build Status](https://travis-ci.org/rpetrich/babel-plugin-transform-async-to-promises.svg?branch=master)](https://travis-ci.org/rpetrich/babel-plugin-transform-async-to-promises)
 
@@ -47,19 +47,11 @@ var fetchAsObjectURL = _async(function(url) {
 - Proper member dereference order of operations
 
 ### Partial Support
-- Standards-compliant event loop ordering
- - Compliant with respect to initial calls, conditionally called `await` expressions, and loops
- - Rethrown errors from inside `catch`/`finally` clauses are dispatched asynchronously
- - `Promise` values in predicates will be awaited instead of merely checked for truthiness
-- `Function.length`
- - `async` functions will often return a length of 0 (when the `_async` wrapper is used)
+- Standards-compliant event loop ordering: error path inside `catch`/`finally` clauses are always dispatched asynchronously
+- `Function.length`: `async` functions will often return a length of 0 (when the `_async` wrapper is used)
 
 ### No support
-- `eval`
- - Impossible to support without deep hooks into the runtime
-- Async generator functions
- - Not implemented or planned
-- `Function.name`
- - Rewrite pass removes function name instrumentation
-- `new AsyncFunction(...)`
- - Impossible to support without shipping babel and the plugin in the output
+- `eval`: impossible to support without deep hooks into the runtime
+- Async generator functions: not implemented or planned
+- `Function.name`: rewrite pass removes function name instrumentation
+- `new AsyncFunction(...)`: impossible to support without shipping babel and the plugin in the output

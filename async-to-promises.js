@@ -434,40 +434,45 @@ exports.default = function({ types, template, traverse }) {
 		return result;
 	}
 
-	function hoistFunctionPath(state, path, referenceNode = path.node, name = "temp") {
-		if (path.node.body.body.length === 0) {
-			path.replaceWith(helperReference(state, path, "_empty"));
-			return;
-		}
-		const scopes = [];
-		const pathScopes = allScopes(path.scope.parent);
-		path.get("body").traverse({
-			Identifier(identifierPath) {
-				if (identifierSearchesScope(identifierPath)) {
-					const binding = identifierPath.parentPath.scope.getBinding(identifierPath.node.name);
-					if (binding && binding.scope && pathScopes.includes(binding.scope)) {
-						scopes.push(binding.scope);
+	const hoistCallArgumentsVisitor = {
+		Function(path) {
+			path.skip();
+			const bodyPath = path.get("body");
+			if (bodyPath.node.body.length === 0) {
+				path.replaceWith(helperReference(this, path, "_empty"));
+				return;
+			}
+			const scopes = [];
+			const pathScopes = allScopes(path.scope.parent);
+			bodyPath.traverse({
+				Identifier(identifierPath) {
+					if (identifierSearchesScope(identifierPath)) {
+						const binding = identifierPath.scope.getBinding(identifierPath.node.name);
+						if (binding && binding.scope && pathScopes.includes(binding.scope)) {
+							scopes.push(binding.scope);
+						}
 					}
 				}
-			}
-		});
-		let scope;
-		if (scopes.length) {
-			scope = scopes[0];
-			let ancestry = allScopes(scope);
-			for (var i = 1; i < scopes.length; i++) {
-				if (!ancestry.includes(scopes[i].scope)) {
-					scope = scopes[i];
-					ancestry = allScopes(scope);
+			});
+			let scope = path.scope.getProgramParent()
+			let ancestry = [scope];
+			for (let otherScope of scopes) {
+				if (!ancestry.includes(otherScope)) {
+					scope = otherScope;
+					ancestry = ancestry.concat(allScopes(otherScope));
 				}
 			}
-		} else {
-			scope = path.scope.getProgramParent();
+			if (!ancestry.includes(path.scope.parent)) {
+				const identifier = path.scope.generateUidIdentifierBasedOnNode(path.node, "temp");
+				scope.push({ id: identifier, init: path.node });
+				path.replaceWith(identifier);
+			}
 		}
-		if (!allScopes(scope).includes(path.scope.parent)) {
-			const identifier = path.scope.generateUidIdentifierBasedOnNode(referenceNode, name);
-			scope.push({ id: identifier, init: path.node });
-			path.replaceWith(identifier);
+	};
+
+	function hoistCallArguments(state, path) {
+		if (path.isCallExpression() && path.node.callee._helperName) {
+			path.traverse(hoistCallArgumentsVisitor, state);
 		}
 	}
 
@@ -488,15 +493,7 @@ exports.default = function({ types, template, traverse }) {
 			expression = awaitAndContinue(state, target, awaitExpression, helperReference(state, target, "_empty"), directExpression);
 		}
 		target.replaceWith(returnStatement(expression, originalNode));
-		const returnArg = target.get("argument");
-		if (returnArg.isCallExpression() && returnArg.node.callee._helperName) {
-			returnArg.traverse({
-				Function(path) {
-					path.skip();
-					hoistFunctionPath(state, path);
-				}
-			});
-		}
+		hoistCallArguments(state, target.get("argument"));
 	}
 
 	function catchHelper(state, path, blockStatement, catchContinuation) {
@@ -1192,6 +1189,7 @@ exports.default = function({ types, template, traverse }) {
 			awaitPath = awaitPath.get("left");
 		}
 		const relocatedBlocks = [];
+		const awaitBlocks = [];
 		const originalAwaitPath = awaitPath;
 		const originalExpression = awaitPath.node;
 		const node = awaitPath.node;
@@ -1347,7 +1345,7 @@ exports.default = function({ types, template, traverse }) {
 						let defaultIndex;
 						testPaths.forEach((testPath, i) => {
 							if (testPath.node) {
-								testPath.replaceWith(rewriteFunctionNode(pluginState, parent, functionize(testPath.node), state.exitIdentifier));
+								testPath.replaceWith(rewriteFunctionNode(pluginState, parent, functionize(testPath.node), state.exitIdentifier, true));
 							} else {
 								defaultIndex = i;
 							}
@@ -1419,7 +1417,7 @@ exports.default = function({ types, template, traverse }) {
 					const originalArgument = originalAwaitPath.node.argument;
 					if (originalAwaitPath.parentPath.isExpressionStatement()) {
 						originalAwaitPath.replaceWith(voidExpression());
-						relocatedBlocks.push({
+						awaitBlocks.push({
 							relocate() {
 								relocateTail(pluginState, originalArgument, null, parent, null, state.exitIdentifier, undefined, types.booleanLiteral(false));
 							},
@@ -1434,8 +1432,9 @@ exports.default = function({ types, template, traverse }) {
 							} else {
 								parent.insertBefore(types.variableDeclaration("var", declarations));
 							}
+							parent.scope.crawl();
 						}
-						relocatedBlocks.push({
+						awaitBlocks.push({
 							relocate() {
 								if (reusingExisting) {
 									if (reusingExisting.parent.declarations.length === 1) {
@@ -1454,7 +1453,7 @@ exports.default = function({ types, template, traverse }) {
 			}
 			awaitPath = parent;
 		} while (awaitPath !== path);
-		for (const block of relocatedBlocks) {
+		for (const block of awaitBlocks.reverse().concat(relocatedBlocks.reverse())) {
 			block.relocate();
 		}
 	}
@@ -1516,8 +1515,16 @@ exports.default = function({ types, template, traverse }) {
 				case "_await":
 				case "_call": {
 					const args = path.get("arguments");
-					if (args.length > 2 && args[1].isFunctionExpression()) {
-						args[1].traverse(unpromisifyVisitor);
+					if (args.length > 2) {
+						const firstArg = args[1];
+						if (firstArg.isFunctionExpression()) {
+							firstArg.traverse(unpromisifyVisitor);
+						} else if (firstArg.isIdentifier()) {
+							const binding = firstArg.scope.getBinding(firstArg.node.name);
+							if (binding && binding.path.isVariableDeclarator()) {
+								binding.path.get("init").traverse(unpromisifyVisitor);
+							}
+						}
 					}
 					break;
 				}

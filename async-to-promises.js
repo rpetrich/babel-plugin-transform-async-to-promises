@@ -1499,7 +1499,7 @@ exports.default = function({ types, template, traverse }) {
 
 	const getHelperDependenciesVisitor = {
 		Identifier(path) {
-			if (path.hub.file.scope.getBinding(path.node.name) && this.dependencies.indexOf(path.node.name) === -1) {
+			if (identifierSearchesScope(path) && path.hub.file.scope.getBinding(path.node.name) && this.dependencies.indexOf(path.node.name) === -1) {
 				this.dependencies.push(path.node.name);
 			}
 		}
@@ -1649,7 +1649,7 @@ exports.default = function({ types, template, traverse }) {
 		if (parent.isVariableDeclarator() && parent.get("id") === path) {
 			return false;
 		}
-		if (parent.isCallExpression() && parent.get("callee") === path) {
+		if (parent.isMemberExpression() && !parent.node.computed && parent.get("property") === path) {
 			return false;
 		}
 		if (parent.isLabeledStatement() && parent.get("label") === path) {

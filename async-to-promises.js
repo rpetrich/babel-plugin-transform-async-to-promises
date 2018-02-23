@@ -434,7 +434,11 @@ exports.default = function({ types, template, traverse }) {
 		return result;
 	}
 
-	function hoistFunctionPath(path, referenceNode = path.node, name = "temp") {
+	function hoistFunctionPath(state, path, referenceNode = path.node, name = "temp") {
+		if (path.node.body.body.length === 0) {
+			path.replaceWith(helperReference(state, path, "_empty"));
+			return;
+		}
 		const scopes = [];
 		const pathScopes = allScopes(path.scope.parent);
 		path.get("body").traverse({
@@ -490,13 +494,13 @@ exports.default = function({ types, template, traverse }) {
 			if (args.length) {
 				for (const arg of args) {
 					if (arg.isFunctionExpression()) {
-						hoistFunctionPath(arg, args[0].node);
+						hoistFunctionPath(state, arg, args[0].node);
 					}
 				}
 				if (args[0].isCallExpression() && args[0].node.callee._helperName) {
 					for (const arg of args[0].get("arguments")) {
 						if (arg.isFunctionExpression()) {
-							hoistFunctionPath(arg, args[0].node.callee);
+							hoistFunctionPath(state, arg, args[0].node.callee);
 						}
 					}
 				}

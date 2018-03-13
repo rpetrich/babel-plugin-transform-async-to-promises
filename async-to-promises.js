@@ -730,7 +730,7 @@ exports.default = function({ types, template, traverse }) {
 	function findDeclarationToReuse(path) {
 		for (;;) {
 			const parent = path.parentPath;
-			if (parent.isVariableDeclarator()) {
+			if (parent.isVariableDeclarator() && parent.get("id").isIdentifier()) {
 				return parent;
 			}
 			let other;

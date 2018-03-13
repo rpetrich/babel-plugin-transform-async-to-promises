@@ -1451,6 +1451,22 @@ if (!runTestCasesOnInput) {
 
 }
 
+compiledTest("Object spreading", {
+	input: `async function(foo) { const { bar } = await foo(); return bar; }`,
+	output: `function(foo){return _call(foo,function(_foo){const{bar}=_foo;return bar;});}`,
+	cases: {
+		value: async f => expect(await f(() => ({ bar: "baz" }))).toBe("baz"),
+	},
+});
+
+compiledTest("Array spreading", {
+	input: `async function(foo) { const [bar] = await foo(); return bar; }`,
+	output: `function(foo){return _call(foo,function(_foo){const[bar]=_foo;return bar;});}`,
+	cases: {
+		value: async f => expect(await f(() => ["baz"])).toBe("baz"),
+	},
+});
+
 
 compiledTest("eval is evil", {
 	input: `async function(code) { return await eval(code); }`,

@@ -444,30 +444,6 @@ exports.default = function({ types, template, traverse }) {
 		target.replaceWith(returnStatement(expression, originalNode));
 	}
 
-	function catchHelper(state, path, blockStatement, catchContinuation) {
-		let target;
-		const expression = expressionInSingleReturnStatement(blockStatement.body);
-		if (expression && types.isCallExpression(expression)) {
-			switch (expression.arguments.length) {
-				case 0:
-					if (types.isIdentifier(expression.callee) || types.isFunctionExpression(expression.callee)) {
-						target = expression.callee;
-					}
-					break;
-				case 1:
-					if (expression.callee._helperName === "_call" && (types.isIdentifier(expression.arguments[0]) || types.isFunctionExpression(expression.arguments[0]))) {
-						target = expression.arguments[0];
-					}
-					break;
-			}
-		}
-		const catchArgs = [target || types.functionExpression(null, [], blockStatement)];
-		if (catchContinuation) {
-			catchArgs.push(catchContinuation);
-		}
-		return types.callExpression(helperReference(state, path, catchArgs.length > 1 ? "_catch" : "_call"), [].concat(catchArgs));
-	}
-
 	const rewriteThisVisitor = {
 		Function(path) {
 			if (!path.isArrowFunctionExpression()) {
@@ -555,7 +531,13 @@ exports.default = function({ types, template, traverse }) {
 	}
 
 	function functionize(expression) {
-		return types.functionExpression(null, [], blockStatement([returnStatement(expression)]));
+		if (types.isExpression(expression)) {
+			expression = returnStatement(expression);
+		}
+		if (!types.isBlockStatement(expression)) {
+			expression = blockStatement([expression]);
+		}
+		return types.functionExpression(null, [], expression);
 	}
 
 	function blockStatement(statementOrStatements) {
@@ -571,11 +553,25 @@ exports.default = function({ types, template, traverse }) {
 	function unwrapReturnCallWithEmptyArguments(node, scope) {
 		if (types.isFunctionExpression(node) && node.body.body.length === 1 && types.isReturnStatement(node.body.body[0])) {
 			const expression = node.body.body[0].argument;
-			if (types.isCallExpression(expression) && expression.arguments.length === 1 && expression.callee._helperName === "_call" && types.isIdentifier(expression.arguments[0])) {
-				const identifier = expression.arguments[0]
-				const binding = scope.getBinding(identifier.name);
-				if (binding && binding.constant) {
-					return identifier;
+			if (types.isCallExpression(expression)) {
+				let callTarget;
+				switch (expression.arguments.length) {
+					case 0:
+						callTarget = expression.callee;
+						break;
+					case 1:
+						if (expression.callee._helperName === "_call") {
+							callTarget = expression.arguments[0];
+						}
+						break;
+				}
+				if (types.isIdentifier(callTarget)) {
+					const binding = scope.getBinding(callTarget.name);
+					if (binding && binding.constant) {
+						return callTarget;
+					}
+				} else if (types.isFunctionExpression(callTarget)) {
+					return callTarget;
 				}
 			}
 		}
@@ -1170,9 +1166,14 @@ exports.default = function({ types, template, traverse }) {
 						relocate() {
 							const temporary = explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
 							const success = explicitExits.all ? returnStatement(temporary) : null;
-							let finallyFunction;
-							let finallyName;
+							let expression = parent.node.block;
+							if (parent.node.handler) {
+								const catchClause = parent.node.handler;
+								const catchExpression = catchClause.body.body.length ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(pluginState, parent, "_empty");
+								expression = types.callExpression(helperReference(pluginState, path, "_catch"), [unwrapReturnCallWithEmptyArguments(functionize(expression), path.scope), catchExpression]);
+							}
 							if (parent.node.finalizer) {
+								let finallyName;
 								let finallyArgs = [];
 								let finallyBody = parent.node.finalizer.body;
 								if (!pathsReturnOrThrow(parent.get("finalizer")).all) {
@@ -1184,20 +1185,10 @@ exports.default = function({ types, template, traverse }) {
 								} else {
 									finallyName = "_finally";
 								}
-								finallyFunction = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
+								const finallyExpression = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
+								expression = types.callExpression(helperReference(pluginState, parent, finallyName), [unwrapReturnCallWithEmptyArguments(functionize(expression), path.scope), finallyExpression])
 							}
-							let catchExpression;
-							let rewriteCatch;
-							if (parent.node.handler) {
-								const catchClause = parent.node.handler;
-								rewriteCatch = catchClause.body.body.length;
-								catchExpression = rewriteCatch ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(pluginState, parent, "_empty");
-							}
-							const evalBlock = catchHelper(pluginState, parent, parent.node.block, catchExpression);
-							relocateTail(pluginState, evalBlock, success, parent, temporary, state.exitIdentifier);
-							if (finallyFunction && finallyName) {
-								parent.get("argument").replaceWith(types.callExpression(helperReference(pluginState, parent, finallyName), [parent.node.argument, finallyFunction]));
-							}
+							relocateTail(pluginState, expression, success, parent, temporary, state.exitIdentifier);
 						},
 						path: parent,
 					});

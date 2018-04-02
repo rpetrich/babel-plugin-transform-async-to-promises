@@ -1763,11 +1763,18 @@ exports.default = function({ types, template, traverse }) {
 				const node = path.node;
 				if (node.async) {
 					const expression = types.functionExpression(null, node.params, node.body, node.generator, node.async);
+					const declarators = [types.variableDeclarator(node.id, expression)];
 					if (path.parentPath.isExportDeclaration() || path.parentPath.isExportDefaultDeclaration()) {
-						path.replaceWith(types.variableDeclaration("const", [types.variableDeclarator(node.id, expression)]));
+						path.replaceWith(types.variableDeclaration("const", declarators));
 					} else {
-						path.remove();
-						path.scope.parent.push({ id: node.id, init: expression });
+						const declaration = types.variableDeclaration("var", declarators);
+						const siblings = path.getAllPrevSiblings();
+						if (siblings.length) {
+							path.remove();
+							siblings[0].insertBefore(declaration);
+						} else {
+							path.replaceWith(declaration);
+						}
 					}
 				}
 			},

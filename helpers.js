@@ -484,7 +484,7 @@ export function _finallyRethrows(body, finalizer) {
 }
 
 // Asynchronously await a promise and invoke a finally continuation that always overrides the result
-export function _finally(value, finalizer) {
+export function _finally(body, finalizer) {
 	try {
 		var result = body();
 	} catch (e) {

@@ -60,33 +60,29 @@ export function _continueIgnored(value) {
 
 // Asynchronously iterate through an object that has a length property, passing the index as the first argument to the callback (even as the length property changes)
 export function _forTo(array, body) {
-	try {
-		for (var i = 0; i < array.length; ++i) {
-			var result = body(i);
-			if (result && result.then) {
-				return new Promise(function(resolve, reject) {
-					result.then(_cycle, reject);
-					function _cycle(result) {
-						try {
-							while (++i < array.length) {
-								result = body(i);
-								if (result && result.then) {
-									result.then(_cycle, reject);
-									return;
-								}
+	for (var i = 0; i < array.length; ++i) {
+		var result = body(i);
+		if (result && result.then) {
+			return new Promise(function(resolve, reject) {
+				result.then(_cycle, reject);
+				function _cycle(result) {
+					try {
+						while (++i < array.length) {
+							result = body(i);
+							if (result && result.then) {
+								result.then(_cycle, reject);
+								return;
 							}
-							resolve(result);
-						} catch (e) {
-							reject(e);
 						}
+						resolve(result);
+					} catch (e) {
+						reject(e);
 					}
-				});
-			}
+				}
+			});
 		}
-		return result;
-	} catch (e) {
-		return Promise.reject(e);
 	}
+	return result;
 }
 
 // Asynchronously iterate through an object that has a length property, passing the value as the first argument to the callback (even as the length property changes)
@@ -195,32 +191,28 @@ export function _forAwaitOf(target, body, check) {
 
 // Asynchronously implement a generic for loop
 export function _for(test, update, body) {
-	try {
-		var stage;
-		for (;;) {
-			var shouldContinue = test();
-			if (!shouldContinue) {
-				return result;
-			}
-			if (shouldContinue.then) {
-				stage = 0;
+	var stage;
+	for (;;) {
+		var shouldContinue = test();
+		if (!shouldContinue) {
+			return result;
+		}
+		if (shouldContinue.then) {
+			stage = 0;
+			break;
+		}
+		var result = body();
+		if (result && result.then) {
+			stage = 1;
+			break;
+		}
+		if (update) {
+			var updateValue = update();
+			if (updateValue && updateValue.then) {
+				stage = 2;
 				break;
-			}
-			var result = body();
-			if (result && result.then) {
-				stage = 1;
-				break;
-			}
-			if (update) {
-				var updateValue = update();
-				if (updateValue && updateValue.then) {
-					stage = 2;
-					break;
-				}
 			}
 		}
-	} catch (e) {
-		return Promise.reject(e);
 	}
 	return new Promise(function(resolve, reject) {
 		(stage === 0 ? shouldContinue.then(_resumeAfterTest) : stage === 1 ? result.then(_resumeAfterBody) : updateValue.then(_resumeAfterUpdate)).catch(reject);
@@ -276,21 +268,17 @@ export function _for(test, update, body) {
 // Asynchronously implement a do ... while loop
 export function _do(body, test) {
 	var awaitBody;
-	try {
-		do {
-			var result = body();
-			if (result && result.then) {
-				awaitBody = true;
-				break;
-			}
-			var shouldContinue = test();
-			if (!shouldContinue) {
-				return result;
-			}
-		} while (!shouldContinue.then);
-	} catch (e) {
-		return Promise.reject(e);
-	}
+	do {
+		var result = body();
+		if (result && result.then) {
+			awaitBody = true;
+			break;
+		}
+		var shouldContinue = test();
+		if (!shouldContinue) {
+			return result;
+		}
+	} while (!shouldContinue.then);
 	return new Promise(function(resolve, reject) {
 		(awaitBody ? result.then(_resumeAfterBody) : shouldContinue.then(_resumeAfterTest)).catch(reject);
 		function _resumeAfterBody(value) {
@@ -334,8 +322,7 @@ export function _do(body, test) {
 export function _switch(discriminant, cases) {
 	var dispatchIndex = -1;
 	var awaitBody;
-	outer:
-	try {
+	outer: {
 		for (var i = 0; i < cases.length; i++) {
 			var test = cases[i][0];
 			if (test) {
@@ -369,8 +356,6 @@ export function _switch(discriminant, cases) {
 			} while (fallthroughCheck && !fallthroughCheck());
 			return result;
 		}
-	} catch (e) {
-		return Promise.reject(e);
 	}
 	return new Promise(function(resolve, reject) {
 		(awaitBody ? result.then(_resumeAfterBody) : testValue.then(_resumeAfterTest)).catch(reject);
@@ -440,18 +425,18 @@ export function _switch(discriminant, cases) {
 
 // Asynchronously call a function and pass the result to explicitly passed continuations
 export function _call(body, then, direct) {
+	if (direct) {
+		return then ? then(body()) : body();
+	}
 	try {
 		var result = body();
-		if (direct) {
-			return then ? then(result) : result;
+		if (!result || !result.then) {
+			result = Promise.resolve(result);
 		}
-	} catch(e) {
+		return then ? result.then(then) : result;
+	} catch (e) {
 		return Promise.reject(e);
 	}
-	if (!result || !result.then) {
-		result = Promise.resolve(result);
-	}
-	return then ? result.then(then) : result;
 }
 
 // Asynchronously call a function and swallow the result
@@ -481,11 +466,7 @@ export function _catch(body, recover) {
 	try {
 		var result = body();
 	} catch(e) {
-		try {
-			return recover(e);
-		} catch(e2) {
-			return Promise.reject(e2);
-		}
+		return recover(e);
 	}
 	if (result && result.then) {
 		return result.then(void 0, recover);
@@ -494,27 +475,29 @@ export function _catch(body, recover) {
 }
 
 // Asynchronously await a promise and pass the result to a finally continuation
-export function _finallyRethrows(value, finalizer) {
-	if (value && value.then) {
-		return value.then(finalizer.bind(null, false), finalizer.bind(null, true));
-	}
+export function _finallyRethrows(body, finalizer) {
 	try {
-		return finalizer(false, value);
+		var result = body();
 	} catch (e) {
-		return Promise.reject(e);
+		return finalizer(true, e);
 	}
+	if (result && result.then) {
+		return result.then(finalizer.bind(null, false), finalizer.bind(null, true));
+	}
+	return finalizer(false, value);
 }
 
 // Asynchronously await a promise and invoke a finally continuation that always overrides the result
-export function _finally(value, finalizer) {
-	if (value && value.then) {
-		return value.then(finalizer, finalizer);
-	}
+export function _finally(body, finalizer) {
 	try {
-		return finalizer();
+		var result = body();
 	} catch (e) {
-		return Promise.reject(e);
+		return finalizer();
 	}
+	if (result && result.then) {
+		return result.then(finalizer, finalizer);
+	}
+	return finalizer();
 }
 
 // Rethrow or return a value from a finally continuation

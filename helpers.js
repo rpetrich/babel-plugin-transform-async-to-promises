@@ -1,3 +1,68 @@
+// A type of promise-like that resolves synchronously and supports only one observer
+export const _Pact = (function() {
+	function _Pact() {}
+	_Pact.prototype.then = function(onFulfilled, onRejected) {
+		const state = this.__state;
+		if (state) {
+			const callback = state == 1 ? onFulfilled : onRejected;
+			if (callback) {
+				const result = new _Pact();
+				try {
+					_settle.call(result, 1, callback(this.__value));
+				} catch (e) {
+					_settle.call(result, 2, e);
+				}
+				return result;
+			} else {
+				return this;
+			}
+		}
+		const result = new _Pact();
+		this.__observer = () => {
+			try {
+				const value = this.__value;
+				if (this.__state == 1) {
+					_settle(result, 1, onFulfilled ? onFulfilled(value) : value);
+				} else if (onRejected) {
+					_settle(result, 1, onRejected(value));
+				} else {
+					_settle(result, 2, value);
+				}
+			} catch (e) {
+				_settle(result, 2, e);
+			}
+		};
+		return result;
+	}
+	return _Pact;
+})();
+
+// Settles a pact synchronously
+export function _settle(pact, state, value) {
+	if (!pact.__state) {
+		if (value instanceof _Pact) {
+			if (value.__state) {
+				if (state === 1) {
+					state = value.__state;
+				}
+				value = value.__value;
+			} else {
+				value.__observer = _settle.bind(null, pact, state, value);
+				return;
+			}
+		} else if (typeof value == "object" && "then" in value) {
+			value.then(_settle.bind(null, pact, state), _settle.bind(null, pact, 2));
+			return;
+		}
+		pact.__state = state;
+		pact.__value = value;
+		const observer = pact.__observer;
+		if (observer) {
+			observer();
+		}
+	}
+}
+
 // Converts argument to a function that always returns a Promise
 export const _async = (function() {
 	try {
@@ -59,23 +124,24 @@ export function _forTo(array, body) {
 	for (var i = 0; i < array.length; ++i) {
 		var result = body(i);
 		if (result && result.then) {
-			return new Promise(function(resolve, reject) {
-				result.then(_cycle, reject);
-				function _cycle(result) {
-					try {
-						while (++i < array.length) {
-							result = body(i);
-							if (result && result.then) {
-								result.then(_cycle, reject);
-								return;
-							}
+			var pact = new _Pact();
+			var reject = _settle.bind(null, pact, 2);
+			result.then(_cycle, reject);
+			return pact;
+			function _cycle(result) {
+				try {
+					while (++i < array.length) {
+						result = body(i);
+						if (result && result.then) {
+							result.then(_cycle, reject);
+							return;
 						}
-						resolve(result);
-					} catch (e) {
-						reject(e);
 					}
+					_settle(pact, 1, result);
+				} catch (e) {
+					reject(e);
 				}
-			});
+			}
 		}
 	}
 	return result;
@@ -163,23 +229,24 @@ export function _forAwaitOf(target, body, check) {
 	if (typeof Symbol !== "undefined") {
 		var asyncIteratorSymbol = Symbol.asyncIterator;
 		if (asyncIteratorSymbol && (asyncIteratorSymbol in target)) {
-			return new Promise(function(resolve, reject) {
-				var iterator = target[asyncIteratorSymbol]();
-				function _resumeAfterBody(result) {
-					if (check && !check()) {
-						return resolve(result);
-					}
-					iterator.next().then(_resumeAfterNext).catch(reject);
+			var pact = new _Pact();
+			var reject = _settle.bind(null, pact, 2);
+			var iterator = target[asyncIteratorSymbol]();
+			iterator.next().then(_resumeAfterNext).then(void 0, reject);
+			return pact;
+			function _resumeAfterBody(result) {
+				if (check && !check()) {
+					return _settle(pact, 1, result);
 				}
-				function _resumeAfterNext(step) {
-					if (step.done) {
-						resolve();
-					} else {
-						Promise.resolve(body(step.value)).then(_resumeAfterBody).catch(reject);
-					}
+				iterator.next().then(_resumeAfterNext).then(void 0, reject);
+			}
+			function _resumeAfterNext(step) {
+				if (step.done) {
+					_settle(pact, 1);
+				} else {
+					Promise.resolve(body(step.value)).then(_resumeAfterBody).then(void 0, reject);
 				}
-				iterator.next().then(_resumeAfterNext).catch(reject);
-			});
+			}
 		}
 	}
 	return Promise.resolve(_forOf(target, function(value) { return Promise.resolve(value).then(body); }, check));
@@ -210,55 +277,56 @@ export function _for(test, update, body) {
 			}
 		}
 	}
-	return new Promise(function(resolve, reject) {
-		(stage === 0 ? shouldContinue.then(_resumeAfterTest) : stage === 1 ? result.then(_resumeAfterBody) : updateValue.then(_resumeAfterUpdate)).catch(reject);
-		function _resumeAfterBody(value) {
-			result = value;
-			do {
-				if (update) {
-					updateValue = update();
-					if (updateValue && updateValue.then) {
-						updateValue.then(_resumeAfterUpdate).catch(reject);
-						return;
-					}
-				}
-				shouldContinue = test();
-				if (!shouldContinue) {
-					resolve(result);
+	var pact = new _Pact();
+	var reject = _settle.bind(null, pact, 2);
+	(stage === 0 ? shouldContinue.then(_resumeAfterTest) : stage === 1 ? result.then(_resumeAfterBody) : updateValue.then(_resumeAfterUpdate)).then(void 0, reject);
+	return pact;
+	function _resumeAfterBody(value) {
+		result = value;
+		do {
+			if (update) {
+				updateValue = update();
+				if (updateValue && updateValue.then) {
+					updateValue.then(_resumeAfterUpdate).then(void 0, reject);
 					return;
 				}
-				if (shouldContinue.then) {
-					shouldContinue.then(_resumeAfterTest).catch(reject);
-					return;
-				}
-				result = body();
-			} while (!result || !result.then);
-			result.then(_resumeAfterBody).catch(reject);
-		}
-		function _resumeAfterTest(shouldContinue) {
-			if (shouldContinue) {
-				result = body();
-				if (result && result.then) {
-					result.then(_resumeAfterBody).catch(reject);
-				} else {
-					_resumeAfterBody(result);
-				}
-			} else {
-				resolve(result);
 			}
-		}
-		function _resumeAfterUpdate() {
-			if (shouldContinue = test()) {
-				if (shouldContinue.then) {
-					shouldContinue.then(_resumeAfterTest).catch(reject);
-				} else {
-					_resumeAfterTest(shouldContinue);
-				}
-			} else {
-				resolve(result);
+			shouldContinue = test();
+			if (!shouldContinue) {
+				_settle(pact, 1, result);
+				return;
 			}
+			if (shouldContinue.then) {
+				shouldContinue.then(_resumeAfterTest).then(void 0, reject);
+				return;
+			}
+			result = body();
+		} while (!result || !result.then);
+		result.then(_resumeAfterBody).then(void 0, reject);
+	}
+	function _resumeAfterTest(shouldContinue) {
+		if (shouldContinue) {
+			result = body();
+			if (result && result.then) {
+				result.then(_resumeAfterBody).then(void 0, reject);
+			} else {
+				_resumeAfterBody(result);
+			}
+		} else {
+			_settle(pact, 1, result);
 		}
-	});
+	}
+	function _resumeAfterUpdate() {
+		if (shouldContinue = test()) {
+			if (shouldContinue.then) {
+				shouldContinue.then(_resumeAfterTest).then(void 0, reject);
+			} else {
+				_resumeAfterTest(shouldContinue);
+			}
+		} else {
+			_settle(pact, 1, result);
+		}
+	}
 }
 
 // Asynchronously implement a do ... while loop
@@ -275,43 +343,44 @@ export function _do(body, test) {
 			return result;
 		}
 	} while (!shouldContinue.then);
-	return new Promise(function(resolve, reject) {
-		(awaitBody ? result.then(_resumeAfterBody) : shouldContinue.then(_resumeAfterTest)).catch(reject);
-		function _resumeAfterBody(value) {
-			result = value;
-			while (shouldContinue = test()) {
-				if (shouldContinue.then) {
-					shouldContinue.then(_resumeAfterTest).catch(reject);
-					return;
-				}
+	const pact = new _Pact();
+	const reject = _settle.bind(null, pact, 2);
+	(awaitBody ? result.then(_resumeAfterBody) : shouldContinue.then(_resumeAfterTest)).then(void 0, reject);
+	return pact;
+	function _resumeAfterBody(value) {
+		result = value;
+		while (shouldContinue = test()) {
+			if (shouldContinue.then) {
+				shouldContinue.then(_resumeAfterTest).then(void 0, reject);
+				return;
+			}
+			result = body();
+			if (result && result.then) {
+				result.then(_resumeAfterBody).then(void 0, reject);
+				return;
+			}
+		}
+		_settle(pact, 1, result);
+	}
+	function _resumeAfterTest(shouldContinue) {
+		if (shouldContinue) {
+			do {
 				result = body();
 				if (result && result.then) {
-					result.then(_resumeAfterBody).catch(reject);
+					result.then(_resumeAfterBody).then(void 0, reject);
 					return;
 				}
-			}
-			resolve(result);
+				shouldContinue = test();
+				if (!shouldContinue) {
+					_settle(pact, 1, result);
+					return;
+				}
+			} while (!shouldContinue.then);
+			shouldContinue.then(_resumeAfterTest).then(void 0, reject);
+		} else {
+			_settle(pact, 1, result);
 		}
-		function _resumeAfterTest(shouldContinue) {
-			if (shouldContinue) {
-				do {
-					result = body();
-					if (result && result.then) {
-						result.then(_resumeAfterBody).catch(reject);
-						return;
-					}
-					shouldContinue = test();
-					if (!shouldContinue) {
-						resolve(result);
-						return;
-					}
-				} while (!shouldContinue.then);
-				shouldContinue.then(_resumeAfterTest).catch(reject);
-			} else {
-				resolve(result);
-			}
-		}
-	});
+	}
 }
 
 // Asynchronously implement a switch statement
@@ -353,70 +422,71 @@ export function _switch(discriminant, cases) {
 			return result;
 		}
 	}
-	return new Promise(function(resolve, reject) {
-		(awaitBody ? result.then(_resumeAfterBody) : testValue.then(_resumeAfterTest)).catch(reject);
-		function _resumeAfterTest(value) {
-			for (;;) {
-				if (value === discriminant) {
-					dispatchIndex = i;
+	const pact = new _Pact();
+	const reject = _settle.bind(null, pact, 2);
+	(awaitBody ? result.then(_resumeAfterBody) : testValue.then(_resumeAfterTest)).then(void 0, reject);
+	return pact;
+	function _resumeAfterTest(value) {
+		for (;;) {
+			if (value === discriminant) {
+				dispatchIndex = i;
+				break;
+			}
+			if (++i === cases.length) {
+				if (dispatchIndex !== -1) {
 					break;
-				}
-				if (++i === cases.length) {
-					if (dispatchIndex !== -1) {
-						break;
-					} else {
-						resolve(result);
-						return;
-					}
-				}
-				test = cases[i][0];
-				if (test) {
-					value = test();
-					if (value && value.then) {
-						value.then(_resumeAfterTest).catch(reject);
-						return;
-					}
 				} else {
-					dispatchIndex = i;
-				}
-			}
-			do {
-				var body = cases[dispatchIndex][1];
-				while (!body) {
-					dispatchIndex++;
-					body = cases[dispatchIndex][1];
-				}
-				var result = body();
-				if (result && result.then) {
-					result.then(_resumeAfterBody).catch(reject);
-					return;
-				}
-				var fallthroughCheck = cases[dispatchIndex][2];
-				dispatchIndex++;
-			} while (fallthroughCheck && !fallthroughCheck());
-			resolve(result);
-		}
-		function _resumeAfterBody(result) {
-			for (;;) {
-				var fallthroughCheck = cases[dispatchIndex][2];
-				if (!fallthroughCheck || fallthroughCheck()) {
-					break;
-				}
-				dispatchIndex++;
-				var body = cases[dispatchIndex][1];
-				while (!body) {
-					dispatchIndex++;
-					body = cases[dispatchIndex][1];
-				}
-				result = body();
-				if (result && result.then) {
-					result.then(_resumeAfterBody).catch(reject);
+					_settle(pact, 1, result);
 					return;
 				}
 			}
-			resolve(result);
+			test = cases[i][0];
+			if (test) {
+				value = test();
+				if (value && value.then) {
+					value.then(_resumeAfterTest).then(void 0, reject);
+					return;
+				}
+			} else {
+				dispatchIndex = i;
+			}
 		}
-	});
+		do {
+			var body = cases[dispatchIndex][1];
+			while (!body) {
+				dispatchIndex++;
+				body = cases[dispatchIndex][1];
+			}
+			var result = body();
+			if (result && result.then) {
+				result.then(_resumeAfterBody).then(void 0, reject);
+				return;
+			}
+			var fallthroughCheck = cases[dispatchIndex][2];
+			dispatchIndex++;
+		} while (fallthroughCheck && !fallthroughCheck());
+		_settle(pact, 1, result);
+	}
+	function _resumeAfterBody(result) {
+		for (;;) {
+			var fallthroughCheck = cases[dispatchIndex][2];
+			if (!fallthroughCheck || fallthroughCheck()) {
+				break;
+			}
+			dispatchIndex++;
+			var body = cases[dispatchIndex][1];
+			while (!body) {
+				dispatchIndex++;
+				body = cases[dispatchIndex][1];
+			}
+			result = body();
+			if (result && result.then) {
+				result.then(_resumeAfterBody).then(void 0, reject);
+				return;
+			}
+		}
+		_settle(pact, 1, result);
+	}
 }
 
 // Asynchronously call a function and pass the result to explicitly passed continuations

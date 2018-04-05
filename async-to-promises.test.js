@@ -73,9 +73,11 @@ function compiledTest(name, { input, output, cases, error }) {
 			}
 		}
 		if (checkOutputMatches) {
-			test("output", () => {
-				expect(strippedResult).toBe(output);
-			});
+			if (typeof output !== "undefined") {
+				test("output", () => {
+					expect(strippedResult).toBe(output);
+				});
+			}
 		} else if (strippedResult !== output) {
 			console.log(name + ": " + strippedResult);
 		}
@@ -1467,6 +1469,49 @@ compiledTest("Array spreading", {
 	},
 });
 
+
+compiledTest("Complex continuation ordering", {
+	input: `() => {
+		let index = 0;
+		let promise = null;
+		let messages = [];
+
+		async function test() {
+		    let promiseResolve;
+		    let num = ++index;
+
+		    messages.push("start " + num);
+
+		    // place of interest
+		    while (promise) {
+		        messages.push("wait " + num);
+
+		        await promise;
+		    }
+
+		    promise = new Promise(r => {
+		        promiseResolve = r;
+		    });
+
+		    await wait();
+
+		    promise = null;
+
+		    promiseResolve();
+
+		    messages.push("stop " + num);
+		}
+
+		function wait() {
+		    return new Promise(resolve => setTimeout(resolve, 0));
+		}
+
+		return Promise.all([test(), test(), test()]).then(() => messages);
+	}`,
+	cases: {
+		result: async f => expect(await f()).toEqual(['start 1', 'start 2', 'wait 2', 'start 3', 'wait 3', 'stop 1', 'wait 3', 'stop 2', 'stop 3']),
+	},
+});
 
 compiledTest("eval is evil", {
 	input: `async function(code) { return await eval(code); }`,

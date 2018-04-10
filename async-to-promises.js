@@ -1169,7 +1169,7 @@ exports.default = function({ types, template, traverse }) {
 							let expression = parent.node.block;
 							if (parent.node.handler) {
 								const catchClause = parent.node.handler;
-								const catchExpression = catchClause.body.body.length ? types.functionExpression(null, [catchClause.param], catchClause.body) : helperReference(pluginState, parent, "_empty");
+								const catchExpression = catchClause.body.body.length ? rewriteFunctionNode(pluginState, parent, types.functionExpression(null, [catchClause.param], catchClause.body), state.exitIdentifier) : helperReference(pluginState, parent, "_empty");
 								expression = types.callExpression(helperReference(pluginState, path, "_catch"), [unwrapReturnCallWithEmptyArguments(functionize(expression), path.scope), catchExpression]);
 							}
 							if (parent.node.finalizer) {
@@ -1185,8 +1185,9 @@ exports.default = function({ types, template, traverse }) {
 								} else {
 									finallyName = "_finally";
 								}
-								const finallyExpression = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
-								expression = types.callExpression(helperReference(pluginState, parent, finallyName), [unwrapReturnCallWithEmptyArguments(functionize(expression), path.scope), finallyExpression])
+								const fn = types.functionExpression(null, finallyArgs, blockStatement(finallyBody));
+								const rewritten = rewriteFunctionNode(pluginState, parent, fn, state.exitIdentifier);
+								expression = types.callExpression(helperReference(pluginState, parent, finallyName), [unwrapReturnCallWithEmptyArguments(functionize(expression), path.scope), rewritten])
 							}
 							relocateTail(pluginState, expression, success, parent, temporary, state.exitIdentifier);
 						},

@@ -1513,6 +1513,43 @@ compiledTest("Complex continuation ordering", {
 	},
 });
 
+compiledTest("Try...catch...finally event loop ordering", {
+	input: `async function() {
+		let waitIndex = 0;
+		const messages = [];
+		messages.push('start');
+		function wait() {
+			let index = ++waitIndex;
+
+			messages.push("waitStart" + index);
+
+			return new Promise((resolve, reject) => setTimeout(resolve, 0))
+				.then(() => {
+					messages.push("waitStop" + index);
+				});
+		}
+		try {
+			messages.push('tryStart');
+			await wait();
+			messages.push('tryStop');
+		} catch (err) {
+			messages.push('catchStart');
+			await wait();
+			messages.push('catchStop');
+		} finally {
+			messages.push('finallyStart');
+			await wait();
+			messages.push('finallyStop');
+		}
+		messages.push('stop');
+		return messages;
+	}`,
+	output: `_async(function(){let waitIndex=0;const messages=[];function wait(){let index=++waitIndex;messages.push("waitStart"+index);return new Promise((resolve,reject)=>setTimeout(resolve,0)).then(()=>{messages.push("waitStop"+index);});}messages.push('start');return _continue(_finallyRethrows(function(){return _catch(function(){messages.push('tryStart');return _call(wait,function(){messages.push('tryStop');});},function(err){messages.push('catchStart');return _call(wait,function(){messages.push('catchStop');});});},function(_wasThrown,_result){messages.push('finallyStart');return _call(wait,function(){messages.push('finallyStop');return _rethrow(_wasThrown,_result);});}),function(){messages.push('stop');return messages;});})`,
+	cases: {
+		result: async f => expect(await f()).toEqual(['start', 'tryStart', 'waitStart1', 'waitStop1', 'tryStop', 'finallyStart', 'waitStart2', 'waitStop2', 'finallyStop', 'stop']),
+	},
+});
+
 compiledTest("eval is evil", {
 	input: `async function(code) { return await eval(code); }`,
 	error: `SyntaxError: unknown: Calling eval from inside an async function is not supported!`,

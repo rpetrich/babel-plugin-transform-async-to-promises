@@ -1311,6 +1311,22 @@ compiledTest("for loop hoisting", {
 	}
 });
 
+compiledTest("function hoisting", {
+	input: `fun();
+
+function wait() {
+    return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+async function fun() {
+    await wait();
+    return true;
+}`,
+	cases: {
+		run: async f => expect(await f).toEqual(true),
+	}
+});
+
 
 compiledTest("helper names", {
 	input: `async function(_async, _await) { return await _async(0) && _await(); }`,

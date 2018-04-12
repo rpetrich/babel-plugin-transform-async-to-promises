@@ -1769,7 +1769,7 @@ exports.default = function({ types, template, traverse }) {
 						path.replaceWith(types.variableDeclaration("const", declarators));
 					} else {
 						const declaration = types.variableDeclaration("var", declarators);
-						const siblings = path.getAllPrevSiblings();
+						const siblings = path.getAllPrevSiblings().filter(sibling => !sibling.isFunctionDeclaration());
 						if (siblings.length) {
 							path.remove();
 							siblings[0].insertBefore(declaration);

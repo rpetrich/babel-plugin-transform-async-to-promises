@@ -124,24 +124,32 @@ export function _forTo(array, body) {
 	for (var i = 0; i < array.length; ++i) {
 		var result = body(i);
 		if (result && result.then) {
-			var pact = new _Pact();
-			var reject = _settle.bind(null, pact, 2);
-			result.then(_cycle, reject);
-			return pact;
-			function _cycle(result) {
-				try {
-					while (++i < array.length) {
-						result = body(i);
-						if (result && result.then) {
-							result.then(_cycle, reject);
-							return;
-						}
+			if ((result instanceof _Pact) && result.__state == 1) {
+				result = result.__value;
+			} else {
+				var pact = new _Pact();
+				var reject = _settle.bind(null, pact, 2);
+				result.then(_cycle, reject);
+				return pact;
+			}
+		}
+	}
+	function _cycle(result) {
+		try {
+			while (++i < array.length) {
+				result = body(i);
+				if (result && result.then) {
+					if ((result instanceof _Pact) && result.__state == 1) {
+						result = result.__value;
+					} else {
+						result.then(_cycle, reject);
+						return;
 					}
-					_settle(pact, 1, result);
-				} catch (e) {
-					reject(e);
 				}
 			}
+			_settle(pact, 1, result);
+		} catch (e) {
+			reject(e);
 		}
 	}
 	return result;
@@ -495,10 +503,7 @@ export function _call(body, then, direct) {
 		return then ? then(body()) : body();
 	}
 	try {
-		var result = body();
-		if (!result || !result.then) {
-			result = Promise.resolve(result);
-		}
+		var result = Promise.resolve(body());
 		return then ? result.then(then) : result;
 	} catch (e) {
 		return Promise.reject(e);

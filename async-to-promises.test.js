@@ -34,7 +34,9 @@ function extractOnlyUserCode(result) {
 }
 
 function extractJustFunction(result) {
-	return extractOnlyUserCode(result).match(/return\s*(.*);$/)[1];
+	const extracted = extractOnlyUserCode(result);
+	const match = extracted.match(/return\s*(.*);$/);
+	return match ? match[1] : extracted;
 }
 
 function compiledTest(name, { input, output, cases, error, checkSyntax = true, module = false }) {
@@ -1596,4 +1598,50 @@ compiledTest("Try...catch...finally event loop ordering", {
 compiledTest("eval is evil", {
 	input: `async function(code) { return await eval(code); }`,
 	error: `SyntaxError: unknown: Calling eval from inside an async function is not supported!`,
+});
+
+compiledTest("test", {
+	input: `Promise.all([test('case1'), test('case2'), test('case3')]);
+function wait(messages) {
+    messages.push('waitStart');
+
+    return new Promise((resolve, reject) => setTimeout(resolve, 0))
+        .then(() => {
+            messages.push('waitStop');
+        });
+}
+
+async function test(v) {
+    let messages = [];
+
+    switch (v) {
+        case 'case1':
+            messages.push('case1Start');
+            await wait(messages);
+            messages.push('case1Stop');
+            break;
+        case 'case2':
+            messages.push('case2Start');
+            await wait(messages);
+            messages.push('case2Stop');
+            // through
+        case 'case3':
+            messages.push('case3Start');
+            await wait(messages);
+            messages.push('case3Stop');
+            break;
+    }
+
+    return messages;
+}`,
+	output: `var test=_async(function(v){var _interrupt;let messages=[];return _continue(_switch(v,[[function(){return'case1';},function(){messages.push('case1Start');return _await(wait(messages),function(){messages.push('case1Stop');_interrupt=1;});}],[function(){return'case2';},function(){messages.push('case2Start');return _await(wait(messages),function(){messages.push('case2Stop');});},_empty],[function(){return'case3';},function(){messages.push('case3Start');return _await(wait(messages),function(){messages.push('case3Stop');_interrupt=1;});}]]),function(){return messages;});});return Promise.all([test('case1'),test('case2'),test('case3')]);function wait(messages){messages.push('waitStart');return new Promise((resolve,reject)=>setTimeout(resolve,0)).then(()=>{messages.push('waitStop');});}`,
+	cases: {
+		run: async v => {
+			expect(await v).toEqual([
+				['case1Start', 'waitStart', 'waitStop', 'case1Stop'],
+				['case2Start', 'waitStart', 'waitStop', 'case2Stop', 'case3Start', 'waitStart', 'waitStop', 'case3Stop'],
+				['case3Start', 'waitStart', 'waitStop', 'case3Stop']
+			]);
+		}
+	}
 });

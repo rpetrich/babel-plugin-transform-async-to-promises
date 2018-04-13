@@ -1765,18 +1765,19 @@ exports.default = function({ types, template, traverse }) {
 				if (node.async) {
 					const expression = types.functionExpression(null, node.params, node.body, node.generator, node.async);
 					const declarators = [types.variableDeclarator(node.id, expression)];
-					if (path.parentPath.isExportDeclaration() || path.parentPath.isExportDefaultDeclaration()) {
+					if (path.parentPath.isExportDeclaration()) {
 						path.replaceWith(types.variableDeclaration("const", declarators));
+						path = path.parentPath;
 					} else {
-						const declaration = types.variableDeclaration("var", declarators);
-						for (const sibling of path.getAllPrevSiblings().reverse()) {
-							if (!sibling.isFunctionDeclaration()) {
-								path.remove();
-								sibling.insertBefore(declaration);
-								return;
-							}
+						path.replaceWith(types.variableDeclaration("var", declarators));
+					}
+					for (const sibling of path.getAllPrevSiblings().reverse()) {
+						if (!sibling.isFunctionDeclaration()) {
+							const newNode = path.node;
+							path.remove();
+							sibling.insertBefore(newNode);
+							return;
 						}
-						path.replaceWith(declaration);
 					}
 				}
 			},

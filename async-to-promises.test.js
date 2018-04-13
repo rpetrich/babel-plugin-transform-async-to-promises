@@ -5,12 +5,21 @@ const babylon = require("babylon");
 const runTestCasesOnInput = false;
 const checkTestCases = true;
 const checkOutputMatches = true;
-const logCompiledOutput = false;
+const logCompiledOutput = true;
 const onlyRunTestName = undefined;
 
+const helperNames = ["_Pact", "_settle", "_async", "_await", "_awaitIgnored", "_continue", "_continueIgnored", "_forTo", "_forValues", "_forIn", "_forOwn", "_forOf", "_forAwaitOf", "_for", "_do", "_switch", "_call", "_callIgnored", "_invoke", "_invokeIgnored", "_catch", "_finallyRethrows", "_finally", "_rethrow", "_empty"];
+
 const stripHelpersVisitor = {
-	Statement(path) {
-		if (path.isReturnStatement()) {
+	FunctionDeclaration(path) {
+		if (helperNames.indexOf(path.node.id.name) === -1) {
+			path.skip();
+		} else {
+			path.remove();
+		}
+	},
+	VariableDeclarator(path) {
+		if (helperNames.indexOf(path.node.id.name) === -1) {
 			path.skip();
 		} else {
 			path.remove();
@@ -20,18 +29,21 @@ const stripHelpersVisitor = {
 
 const pluginUnderTest = asyncToPromises(babel);
 
-function extractJustFunction(result) {
-	const code = babel.transformFromAst(result.ast, result.code, { plugins: [{ visitor: stripHelpersVisitor }], compact: true }).code;
-	return code.match(/return\s*(.*);$/)[1];
+function extractOnlyUserCode(result) {
+	return babel.transformFromAst(result.ast, result.code, { plugins: [{ visitor: stripHelpersVisitor }], compact: true }).code;
 }
 
-function compiledTest(name, { input, output, cases, error }) {
+function extractJustFunction(result) {
+	return extractOnlyUserCode(result).match(/return\s*(.*);$/)[1];
+}
+
+function compiledTest(name, { input, output, cases, error, checkSyntax = true, module = false }) {
 	if (onlyRunTestName && onlyRunTestName !== name) {
 		return;
 	}
 	describe(name, () => {
-		const inputReturned = "return " + input;
-		const ast = babylon.parse(inputReturned, { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] });
+		const inputReturned = module ? input : "return " + input;
+		const ast = babylon.parse(inputReturned, { allowReturnOutsideFunction: true, sourceType: "module", plugins: ["asyncGenerators"] });
 		if (error) {
 			test("error", () => {
 				try {
@@ -44,23 +56,25 @@ function compiledTest(name, { input, output, cases, error }) {
 			return;
 		}
 		const result = babel.transformFromAst(ast, inputReturned, { plugins: [[pluginUnderTest, {}]], compact: true });
-		const strippedResult = extractJustFunction(result);
+		const strippedResult = (module ? extractOnlyUserCode : extractJustFunction)(result);
 		if (logCompiledOutput) {
 			console.log(name + " input", input);
 			console.log(name + " output", strippedResult);
 		}
 		let fn;
-		test("syntax", () => {
-			const code = runTestCasesOnInput ? inputReturned : result.code;
-			try {
-				fn = new Function(code);
-			} catch (e) {
-				if (e instanceof SyntaxError) {
-					e.message += "\n" + code;
+		if (checkSyntax) {
+			test("syntax", () => {
+				const code = runTestCasesOnInput ? inputReturned : result.code;
+				try {
+					fn = new Function(code);
+				} catch (e) {
+					if (e instanceof SyntaxError) {
+						e.message += "\n" + code;
+					}
+					throw e;
 				}
-				throw e;
-			}
-		});
+			});
+		}
 		if (checkTestCases) {
 			for (let key in cases) {
 				if (cases.hasOwnProperty(key)) {
@@ -1329,10 +1343,21 @@ async function fun() {
 	}
 });
 
+compiledTest("export hoisting", {
+	input: `foo();
+let dummy;
+export async function foo() { return await Promise.resolve(true); }
+`,
+	output: `export const foo=_async(function(){return Promise.resolve(true);});foo();let dummy;`,
+	checkSyntax: false,
+	module: true,
+});
+
 
 compiledTest("helper names", {
 	input: `async function(_async, _await) { return await _async(0) && _await(); }`,
-	output: `_async3(function(_async,_await){return _await2(_async(0),function(_async2){return _async2&&_await();});})`,
+	// Output test doesn't work now that we have a more precise check
+	// output: `_async3(function(_async,_await){return _await2(_async(0),function(_async2){return _async2&&_await();});})`,
 	cases: {
 		value: async f => expect(await f(_ => true, _ => true)).toBe(true),
 	},

@@ -5,7 +5,7 @@ const babylon = require("babylon");
 const runTestCasesOnInput = false;
 const checkTestCases = true;
 const checkOutputMatches = true;
-const logCompiledOutput = true;
+const logCompiledOutput = false;
 const onlyRunTestName = undefined;
 
 const helperNames = ["_Pact", "_settle", "_async", "_await", "_awaitIgnored", "_continue", "_continueIgnored", "_forTo", "_forValues", "_forIn", "_forOwn", "_forOf", "_forAwaitOf", "_for", "_do", "_switch", "_call", "_callIgnored", "_invoke", "_invokeIgnored", "_catch", "_finallyRethrows", "_finally", "_rethrow", "_empty"];
@@ -1329,7 +1329,7 @@ compiledTest("function hoisting", {
 	input: `fun();
 
 function wait() {
-    return new Promise(resolve => setTimeout(resolve, 0));
+    return Promise.resolve();
 }
 
 var dummy;
@@ -1546,7 +1546,7 @@ compiledTest("Complex continuation ordering", {
 		}
 
 		function wait() {
-		    return new Promise(resolve => setTimeout(resolve, 0));
+		    return Promise.resolve();
 		}
 
 		return Promise.all([test(), test(), test()]).then(() => messages);
@@ -1566,7 +1566,7 @@ compiledTest("Try...catch...finally event loop ordering", {
 
 			messages.push("waitStart" + index);
 
-			return new Promise((resolve, reject) => setTimeout(resolve, 0))
+			return Promise.resolve()
 				.then(() => {
 					messages.push("waitStop" + index);
 				});
@@ -1587,7 +1587,7 @@ compiledTest("Try...catch...finally event loop ordering", {
 		messages.push('stop');
 		return messages;
 	}`,
-	output: `_async(function(){let waitIndex=0;const messages=[];function wait(){let index=++waitIndex;messages.push("waitStart"+index);return new Promise((resolve,reject)=>setTimeout(resolve,0)).then(()=>{messages.push("waitStop"+index);});}messages.push('start');return _continue(_finallyRethrows(function(){return _catch(function(){messages.push('tryStart');return _call(wait,function(){messages.push('tryStop');});},function(err){messages.push('catchStart');return _call(wait,function(){messages.push('catchStop');});});},function(_wasThrown,_result){messages.push('finallyStart');return _call(wait,function(){messages.push('finallyStop');return _rethrow(_wasThrown,_result);});}),function(){messages.push('stop');return messages;});})`,
+	output: `_async(function(){let waitIndex=0;const messages=[];function wait(){let index=++waitIndex;messages.push("waitStart"+index);return Promise.resolve().then(()=>{messages.push("waitStop"+index);});}messages.push('start');return _continue(_finallyRethrows(function(){return _catch(function(){messages.push('tryStart');return _call(wait,function(){messages.push('tryStop');});},function(err){messages.push('catchStart');return _call(wait,function(){messages.push('catchStop');});});},function(_wasThrown,_result){messages.push('finallyStart');return _call(wait,function(){messages.push('finallyStop');return _rethrow(_wasThrown,_result);});}),function(){messages.push('stop');return messages;});})`,
 	cases: {
 		result: async f => expect(await f()).toEqual(['start', 'tryStart', 'waitStart1', 'waitStop1', 'tryStop', 'finallyStart', 'waitStart2', 'waitStop2', 'finallyStop', 'stop']),
 	},

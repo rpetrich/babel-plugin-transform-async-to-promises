@@ -75,7 +75,7 @@ exports.default = function({ types, template, traverse }) {
 				return result.all = ((discriminant.all || (cases.some(switchCase => !switchCase.node.test) && caseMatches.every(caseMatch => caseMatch.all))) && !(state.breakingLabels.length || state.unnamedBreak));
 			}
 			if (path.isDoWhileStatement()) {
-				const body = match(path.get("body"), state);
+				const body = match(path.get("body"), { unnamedBreak: false, breakingLabels: state.breakingLabels });
 				const test = match(path.get("test"), state);
 				result.any = result.any || body.any || test.any;
 				// result.paths = result.paths.concat(test.paths).concat(body.paths);
@@ -85,14 +85,14 @@ exports.default = function({ types, template, traverse }) {
 				// TODO: Support detecting break/return statements
 				const testPath = path.get("test");
 				const test = match(testPath, state);
-				const body = match(path.get("body"), state);
+				const body = match(path.get("body"), { unnamedBreak: false, breakingLabels: state.breakingLabels });
 				result.any = result.any || test.any || body.any;
 				// result.paths = result.paths.concat(test.paths).concat(body.paths);
 				return result.all = ((test.all || (body.all && (extractLooseBooleanValue(testPath.node) === true))) && !(state.breakingLabels.length || state.unnamedBreak));
 			}
 			if (path.isForXStatement()) {
 				const right = match(path.get("right"), state);
-				const body = match(path.get("body"), state);
+				const body = match(path.get("body"), { unnamedBreak: false, breakingLabels: state.breakingLabels });
 				result.any = result.any || right.any || body.any;
 				// result.paths = result.paths.concat(right.paths).concat(body.paths);
 				return result.all = (right.all && !(state.breakingLabels.length || state.unnamedBreak));
@@ -100,7 +100,7 @@ exports.default = function({ types, template, traverse }) {
 			if (path.isForStatement()) {
 				const init = match(path.get("init"), state);
 				const test = match(path.get("test"), state);
-				const body = match(path.get("body"), state);
+				const body = match(path.get("body"), { unnamedBreak: false, breakingLabels: state.breakingLabels });
 				const update = match(path.get("update"), state);
 				result.any = result.any || init.any || test.any || body.any || update.any;
 				// result.paths = result.paths.concat(init.paths).concat(test.paths).concat(update.paths).concat(body.paths);

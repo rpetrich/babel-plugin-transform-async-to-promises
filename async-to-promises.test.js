@@ -77,6 +77,15 @@ function compiledTest(name, { input, output, cases, error, checkSyntax = true, m
 				}
 			});
 		}
+		if (checkOutputMatches) {
+			if (typeof output !== "undefined") {
+				test("output", () => {
+					expect(strippedResult).toBe(output);
+				});
+			}
+		} else if (strippedResult !== output) {
+			console.log(name + ": " + strippedResult);
+		}
 		if (checkTestCases) {
 			for (let key in cases) {
 				if (cases.hasOwnProperty(key)) {
@@ -87,15 +96,6 @@ function compiledTest(name, { input, output, cases, error, checkSyntax = true, m
 					});
 				}
 			}
-		}
-		if (checkOutputMatches) {
-			if (typeof output !== "undefined") {
-				test("output", () => {
-					expect(strippedResult).toBe(output);
-				});
-			}
-		} else if (strippedResult !== output) {
-			console.log(name + ": " + strippedResult);
 		}
 	});
 }

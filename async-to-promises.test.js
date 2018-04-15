@@ -68,7 +68,7 @@ function compiledTest(name, { input, output, cases, error, checkSyntax = true, m
 			test("syntax", () => {
 				const code = runTestCasesOnInput ? inputReturned : result.code;
 				try {
-					fn = new Function(code);
+					fn = new Function(`/* ${name} */${code}`);
 				} catch (e) {
 					if (e instanceof SyntaxError) {
 						e.message += "\n" + code;

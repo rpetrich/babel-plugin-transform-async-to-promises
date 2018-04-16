@@ -1271,26 +1271,25 @@ exports.default = function({ types, template, traverse }) {
 						testExpression = testExpression && (!types.isBooleanLiteral(testExpression) || !testExpression.value) ? logicalAnd(inverted, testExpression, extractLooseBooleanValue) : inverted;
 					}
 					if (testExpression) {
-						const testPath = parent.get("test");
-						testPath.replaceWith(rewriteAsyncNode(pluginState, parent, functionize(testExpression), additionalConstantNames, exitIdentifier, true));
-					}
-					const update = parent.get("update");
-					if (update.node) {
-						update.replaceWith(rewriteAsyncNode(pluginState, parent, functionize(update.node), additionalConstantNames, exitIdentifier, true));
+						testExpression = rewriteAsyncNode(pluginState, parent, functionize(testExpression), additionalConstantNames, exitIdentifier, true);
 					}
 					const isDoWhile = parent.isDoWhileStatement();
 					if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
 						const loopCall = types.callExpression(helperReference(pluginState, parent, "_forTo"), [forToIdentifiers.array, rewriteAsyncNode(pluginState, parent, types.functionExpression(null, [forToIdentifiers.i], blockStatement(parent.node.body)), additionalConstantNames, exitIdentifier)])
 						relocateTail(pluginState, loopCall, null, parent, additionalConstantNames, undefined, exitIdentifier);
 					} else {
+						let updateExpression = parent.node.update;
+						if (updateExpression) {
+							updateExpression = rewriteAsyncNode(pluginState, parent, functionize(updateExpression), additionalConstantNames, exitIdentifier, true);
+						}
 						const init = parent.get("init");
 						if (init.node) {
 							parent.insertBefore(init.node);
 						}
 						const forIdentifier = path.scope.generateUidIdentifier("for");
 						const bodyFunction = rewriteAsyncNode(pluginState, parent, types.functionExpression(null, [], blockStatement(parent.node.body)), additionalConstantNames, exitIdentifier);
-						const testFunction = unwrapReturnCallWithEmptyArguments(parent.get("test").node || voidExpression(), path.scope, additionalConstantNames);
-						const updateFunction = unwrapReturnCallWithEmptyArguments(parent.get("update").node || voidExpression(), path.scope, additionalConstantNames);
+						const testFunction = unwrapReturnCallWithEmptyArguments(testExpression || voidExpression(), path.scope, additionalConstantNames);
+						const updateFunction = unwrapReturnCallWithEmptyArguments(updateExpression || voidExpression(), path.scope, additionalConstantNames);
 						const loopCall = isDoWhile ? types.callExpression(helperReference(pluginState, parent, "_do"), [bodyFunction, testFunction]) : types.callExpression(helperReference(pluginState, parent, "_for"), [testFunction, updateFunction, bodyFunction]);
 						let resultIdentifier = null;
 						if (explicitExits.any) {
@@ -1298,8 +1297,8 @@ exports.default = function({ types, template, traverse }) {
 							additionalConstantNames.push(resultIdentifier.name);
 						}
 						relocateTail(pluginState, loopCall, null, parent, additionalConstantNames, resultIdentifier, exitIdentifier);
-						processExpressions = false;
 					}
+					processExpressions = false;
 				}
 			} else if (parent.isSwitchStatement()) {
 				const label = parent.parentPath.isLabeledStatement() ? parent.parent.label.name : null;

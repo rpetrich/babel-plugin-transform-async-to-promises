@@ -344,18 +344,31 @@ exports.default = function({ types, template, traverse }) {
 	function borrowTail(target) {
 		let current = target;
 		let dest = [];
-		if (current) {
-			// while (current && current.node && !current.isFunction()) {
-				if (current.inList) {
-					while (current.key + 1 < current.container.length) {
-						dest.push(current.container[current.key + 1]);
-						current.getSibling(current.key + 1).remove();
-					}
-				}
-				current = current.parentPath;
-			// }
+		while (current && current.node && current.inList && current.container) {
+			while (current.key + 1 < current.container.length) {
+				dest.push(current.container[current.key + 1]);
+				current.getSibling(current.key + 1).remove();
+			}
+			current = current.parentPath;
+			if (!current.isBlockStatement()) {
+				break;
+			}
 		}
 		return dest;
+	}
+
+	function exitsInTail(target) {
+		let current = target;
+		while (current && current.node && current.inList && current.container && !current.isFunction()) {
+			for (var i = current.key + 1; i < current.container.length; i++) {
+				const sibling = current.container[current.key + 1];
+				if (pathsReturnOrThrow(current).any) {
+					return true;
+				}
+			}
+			current = current.parentPath;
+		}
+		return false;
 	}
 
 	function returnStatement(argument, originalNode) {
@@ -1140,7 +1153,7 @@ exports.default = function({ types, template, traverse }) {
 				if (!parent.isSwitchCase() && !parent.isBlockStatement()) {
 					const explicitExits = pathsReturnOrThrow(parent);
 					let exitIdentifier;
-					if (!explicitExits.all && explicitExits.any) {
+					if (!explicitExits.all && explicitExits.any && (parent.isLoop() || exitsInTail(parent))) {
 						if (!state.exitIdentifier) {
 							path.scope.push({ id: state.exitIdentifier = targetPath.scope.generateUidIdentifier("exit") });
 						}
@@ -1671,7 +1684,9 @@ exports.default = function({ types, template, traverse }) {
 					if (checkForErrorsAndRewriteReturns(args[0])) {
 						this.canThrow = true;
 					}
-					args[1].traverse(checkForErrorsAndRewriteReturnsVisitor, this);
+					if (args[1]) {
+						args[1].traverse(checkForErrorsAndRewriteReturnsVisitor, this);
+					}
 				} else {
 					const callee = path.get("callee");
 					if (!isAsyncFunctionIdentifier(callee)) {

@@ -27,6 +27,19 @@ var fetchAsObjectURL = _async(function(url) {
 });
 ```
 
+### Output with hoisting enabled:
+
+```javascript
+var _URL$createObjectURL = function(blob) {
+	return URL.createObjectURL(blob);
+}, _response$blob = function(response) {
+	return _await(response.blob(), _URL$createObjectURL);
+};
+var fetchAsObjectURL = _async(function(url) {
+	return _await(fetch(url), _response$blob);
+});
+```
+
 ## JavaScript Language Features
 
 ### Full Support

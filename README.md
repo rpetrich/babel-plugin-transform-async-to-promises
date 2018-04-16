@@ -45,9 +45,9 @@ var fetchAsObjectURL = _async(function(url) {
 - `arguments`
 - `this`
 - Proper member dereference order of operations
+- Standards-compliant event loop scheduling
 
 ### Partial Support
-- Standards-compliant event loop ordering: error path inside `catch`/`finally` clauses are always dispatched asynchronously
 - `Function.length`: `async` functions will often return a length of 0 (when the `_async` wrapper is used)
 
 ### No support

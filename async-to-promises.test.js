@@ -4,15 +4,22 @@ const babylon = require("babylon");
 
 const runTestCasesOnInput = false;
 const checkTestCases = true;
-const checkOutputMatches = true;
+const checkOutputMatches = false;
 const logCompiledOutput = false;
 const onlyRunTestName = undefined;
 
+const helperNames = ["_Pact", "_settle", "_isSettledPact", "_async", "_await", "_awaitIgnored", "_continue", "_continueIgnored", "_forTo", "_forValues", "_forIn", "_forOwn", "_forOf", "_forAwaitOf", "_for", "_do", "_switch", "_call", "_callIgnored", "_invoke", "_invokeIgnored", "_catch", "_finallyRethrows", "_finally", "_rethrow", "_empty"];
+
 const stripHelpersVisitor = {
-	Statement(path) {
-		if (path.isReturnStatement()) {
-			path.replaceWith(babel.types.expressionStatement(path.node.argument));
-			path.node.ignored = true;
+	FunctionDeclaration(path) {
+		if (helperNames.indexOf(path.node.id.name) === -1) {
+			path.skip();
+		} else {
+			path.remove();
+		}
+	},
+	VariableDeclarator(path) {
+		if (helperNames.indexOf(path.node.id.name) === -1) {
 			path.skip();
 		} else if (path.isFunction() && path.id) {
 			path.skip();
@@ -35,17 +42,23 @@ const stripHelpersVisitor = {
 
 const pluginUnderTest = asyncToPromises(babel);
 
-function extractJustFunction(result) {
-	return babel.transformFromAst(result.ast, result.code, { plugins: [{ visitor: stripHelpersVisitor }], compact: true }).code.replace(/;$/,"");
+function extractOnlyUserCode(result) {
+	return babel.transformFromAst(result.ast, result.code, { plugins: [{ visitor: stripHelpersVisitor }], compact: true }).code;
 }
 
-function compiledTest(name, { input, output, cases, error }) {
+function extractJustFunction(result) {
+	const extracted = extractOnlyUserCode(result);
+	const match = extracted.match(/return\s*(.*);$/);
+	return match ? match[1] : extracted;
+}
+
+function compiledTest(name, { input, output, cases, error, checkSyntax = true, module = false }) {
 	if (onlyRunTestName && onlyRunTestName !== name) {
 		return;
 	}
 	describe(name, () => {
-		const inputReturned = "return " + input;
-		const ast = babylon.parse(inputReturned, { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] });
+		const inputReturned = module ? input : "return " + input;
+		const ast = babylon.parse(inputReturned, { allowReturnOutsideFunction: true, sourceType: "module", plugins: ["asyncGenerators"] });
 		if (error) {
 			test("error", () => {
 				try {
@@ -58,23 +71,34 @@ function compiledTest(name, { input, output, cases, error }) {
 			return;
 		}
 		const result = babel.transformFromAst(ast, inputReturned, { plugins: [[pluginUnderTest, {}]], compact: true });
-		const strippedResult = extractJustFunction(result);
+		const strippedResult = (module ? extractOnlyUserCode : extractJustFunction)(result);
 		if (logCompiledOutput) {
 			console.log(name + " input", input);
 			console.log(name + " output", strippedResult);
 		}
 		let fn;
-		test("syntax", () => {
-			const code = runTestCasesOnInput ? inputReturned : result.code;
-			try {
-				fn = new Function(code);
-			} catch (e) {
-				if (e instanceof SyntaxError) {
-					e.message += "\n" + code;
+		if (checkSyntax) {
+			test("syntax", () => {
+				const code = runTestCasesOnInput ? inputReturned : result.code;
+				try {
+					fn = new Function(`/* ${name} */${code}`);
+				} catch (e) {
+					if (e instanceof SyntaxError) {
+						e.message += "\n" + code;
+					}
+					throw e;
 				}
-				throw e;
+			});
+		}
+		if (checkOutputMatches) {
+			if (typeof output !== "undefined") {
+				test("output", () => {
+					expect(strippedResult).toBe(output);
+				});
 			}
-		});
+		} else if (strippedResult !== output) {
+			console.log(name + ": " + strippedResult);
+		}
 		if (checkTestCases) {
 			for (let key in cases) {
 				if (cases.hasOwnProperty(key)) {
@@ -85,13 +109,6 @@ function compiledTest(name, { input, output, cases, error }) {
 					});
 				}
 			}
-		}
-		if (checkOutputMatches) {
-			test("output", () => {
-				expect(strippedResult).toBe(output);
-			});
-		} else if (strippedResult !== output) {
-			console.log(name + ": " + strippedResult);
 		}
 	});
 }
@@ -269,7 +286,7 @@ compiledTest("await binary both", {
 
 compiledTest("await binary and logical", {
 	input: `async function(left, middle, right) { return await left() + !(await middle()) && await right(); }`,
-	output: `(function(left,middle,right){return _call(left,function(_left){return _call(middle,function(_middle){var _temp=_left+!_middle;return _await(_temp&&right(),void 0,!_temp);});});})`,
+	output: `function(left,middle,right){return _call(left,function(_left){return _call(middle,function(_middle){return _await(_left+!_middle&&right(),void 0,!(_left+!_middle));});});}`,
 	cases: {
 		two: async f => expect(await f(async _ => 3, async _ => false, async _ => 5)).toBe(5),
 		seven: async f => expect(await f(async _ => 0, async _ => true, async _ => 2)).toBe(0),
@@ -305,7 +322,7 @@ compiledTest("if body returns", {
 
 compiledTest("if body assignments", {
 	input: `async function(foo, bar, baz) { var result; if (foo()) { result = await bar(); } else { result = await baz(); }; return result; }`,
-	output: `_async(function(foo,bar,baz){var result;return _invoke(function(){return _invokeIgnored(function(){if(foo()){return _call(bar,function(_bar){result=_bar;});}else{return _call(baz,function(_baz){result=_baz;});}});},function(){return result;});})`,
+	output: `_async(function(foo,bar,baz){var result;return _invoke(function(){if(foo()){return _call(bar,function(_bar){result=_bar;});}else{return _call(baz,function(_baz){result=_baz;});}},function(){return result;});})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 1, async _ => 0)).toBe(0),
@@ -386,7 +403,7 @@ compiledTest("ternary body complex left optimized", {
 
 compiledTest("ternary body complex right", {
 	input: `async function(a, b, c, d) { const result = a() ? await b() : c() && await d(); return result || result; }`,
-	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _a2=_a,_c=_a2||c();return _await(_a2?_b:_c&&d(),function(result){return result||result;},_a2||!_c);},!_a);})`,
+	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _c=_a||c();return _await(_a?_b:_c&&d(),function(result){return result||result;},_a||!_c);},!_a);})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, _ => 1, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, _ => 1, async _ => 1, async _ => 0)).toBe(0),
@@ -395,7 +412,7 @@ compiledTest("ternary body complex right", {
 
 compiledTest("ternary body complex right optimized", {
 	input: `async function(a, b, c, d) { return a() ? await b() : c() && await d(); }`,
-	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _a2=_a,_c=_a2||c();return _await(_a2?_b:_c&&d(),void 0,_a2||!_c);},!_a);})`,
+	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _c=_a||c();return _await(_a?_b:_c&&d(),void 0,_a||!_c);},!_a);})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, _ => 1, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, _ => 1, async _ => 1, async _ => 0)).toBe(0),
@@ -1209,7 +1226,7 @@ compiledTest("break labeled statement", {
 
 compiledTest("break with multiple labeled statements", {
 	input: `async function(foo) { outer: { inner: { if (await foo()) { break outer; } } return false; } return true; }`,
-	output: `(function(foo){var _outerInterrupt,_exit;return _invoke(function(){return _invoke(function(){return _call(foo,function(_foo){if(_foo){_outerInterrupt=1;}});},function(){if(_outerInterrupt)return;_exit=1;return false;});},function(_result){return _await(_exit?_result:true);});})`,
+	output: `function(foo){var _exit,_outerInterrupt;return _invoke(function(){return _invoke(function(){return _call(foo,function(_foo){if(_foo){_outerInterrupt=1;}});},function(){if(_outerInterrupt)return;_exit=1;return false;});},function(_result){return _await(_exit?_result:true);});}`,
 	cases: {
 		true: async f => expect(await f(() => 1)).toEqual(true),
 		false: async f => expect(await f(() => 0)).toEqual(false),
@@ -1308,7 +1325,7 @@ compiledTest("variable hoisting", {
 
 compiledTest("complex hoisting", {
 	input: `async function(foo, baz) { if (foo()) { var result = await bar(); function bar() { return 1; } } else { result = await baz(); }; return result; }`,
-	output: `_async(function(foo,baz){var result;return _invoke(function(){return _invokeIgnored(function(){if(foo()){function bar(){return 1;}return _call(bar,function(_bar){result=_bar;});}else{return _call(baz,function(_baz){result=_baz;});}});},function(){return result;});})`,
+	output: `_async(function(foo,baz){var result;return _invoke(function(){if(foo()){function bar(){return 1;}return _call(bar,function(_bar){result=_bar;});}else{return _call(baz,function(_baz){result=_baz;});}},function(){return result;});})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 0)).toBe(0),
@@ -1323,10 +1340,39 @@ compiledTest("for loop hoisting", {
 	}
 });
 
+compiledTest("function hoisting", {
+	input: `fun();
+
+function wait() {
+    return Promise.resolve();
+}
+
+var dummy;
+
+async function fun() {
+    await wait();
+    return true;
+}`,
+	cases: {
+		run: async f => expect(await f).toEqual(true),
+	}
+});
+
+compiledTest("export hoisting", {
+	input: `foo();
+let dummy;
+export async function foo() { return await Promise.resolve(true); }
+`,
+	output: `export const foo=_async(function(){return Promise.resolve(true);});foo();let dummy;`,
+	checkSyntax: false,
+	module: true,
+});
+
 
 compiledTest("helper names", {
 	input: `async function(_async, _await) { return await _async(0) && _await(); }`,
-	output: `_async3(function(_async,_await){return _await2(_async(0),function(_async2){return _async2&&_await();});})`,
+	// Output test doesn't work now that we have a more precise check
+	// output: `_async3(function(_async,_await){return _await2(_async(0),function(_async2){return _async2&&_await();});})`,
 	cases: {
 		value: async f => expect(await f(_ => true, _ => true)).toBe(true),
 	},
@@ -1479,6 +1525,133 @@ compiledTest("Array spreading", {
 	cases: {
 		value: async f => expect(await f(() => ["baz"])).toBe("baz"),
 	},
+});
+
+
+compiledTest("Complex continuation ordering", {
+	input: `() => {
+		let index = 0;
+		let promise = null;
+		let messages = [];
+
+		async function test() {
+		    let promiseResolve;
+		    let num = ++index;
+
+		    messages.push("start " + num);
+
+		    // place of interest
+		    while (promise) {
+		        messages.push("wait " + num);
+
+		        await promise;
+		    }
+
+		    promise = new Promise(r => {
+		        promiseResolve = r;
+		    });
+
+		    await wait();
+
+		    promise = null;
+
+		    promiseResolve();
+
+		    messages.push("stop " + num);
+		}
+
+		function wait() {
+		    return Promise.resolve();
+		}
+
+		return Promise.all([test(), test(), test()]).then(() => messages);
+	}`,
+	cases: {
+		result: async f => expect(await f()).toEqual(['start 1', 'start 2', 'wait 2', 'start 3', 'wait 3', 'stop 1', 'wait 3', 'stop 2', 'stop 3']),
+	},
+});
+
+compiledTest("Try...catch...finally event loop ordering", {
+	input: `async function() {
+		let waitIndex = 0;
+		const messages = [];
+		messages.push('start');
+		function wait() {
+			let index = ++waitIndex;
+
+			messages.push("waitStart" + index);
+
+			return Promise.resolve()
+				.then(() => {
+					messages.push("waitStop" + index);
+				});
+		}
+		try {
+			messages.push('tryStart');
+			await wait();
+			messages.push('tryStop');
+		} catch (err) {
+			messages.push('catchStart');
+			await wait();
+			messages.push('catchStop');
+		} finally {
+			messages.push('finallyStart');
+			await wait();
+			messages.push('finallyStop');
+		}
+		messages.push('stop');
+		return messages;
+	}`,
+	output: `_async(function(){let waitIndex=0;const messages=[];function wait(){let index=++waitIndex;messages.push("waitStart"+index);return Promise.resolve().then(()=>{messages.push("waitStop"+index);});}messages.push('start');return _continue(_finallyRethrows(function(){return _catch(function(){messages.push('tryStart');return _call(wait,function(){messages.push('tryStop');});},function(err){messages.push('catchStart');return _call(wait,function(){messages.push('catchStop');});});},function(_wasThrown,_result){messages.push('finallyStart');return _call(wait,function(){messages.push('finallyStop');return _rethrow(_wasThrown,_result);});}),function(){messages.push('stop');return messages;});})`,
+	cases: {
+		result: async f => expect(await f()).toEqual(['start', 'tryStart', 'waitStart1', 'waitStop1', 'tryStop', 'finallyStart', 'waitStart2', 'waitStop2', 'finallyStop', 'stop']),
+	},
+});
+
+compiledTest("switch event loop ordering complex", {
+	input: `Promise.all([test('case1'), test('case2'), test('case3')]);
+function wait(messages) {
+    messages.push('waitStart');
+
+    return new Promise((resolve, reject) => setTimeout(resolve, 0))
+        .then(() => {
+            messages.push('waitStop');
+        });
+}
+
+async function test(v) {
+    let messages = [];
+
+    switch (v) {
+        case 'case1':
+            messages.push('case1Start');
+            await wait(messages);
+            messages.push('case1Stop');
+            break;
+        case 'case2':
+            messages.push('case2Start');
+            await wait(messages);
+            messages.push('case2Stop');
+            // through
+        case 'case3':
+            messages.push('case3Start');
+            await wait(messages);
+            messages.push('case3Stop');
+            break;
+    }
+
+    return messages;
+}`,
+	output: `var test=_async(function(v){var _interrupt;let messages=[];return _continue(_switch(v,[[function(){return'case1';},function(){messages.push('case1Start');return _await(wait(messages),function(){messages.push('case1Stop');_interrupt=1;});}],[function(){return'case2';},function(){messages.push('case2Start');return _await(wait(messages),function(){messages.push('case2Stop');});},_empty],[function(){return'case3';},function(){messages.push('case3Start');return _await(wait(messages),function(){messages.push('case3Stop');_interrupt=1;});}]]),function(){return messages;});});return Promise.all([test('case1'),test('case2'),test('case3')]);function wait(messages){messages.push('waitStart');return new Promise((resolve,reject)=>setTimeout(resolve,0)).then(()=>{messages.push('waitStop');});}`,
+	cases: {
+		run: async v => {
+			expect(await v).toEqual([
+				['case1Start', 'waitStart', 'waitStop', 'case1Stop'],
+				['case2Start', 'waitStart', 'waitStop', 'case2Stop', 'case3Start', 'waitStart', 'waitStop', 'case3Stop'],
+				['case3Start', 'waitStart', 'waitStop', 'case3Stop']
+			]);
+		}
+	}
 });
 
 

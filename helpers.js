@@ -47,7 +47,7 @@ export function _settle(pact, state, value) {
 				}
 				value = value.__value;
 			} else {
-				value.__observer = _settle.bind(null, pact, state, value);
+				value.__observer = _settle.bind(null, pact, state);
 				return;
 			}
 		} else if (typeof value == "object" && "then" in value) {

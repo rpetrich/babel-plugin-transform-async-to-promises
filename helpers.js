@@ -8,9 +8,9 @@ export const _Pact = (function() {
 			if (callback) {
 				const result = new _Pact();
 				try {
-					_settle.call(result, 1, callback(this.__value));
+					_settle(result, 1, callback(this.__value));
 				} catch (e) {
-					_settle.call(result, 2, e);
+					_settle(result, 2, e);
 				}
 				return result;
 			} else {

@@ -8,9 +8,9 @@ export const _Pact = (function() {
 			if (callback) {
 				const result = new _Pact();
 				try {
-					_settle.call(result, 1, callback(this.__value));
+					_settle(result, 1, callback(this.__value));
 				} catch (e) {
-					_settle.call(result, 2, e);
+					_settle(result, 2, e);
 				}
 				return result;
 			} else {
@@ -18,10 +18,10 @@ export const _Pact = (function() {
 			}
 		}
 		const result = new _Pact();
-		this.__observer = () => {
+		this.__observer = function(_this) {
 			try {
-				const value = this.__value;
-				if (this.__state == 1) {
+				const value = _this.__value;
+				if (_this.__state == 1) {
 					_settle(result, 1, onFulfilled ? onFulfilled(value) : value);
 				} else if (onRejected) {
 					_settle(result, 1, onRejected(value));
@@ -47,10 +47,11 @@ export function _settle(pact, state, value) {
 				}
 				value = value.__value;
 			} else {
-				value.__observer = _settle.bind(null, pact, state, value);
+				value.__observer = _settle.bind(null, pact, state);
 				return;
 			}
-		} else if (typeof value == "object" && "then" in value) {
+		}
+		if (value && value.then) {
 			value.then(_settle.bind(null, pact, state), _settle.bind(null, pact, 2));
 			return;
 		}
@@ -58,7 +59,7 @@ export function _settle(pact, state, value) {
 		pact.__value = value;
 		const observer = pact.__observer;
 		if (observer) {
-			observer();
+			observer(pact);
 		}
 	}
 }

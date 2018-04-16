@@ -452,17 +452,21 @@ exports.default = function({ types, template, traverse }) {
 				path.replaceWith(helperReference(this.state, path, "_empty"));
 				return;
 			}
+			const argumentNames = path.node.params.map(param => param.name);
 			const scopes = [];
 			const pathScopes = allScopes(path.scope.parent);
 			bodyPath.traverse({
 				Identifier(identifierPath) {
 					if (identifierSearchesScope(identifierPath)) {
-						if (this.additionalConstantNames.indexOf(identifierPath.node.name) !== -1) {
-							scopes.push(path.scope.parent);
-						} else {
-							const binding = identifierPath.scope.getBinding(identifierPath.node.name);
-							if (binding && binding.scope && pathScopes.includes(binding.scope)) {
-								scopes.push(binding.scope);
+						const name = identifierPath.node.name;
+						if (argumentNames.indexOf(name) === -1) {
+							if (this.additionalConstantNames.indexOf(name) !== -1) {
+								scopes.push(path.scope.parent);
+							} else {
+								const binding = identifierPath.scope.getBinding(name);
+								if (binding && binding.scope && pathScopes.includes(binding.scope)) {
+									scopes.push(binding.scope);
+								}
 							}
 						}
 					}

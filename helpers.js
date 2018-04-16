@@ -51,7 +51,7 @@ export function _settle(pact, state, value) {
 				return;
 			}
 		}
-		if (typeof value == "object" && "then" in value) {
+		if (value && value.then) {
 			value.then(_settle.bind(null, pact, state), _settle.bind(null, pact, 2));
 			return;
 		}

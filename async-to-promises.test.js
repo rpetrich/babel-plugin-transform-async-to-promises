@@ -273,7 +273,7 @@ compiledTest("await binary both", {
 
 compiledTest("await binary and logical", {
 	input: `async function(left, middle, right) { return await left() + !(await middle()) && await right(); }`,
-	output: `function(left,middle,right){return _call(left,function(_left){return _call(middle,function(_middle){var _temp=_left+!_middle;return _await(_temp&&right(),void 0,!_temp);});});}`,
+	output: `function(left,middle,right){return _call(left,function(_left){return _call(middle,function(_middle){return _await(_left+!_middle&&right(),void 0,!(_left+!_middle));});});}`,
 	cases: {
 		two: async f => expect(await f(async _ => 3, async _ => false, async _ => 5)).toBe(5),
 		seven: async f => expect(await f(async _ => 0, async _ => true, async _ => 2)).toBe(0),
@@ -309,7 +309,7 @@ compiledTest("if body returns", {
 
 compiledTest("if body assignments", {
 	input: `async function(foo, bar, baz) { var result; if (foo()) { result = await bar(); } else { result = await baz(); }; return result; }`,
-	output: `_async(function(foo,bar,baz){var result;return _invoke(function(){return _invokeIgnored(function(){if(foo()){return _call(bar,function(_bar){result=_bar;});}else{return _call(baz,function(_baz){result=_baz;});}});},function(){return result;});})`,
+	output: `_async(function(foo,bar,baz){var result;return _invoke(function(){if(foo()){return _call(bar,function(_bar){result=_bar;});}else{return _call(baz,function(_baz){result=_baz;});}},function(){return result;});})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 1, async _ => 0)).toBe(0),
@@ -390,7 +390,7 @@ compiledTest("ternary body complex left optimized", {
 
 compiledTest("ternary body complex right", {
 	input: `async function(a, b, c, d) { const result = a() ? await b() : c() && await d(); return result || result; }`,
-	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _a2=_a,_c=_a2||c();return _await(_a2?_b:_c&&d(),function(result){return result||result;},_a2||!_c);},!_a);})`,
+	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _c=_a||c();return _await(_a?_b:_c&&d(),function(result){return result||result;},_a||!_c);},!_a);})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, _ => 1, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, _ => 1, async _ => 1, async _ => 0)).toBe(0),
@@ -399,7 +399,7 @@ compiledTest("ternary body complex right", {
 
 compiledTest("ternary body complex right optimized", {
 	input: `async function(a, b, c, d) { return a() ? await b() : c() && await d(); }`,
-	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _a2=_a,_c=_a2||c();return _await(_a2?_b:_c&&d(),void 0,_a2||!_c);},!_a);})`,
+	output: `_async(function(a,b,c,d){var _a=a();return _await(_a?b():0,function(_b){var _c=_a||c();return _await(_a?_b:_c&&d(),void 0,_a||!_c);},!_a);})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, _ => 1, async _ => 1, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, _ => 1, async _ => 1, async _ => 0)).toBe(0),
@@ -1213,7 +1213,7 @@ compiledTest("break labeled statement", {
 
 compiledTest("break with multiple labeled statements", {
 	input: `async function(foo) { outer: { inner: { if (await foo()) { break outer; } } return false; } return true; }`,
-	output: `function(foo){var _outerInterrupt,_exit;return _invoke(function(){return _invoke(function(){return _call(foo,function(_foo){if(_foo){_outerInterrupt=1;}});},function(){if(_outerInterrupt)return;_exit=1;return false;});},function(_result){return _await(_exit?_result:true);});}`,
+	output: `function(foo){var _exit,_outerInterrupt;return _invoke(function(){return _invoke(function(){return _call(foo,function(_foo){if(_foo){_outerInterrupt=1;}});},function(){if(_outerInterrupt)return;_exit=1;return false;});},function(_result){return _await(_exit?_result:true);});}`,
 	cases: {
 		true: async f => expect(await f(() => 1)).toEqual(true),
 		false: async f => expect(await f(() => 0)).toEqual(false),
@@ -1312,7 +1312,7 @@ compiledTest("variable hoisting", {
 
 compiledTest("complex hoisting", {
 	input: `async function(foo, baz) { if (foo()) { var result = await bar(); function bar() { return 1; } } else { result = await baz(); }; return result; }`,
-	output: `_async(function(foo,baz){var result;return _invoke(function(){return _invokeIgnored(function(){if(foo()){function bar(){return 1;}return _call(bar,function(_bar){result=_bar;});}else{return _call(baz,function(_baz){result=_baz;});}});},function(){return result;});})`,
+	output: `_async(function(foo,baz){var result;return _invoke(function(){if(foo()){function bar(){return 1;}return _call(bar,function(_bar){result=_bar;});}else{return _call(baz,function(_baz){result=_baz;});}},function(){return result;});})`,
 	cases: {
 		consequent: async f => expect(await f(_ => true, async _ => 0)).toBe(1),
 		alternate: async f => expect(await f(_ => false, async _ => 0)).toBe(0),
@@ -1595,12 +1595,7 @@ compiledTest("Try...catch...finally event loop ordering", {
 	},
 });
 
-compiledTest("eval is evil", {
-	input: `async function(code) { return await eval(code); }`,
-	error: `SyntaxError: unknown: Calling eval from inside an async function is not supported!`,
-});
-
-compiledTest("test", {
+compiledTest("switch event loop ordering complex", {
 	input: `Promise.all([test('case1'), test('case2'), test('case3')]);
 function wait(messages) {
     messages.push('waitStart');
@@ -1644,4 +1639,10 @@ async function test(v) {
 			]);
 		}
 	}
+});
+
+
+compiledTest("eval is evil", {
+	input: `async function(code) { return await eval(code); }`,
+	error: `SyntaxError: unknown: Calling eval from inside an async function is not supported!`,
 });

@@ -722,7 +722,7 @@ compiledTest("throw test", {
 
 compiledTest("throw from switch and catch", {
 	input: `async function() { try { switch (true) { case true: throw await 1; } return false; } catch (e) { return true; } }`,
-	output: `var _temp=function(_){throw _;},_true=function(){return true;},_await2=function(){return _await(1,_temp);},_true2=function(e){return true;};return _async(function(){var _exit,_temp2=function(_result){return _exit?_result:false;};return _catch(function(){return _continue(_switch(true,[[_true,_await2]]),_temp2);},_true2);})`,
+	output: `var _temp=function(_){throw _;},_true=function(){return true;},_one=function(){return _await(1,_temp);},_true2=function(e){return true;};return _async(function(){var _exit,_temp2=function(_result){return _exit?_result:false;};return _catch(function(){return _continue(_switch(true,[[_true,_one]]),_temp2);},_true2);})`,
 	cases: {
 		result: async f => { expect(await f()).toBe(true) },
 	},
@@ -1154,7 +1154,7 @@ compiledTest("await for body indirect unoptimized", {
 
 compiledTest("await case", {
 	input: `async function(foo, bar) { switch (await foo()) { case await bar(): return true; default: return false; } }`,
-	output: `var _true=function(){return true;},_false=function(){return false;};return function(foo,bar){var _call2=function(){return _call(bar);};return _call(foo,function(_foo){return _switch(_foo,[[_call2,_true],[void 0,_false]]);});}`,
+	output: `var _true=function(){return true;},_false=function(){return false;};return function(foo,bar){var _bar2=function(){return _call(bar);};return _call(foo,function(_foo){return _switch(_foo,[[_bar2,_true],[void 0,_false]]);});}`,
 	cases: {
 		true: async f => {
 			expect(await f(async () => 1, async () => 1)).toBe(true);
@@ -1167,7 +1167,7 @@ compiledTest("await case", {
 
 compiledTest("await break", {
 	input: `async function(foo, bar) { var result; switch (await foo()) { case await bar(): result = true; break; default: result = false; break; } return result; }`,
-	output: `function(foo,bar){var _call2=function(){return _call(bar);},_temp=function(){result=true;},_temp2=function(){result=false;},_result=function(){return result;};var result;return _call(foo,function(_foo){return _continue(_switch(_foo,[[_call2,_temp],[void 0,_temp2]]),_result);});}`,
+	output: `function(foo,bar){var _bar2=function(){return _call(bar);},_temp=function(){result=true;},_temp2=function(){result=false;},_result=function(){return result;};var result;return _call(foo,function(_foo){return _continue(_switch(_foo,[[_bar2,_temp],[void 0,_temp2]]),_result);});}`,
 	cases: {
 		true: async f => {
 			expect(await f(async () => 1, async () => 1)).toBe(true);
@@ -1226,7 +1226,7 @@ compiledTest("break labeled statement", {
 
 compiledTest("break with multiple labeled statements", {
 	input: `async function(foo) { outer: { inner: { if (await foo()) { break outer; } } return false; } return true; }`,
-	output: `function(foo){var _exit,_outerInterrupt,_temp=function(_foo){if(_foo){_outerInterrupt=1;}},_call2=function(){return _call(foo,_temp);},_temp2=function(){if(_outerInterrupt)return;_exit=1;return false;};return _invoke(function(){return _invoke(_call2,_temp2);},function(_result){return _await(_exit?_result:true);});}`,
+	output: `function(foo){var _exit,_outerInterrupt,_temp=function(_foo){if(_foo){_outerInterrupt=1;}},_foo2=function(){return _call(foo,_temp);},_temp2=function(){if(_outerInterrupt)return;_exit=1;return false;};return _invoke(function(){return _invoke(_foo2,_temp2);},function(_result){return _await(_exit?_result:true);});}`,
 	cases: {
 		true: async f => expect(await f(() => 1)).toEqual(true),
 		false: async f => expect(await f(() => 0)).toEqual(false),
@@ -1235,7 +1235,7 @@ compiledTest("break with multiple labeled statements", {
 
 compiledTest("fetch example", {
 	input: `async function(url) { const response = await fetch(url); const blob = await response.blob(); return URL.createObjectURL(blob); }`,
-	output: `var _URL$createObjectURL=function(blob){return URL.createObjectURL(blob);},_await2=function(response){return _await(response.blob(),_URL$createObjectURL);};return _async(function(url){return _await(fetch(url),_await2);})`,
+	output: `var _URL$createObjectURL=function(blob){return URL.createObjectURL(blob);},_response$blob=function(response){return _await(response.blob(),_URL$createObjectURL);};return _async(function(url){return _await(fetch(url),_response$blob);})`,
 });
 
 compiledTest("array literal", {
@@ -1380,7 +1380,7 @@ compiledTest("helper names", {
 
 compiledTest("for of await double with break", {
 	input: `async function(matrix) { var result = 0; outer: for (var row of matrix) { for (var value of row) { result += await value; if (result > 10) break outer; } } return result; }`,
-	output: `_async(function(matrix){var _outerInterrupt,_temp=function(_value){result+=_value;if(result>10){_outerInterrupt=1;}},_await2=function(value){return _await(value,_temp);},_outerInterrupt2=function(){return _outerInterrupt;};var result=0;return _continue(_forOf(matrix,function(row){return _continueIgnored(_forOf(row,_await2,_outerInterrupt2));}),function(){return result;});})`,
+	output: `_async(function(matrix){var _outerInterrupt,_temp=function(_value){result+=_value;if(result>10){_outerInterrupt=1;}},_value2=function(value){return _await(value,_temp);},_outerInterrupt2=function(){return _outerInterrupt;};var result=0;return _continue(_forOf(matrix,function(row){return _continueIgnored(_forOf(row,_value2,_outerInterrupt2));}),function(){return result;});})`,
 	cases: {
 		empty: async f => expect(await f([])).toBe(0),
 		single: async f => expect(await f([[1]])).toBe(1),

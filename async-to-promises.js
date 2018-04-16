@@ -488,6 +488,9 @@ exports.default = function({ types, template, traverse }) {
 				if (types.isReturnStatement(nameNode)) {
 					nameNode = nameNode.argument;
 				}
+				if (types.isCallExpression(nameNode) && nameNode.callee._helperName) {
+					nameNode = nameNode.arguments[0];
+				}
 				const identifier = types.isLiteral(nameNode) ? path.scope.generateUidIdentifier(nameNode.value.toString().replace(/\d/g, (number) => numberNames[number])) : path.scope.generateUidIdentifierBasedOnNode(nameNode, "temp");
 				scope.push({ id: identifier, init: path.node });
 				path.replaceWith(identifier);

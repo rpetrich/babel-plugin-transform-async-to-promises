@@ -18,7 +18,7 @@ export const _Pact = (function() {
 			}
 		}
 		const result = new _Pact();
-		this.__observer = () => {
+		this.__observer = function() {
 			try {
 				const value = this.__value;
 				if (this.__state == 1) {

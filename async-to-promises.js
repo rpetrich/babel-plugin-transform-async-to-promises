@@ -246,8 +246,8 @@ exports.default = function({ types, template, traverse }) {
 		// Check to see if we have a simple for of statement with two variables
 		if (left.isIdentifier() && right.isIdentifier() && path.scope.getBinding(right.node.name).constant) {
 			let body = path.get("body");
-			while (body.isBlockStatement()) {
-				const statements = body.get("body");
+			while (body.isBlockStatement() || (body.isReturnStatement() && invokeTypeOfExpression(body.get("argument")) && body.get("argument.arguments").length === 1)) {
+				const statements = body.isBlockStatement() ? body.get("body") : body.get("argument.arguments.0.body.body");
 				if (statements.length !== 1) {
 					return;
 				}
@@ -1137,7 +1137,7 @@ exports.default = function({ types, template, traverse }) {
 			let targetPath = awaitPath;
 			while (targetPath !== path) {
 				const parent = targetPath.parentPath;
-				if (!parent.isSwitchCase()) {
+				if (!parent.isSwitchCase() && !parent.isBlockStatement()) {
 					const explicitExits = pathsReturnOrThrow(parent);
 					let exitIdentifier;
 					if (!explicitExits.all && explicitExits.any) {
@@ -1582,15 +1582,14 @@ exports.default = function({ types, template, traverse }) {
 		}		
 	}
 
-	function isInvokeCallExpression(path) {
-		if (!path.isCallExpression()) {
-			return false;
-		}
-		switch (path.node.callee._helperName) {
-			case "_invoke":
-				return types.isFunctionExpression(path.node.arguments[0]) && types.isFunctionExpression(path.node.arguments[1]);
-			default:
-				return false;
+	function invokeTypeOfExpression(path) {
+		if (path.isCallExpression()) {
+			const helperName = path.node.callee._helperName;
+			switch (helperName) {
+				case "_invoke":
+				case "_invokeIgnored":
+					return helperName;
+			}
 		}
 	}
 
@@ -1667,7 +1666,7 @@ exports.default = function({ types, template, traverse }) {
 		},
 		CallExpression(path) {
 			if (!isAsyncCallExpression(path)) {
-				if (isInvokeCallExpression(path)) {
+				if (invokeTypeOfExpression(path) == "_invoke") {
 					const args = path.get("arguments");
 					if (checkForErrorsAndRewriteReturns(args[0])) {
 						this.canThrow = true;
@@ -1717,7 +1716,7 @@ exports.default = function({ types, template, traverse }) {
 		ReturnStatement(path) {
 			if (this.rewriteReturns) {
 				const argument = path.get("argument");
-				if (!argument.node || !(isAsyncCallExpression(argument) || isInvokeCallExpression(argument) || (argument.isCallExpression() && isAsyncFunctionIdentifier(argument.get("callee"))))) {
+				if (!argument.node || !(isAsyncCallExpression(argument) || invokeTypeOfExpression(argument) == "_invoke" || (argument.isCallExpression() && isAsyncFunctionIdentifier(argument.get("callee"))))) {
 					argument.replaceWith(types.callExpression(helperReference(this.plugin, path, "_await"), argument.node ? [argument.node] : []));
 				}
 			}

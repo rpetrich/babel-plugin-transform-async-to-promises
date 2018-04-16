@@ -442,6 +442,8 @@ exports.default = function({ types, template, traverse }) {
 		return result;
 	}
 
+	const numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+
 	const hoistCallArgumentsVisitor = {
 		Function(path) {
 			path.skip();
@@ -475,7 +477,14 @@ exports.default = function({ types, template, traverse }) {
 				}
 			}
 			if (!ancestry.includes(path.scope.parent)) {
-				const identifier = path.scope.generateUidIdentifierBasedOnNode(path.node, "temp");
+				let nameNode = path.node;
+				if (path.isFunctionExpression() && nameNode.body.body.length === 1) {
+					nameNode = nameNode.body.body[0];
+				}
+				if (types.isReturnStatement(nameNode)) {
+					nameNode = nameNode.argument;
+				}
+				const identifier = types.isLiteral(nameNode) ? path.scope.generateUidIdentifier(nameNode.value.toString().replace(/\d/g, (number) => numberNames[number])) : path.scope.generateUidIdentifierBasedOnNode(nameNode, "temp");
 				scope.push({ id: identifier, init: path.node });
 				path.replaceWith(identifier);
 			}

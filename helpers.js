@@ -50,7 +50,8 @@ export function _settle(pact, state, value) {
 				value.__observer = _settle.bind(null, pact, state);
 				return;
 			}
-		} else if (typeof value == "object" && "then" in value) {
+		}
+		if (typeof value == "object" && "then" in value) {
 			value.then(_settle.bind(null, pact, state), _settle.bind(null, pact, 2));
 			return;
 		}

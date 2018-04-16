@@ -1362,7 +1362,6 @@ exports.default = function({ types, template, traverse }) {
 			if (awaitPath.isAwaitExpression()) {
 				const originalArgument = awaitPath.node.argument;
 				if (awaitPath.parentPath.isExpressionStatement()) {
-					awaitPath.replaceWith(voidExpression());
 					relocateTail(pluginState, originalArgument, null, awaitPath.parentPath, additionalConstantNames, null, undefined, types.booleanLiteral(false));
 				} else {
 					let parent = awaitPath;

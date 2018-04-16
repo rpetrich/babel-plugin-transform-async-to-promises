@@ -18,10 +18,10 @@ export const _Pact = (function() {
 			}
 		}
 		const result = new _Pact();
-		this.__observer = function() {
+		this.__observer = function(_this) {
 			try {
-				const value = this.__value;
-				if (this.__state == 1) {
+				const value = _this.__value;
+				if (_this.__state == 1) {
 					_settle(result, 1, onFulfilled ? onFulfilled(value) : value);
 				} else if (onRejected) {
 					_settle(result, 1, onRejected(value));
@@ -58,7 +58,7 @@ export function _settle(pact, state, value) {
 		pact.__value = value;
 		const observer = pact.__observer;
 		if (observer) {
-			observer();
+			observer(pact);
 		}
 	}
 }

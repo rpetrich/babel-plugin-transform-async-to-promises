@@ -444,8 +444,26 @@ exports.default = function({ types, template, traverse }) {
 
 	const numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
+	const hoistCallArgumentsInnerVisitor = {
+		Identifier(identifierPath) {
+			if (identifierSearchesScope(identifierPath)) {
+				const name = identifierPath.node.name;
+				if (this.argumentNames.indexOf(name) === -1) {
+					if (this.additionalConstantNames.indexOf(name) !== -1) {
+						this.scopes.push(this.path.scope.parent);
+					} else {
+						const binding = identifierPath.scope.getBinding(name);
+						if (binding && binding.scope && this.pathScopes.includes(binding.scope)) {
+							this.scopes.push(binding.scope);
+						}
+					}
+				}
+			}
+		}
+	};
+
 	const hoistCallArgumentsVisitor = {
-		Function(path) {
+		FunctionExpression(path) {
 			path.skip();
 			const bodyPath = path.get("body");
 			if (bodyPath.node.body.length === 0) {
@@ -455,23 +473,13 @@ exports.default = function({ types, template, traverse }) {
 			const argumentNames = path.node.params.map(param => param.name);
 			const scopes = [];
 			const pathScopes = allScopes(path.scope.parent);
-			bodyPath.traverse({
-				Identifier(identifierPath) {
-					if (identifierSearchesScope(identifierPath)) {
-						const name = identifierPath.node.name;
-						if (argumentNames.indexOf(name) === -1) {
-							if (this.additionalConstantNames.indexOf(name) !== -1) {
-								scopes.push(path.scope.parent);
-							} else {
-								const binding = identifierPath.scope.getBinding(name);
-								if (binding && binding.scope && pathScopes.includes(binding.scope)) {
-									scopes.push(binding.scope);
-								}
-							}
-						}
-					}
-				}
-			}, this);
+			bodyPath.traverse(hoistCallArgumentsInnerVisitor, {
+				argumentNames,
+				scopes,
+				pathScopes,
+				path,
+				additionalConstantNames: this.additionalConstantNames,
+			});
 			let scope = path.scope.getProgramParent()
 			let ancestry = [scope];
 			for (let otherScope of scopes) {

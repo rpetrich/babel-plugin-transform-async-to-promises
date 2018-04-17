@@ -521,7 +521,9 @@ exports.default = function({ types, template, traverse }) {
 			expression = awaitAndContinue(state, target, awaitExpression, helperReference(state, target, "_empty"), directExpression);
 		}
 		target.replaceWith(returnStatement(expression, originalNode));
-		hoistCallArguments(state, target.get("argument"), additionalConstantNames);
+		if (state.opts.hoist) {
+			hoistCallArguments(state, target.get("argument"), additionalConstantNames);
+		}
 	}
 
 	const rewriteThisVisitor = {

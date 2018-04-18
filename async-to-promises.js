@@ -1338,7 +1338,8 @@ exports.default = function({ types, template, traverse }) {
 					if (awaitPath !== right) {
 						const left = parent.get("left");
 						const loopIdentifier = left.isVariableDeclaration() ? left.node.declarations[0].id : left.node;
-						const params = [right.node, rewriteAsyncNode(pluginState, parent, types.functionExpression(null, [loopIdentifier], blockStatement((forOwnBodyPath || parent.get("body")).node)), additionalConstantNames, exitIdentifier)];
+						const bodyBlock = blockStatement((forOwnBodyPath || parent.get("body")).node);
+						const params = [right.node, rewriteAsyncNode(pluginState, parent, bodyBlock.body.length ? types.functionExpression(null, [loopIdentifier], bodyBlock) : helperReference(pluginState, parent, "_empty"), additionalConstantNames, exitIdentifier)];
 						const exitCheck = buildBreakExitCheck(exitIdentifier, breakIdentifiers);
 						if (exitCheck) {
 							params.push(types.functionExpression(null, [], types.blockStatement([returnStatement(exitCheck)])));

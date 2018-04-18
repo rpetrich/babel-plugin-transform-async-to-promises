@@ -1574,8 +1574,7 @@ if (!runTestCasesOnInput) {
 
 	compiledTest("for await of event loop ordering", {
 		input: `async function(iter, callback) { for await (var value of iter) { }; return callback(); }`,
-		output: `_async(function(iter,callback){return _continue(_forAwaitOf(iter,function(value){}),function(){return callback();});})`,
-		hoisted: `_async(function(iter,callback){return _continue(_forAwaitOf(iter,_empty),function(){return callback();});})`,
+		output: `_async(function(iter,callback){return _continue(_forAwaitOf(iter,_empty),function(){return callback();});})`,
 		cases: {
 			empty: async f => {
 				var state;

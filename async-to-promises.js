@@ -850,9 +850,14 @@ exports.default = function({ types, template, traverse }) {
 	function extractDeclarations(awaitPath, awaitExpression, additionalConstantNames) {
 		const originalAwaitPath = awaitPath;
 		const reusingExisting = findDeclarationToReuse(awaitPath);//originalAwaitPath.parentPath.isVariableDeclarator() && originalAwaitPath.parentPath;
-		let resultIdentifier = reusingExisting ? reusingExisting.node.id : generateIdentifierForPath(originalAwaitPath.get("argument"));
+		let resultIdentifier;
+		if (awaitPath.parentPath.isSequenceExpression() && (awaitPath.key < awaitPath.container.length - 1)) {
+			originalAwaitPath.replaceWith(types.numericLiteral(0));
+		} else {
+			resultIdentifier = reusingExisting ? reusingExisting.node.id : generateIdentifierForPath(originalAwaitPath.get("argument"));
+			originalAwaitPath.replaceWith(resultIdentifier);
+		}
 		let declarations = [];
-		originalAwaitPath.replaceWith(resultIdentifier);
 		let directExpression = types.booleanLiteral(false);
 		do {
 			const parent = awaitPath.parentPath;
@@ -879,6 +884,9 @@ exports.default = function({ types, template, traverse }) {
 					awaitExpression = (isOr ? logicalOr : logicalAnd)(left.node, awaitExpression);
 					directExpression = logicalOrLoose(isOr ? left.node : logicalNot(left.node), directExpression, extractLooseBooleanValue);
 					if (awaitPath == originalAwaitPath) {
+						if (!resultIdentifier) {
+							resultIdentifier = reusingExisting ? reusingExisting.node.id : generateIdentifierForPath(originalAwaitPath.get("argument"));
+						}
 						parent.replaceWith(resultIdentifier);
 						awaitPath = parent;
 						continue;
@@ -928,6 +936,9 @@ exports.default = function({ types, template, traverse }) {
 					}
 					if (isBoth) {
 						awaitExpression = conditionalExpression(testNode, awaitExpression, alternate.node.argument);
+						if (!resultIdentifier) {
+							resultIdentifier = reusingExisting ? reusingExisting.node.id : generateIdentifierForPath(originalAwaitPath.get("argument"));
+						}
 						alternate.replaceWith(resultIdentifier);
 						parent.replaceWith(resultIdentifier);
 					} else {
@@ -936,6 +947,9 @@ exports.default = function({ types, template, traverse }) {
 							awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, types.numericLiteral(0), awaitExpression) : conditionalExpression(testNode, awaitExpression, types.numericLiteral(0));
 						} else {
 							awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, other.node, awaitExpression) : conditionalExpression(testNode, awaitExpression, other.node);
+							if (!resultIdentifier) {
+								resultIdentifier = reusingExisting ? reusingExisting.node.id : generateIdentifierForPath(originalAwaitPath.get("argument"));
+							}
 							if (awaitPath === originalAwaitPath) {
 								parent.replaceWith(resultIdentifier);
 								awaitPath = parent;

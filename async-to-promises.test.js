@@ -3,7 +3,6 @@ const babel = require("babel-core");
 const types = require("babel-types");
 const babylon = require("babylon");
 
-const runTestCasesOnInput = false;
 const checkTestCases = true;
 const checkOutputMatches = true;
 const logCompiledOutput = false;
@@ -950,30 +949,26 @@ compiledTest("for of in body", {
 	},
 });
 
-if (!runTestCasesOnInput) {
+compiledTest("for await of in body", {
+	input: `async function(iter) { let result = 0; for await (const value of iter) { result += value; } return result; }`,
+	output: `_async(function(iter){let result=0;return _continue(_forAwaitOf(iter,function(value){result+=value;}),function(){return result;});})`,
+	cases: {
+		empty: async f => expect(await f([])).toBe(0),
+		single: async f => expect(await f([1])).toBe(1),
+		multiple: async f => expect(await f([1,2])).toBe(3),
+	},
+});
 
-	compiledTest("for await of in body", {
-		input: `async function(iter) { let result = 0; for await (const value of iter) { result += value; } return result; }`,
-		output: `_async(function(iter){let result=0;return _continue(_forAwaitOf(iter,function(value){result+=value;}),function(){return result;});})`,
-		cases: {
-			empty: async f => expect(await f([])).toBe(0),
-			single: async f => expect(await f([1])).toBe(1),
-			multiple: async f => expect(await f([1,2])).toBe(3),
-		},
-	});
-
-	compiledTest("for await of in body with break", {
-		input: `async function(iter) { let result = 0; for await (const value of iter) { result += value; if (result > 10) break; } return result; }`,
-		output: `_async(function(iter){var _interrupt;let result=0;return _continue(_forAwaitOf(iter,function(value){result+=value;if(result>10){_interrupt=1;return;}},function(){return _interrupt;}),function(){return result;});})`,
-		cases: {
-			empty: async f => expect(await f([])).toBe(0),
-			single: async f => expect(await f([1])).toBe(1),
-			multiple: async f => expect(await f([1,2])).toBe(3),
-			break: async f => expect(await f([1,10,4])).toBe(11),
-		},
-	});
-
-}
+compiledTest("for await of in body with break", {
+	input: `async function(iter) { let result = 0; for await (const value of iter) { result += value; if (result > 10) break; } return result; }`,
+	output: `_async(function(iter){var _interrupt;let result=0;return _continue(_forAwaitOf(iter,function(value){result+=value;if(result>10){_interrupt=1;return;}},function(){return _interrupt;}),function(){return result;});})`,
+	cases: {
+		empty: async f => expect(await f([])).toBe(0),
+		single: async f => expect(await f([1])).toBe(1),
+		multiple: async f => expect(await f([1,2])).toBe(3),
+		break: async f => expect(await f([1,10,4])).toBe(11),
+	},
+});
 
 const whileCases = {
 	one: async f => {
@@ -1570,37 +1565,33 @@ compiledTest("switch event loop ordering", {
 	cases: orderCases,
 });
 
-if (!runTestCasesOnInput) {
-
-	compiledTest("for await of event loop ordering", {
-		input: `async function(iter, callback) { for await (var value of iter) { }; return callback(); }`,
-		output: `_async(function(iter,callback){return _continue(_forAwaitOf(iter,_empty),function(){return callback();});})`,
-		cases: {
-			empty: async f => {
-				var state;
-				const promise = f([], () => state = true);
-				state = false;
-				await promise;
-				expect(state).toBe(true);
-			},
-			single: async f => {
-				var state;
-				const promise = f([1], () => state = true);
-				state = false;
-				await promise;
-				expect(state).toBe(true);
-			},
-			multiple: async f => {
-				var state;
-				const promise = f([1, 2], () => state = true);
-				state = false;
-				await promise;
-				expect(state).toBe(true);
-			},
-		}
-	});
-
-}
+compiledTest("for await of event loop ordering", {
+	input: `async function(iter, callback) { for await (var value of iter) { }; return callback(); }`,
+	output: `_async(function(iter,callback){return _continue(_forAwaitOf(iter,_empty),function(){return callback();});})`,
+	cases: {
+		empty: async f => {
+			var state;
+			const promise = f([], () => state = true);
+			state = false;
+			await promise;
+			expect(state).toBe(true);
+		},
+		single: async f => {
+			var state;
+			const promise = f([1], () => state = true);
+			state = false;
+			await promise;
+			expect(state).toBe(true);
+		},
+		multiple: async f => {
+			var state;
+			const promise = f([1, 2], () => state = true);
+			state = false;
+			await promise;
+			expect(state).toBe(true);
+		},
+	}
+});
 
 compiledTest("Object spreading", {
 	input: `async function(foo) { const { bar } = await foo(); return bar; }`,

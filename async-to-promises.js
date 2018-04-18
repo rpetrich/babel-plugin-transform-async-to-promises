@@ -1302,7 +1302,9 @@ exports.default = function({ types, template, traverse }) {
 				let expression = rewriteAsyncNode(pluginState, parent, parent.node.block, additionalConstantNames, exitIdentifier);
 				const catchClause = parent.node.handler;
 				if (catchClause) {
-					const fn = catchClause.body.body.length ? rewriteAsyncNode(pluginState, parent, types.functionExpression(null, [catchClause.param], catchClause.body), additionalConstantNames, exitIdentifier) : helperReference(pluginState, parent, "_empty");
+					const param = catchClause.param;
+					const paramIsUsed = parent.get("handler").scope.getBinding(param.name).referencePaths.length !== 0;
+					const fn = catchClause.body.body.length ? rewriteAsyncNode(pluginState, parent, types.functionExpression(null, paramIsUsed ? [param] : [], catchClause.body), additionalConstantNames, exitIdentifier) : helperReference(pluginState, parent, "_empty");
 					expression = types.callExpression(helperReference(pluginState, path, "_catch"), [unwrapReturnCallWithEmptyArguments(functionize(expression), path.scope, additionalConstantNames), fn]);
 				}
 				if (parent.node.finalizer) {

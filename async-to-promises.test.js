@@ -641,8 +641,8 @@ compiledTest("calling member functions", {
 
 compiledTest("catch and recover via return", {
 	input: `async function(foo) { try { return await foo(); } catch(e) { return "fallback"; } }`,
-	output: `_async(function(foo){return _catch(foo,function(e){return"fallback";});})`,
-	hoisted: `var _fallback=function(e){return"fallback";};return _async(function(foo){return _catch(foo,_fallback);})`,
+	output: `_async(function(foo){return _catch(foo,function(){return"fallback";});})`,
+	hoisted: `var _fallback=function(){return"fallback";};return _async(function(foo){return _catch(foo,_fallback);})`,
 	cases: {
 		success: async f => expect(await f(async _ => "success")).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; })).toBe("fallback"),
@@ -660,7 +660,7 @@ compiledTest("catch and ignore", {
 
 compiledTest("catch and await", {
 	input: `async function(foo, bar) { try { return await foo(); } catch(e) { await bar(); } }`,
-	output: `_async(function(foo,bar){return _catch(foo,function(e){return _callIgnored(bar);});})`,
+	output: `_async(function(foo,bar){return _catch(foo,function(){return _callIgnored(bar);});})`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", async _ => false)).toBe("success"),
 		fallback: async f => expect(await f(async _ => { throw "test"; }, async _ => false)).toBe(undefined),
@@ -669,8 +669,8 @@ compiledTest("catch and await", {
 
 compiledTest("catch and recover via variable", {
 	input: `async function(value, log) { var result; try { result = await value(); } catch (e) { result = "an error"; }; log("result:", result); return result; }`,
-	output: `_async(function(value,log){var result;return _continue(_catch(function(){return _call(value,function(_value){result=_value;});},function(e){result="an error";}),function(){log("result:",result);return result;});})`,
-	hoisted: `_async(function(value,log){var _temp=function(_value){result=_value;};var result;return _continue(_catch(function(){return _call(value,_temp);},function(e){result="an error";}),function(){log("result:",result);return result;});})`,
+	output: `_async(function(value,log){var result;return _continue(_catch(function(){return _call(value,function(_value){result=_value;});},function(){result="an error";}),function(){log("result:",result);return result;});})`,
+	hoisted: `_async(function(value,log){var _temp=function(_value){result=_value;};var result;return _continue(_catch(function(){return _call(value,_temp);},function(){result="an error";}),function(){log("result:",result);return result;});})`,
 	cases: {
 		success: async f => expect(await f(async _ => "success", async _ => false)).toBe("success"),
 		recover: async f => expect(await f(async _ => { throw "test"; }, async _ => false)).toBe("an error"),
@@ -679,7 +679,7 @@ compiledTest("catch and recover via variable", {
 
 compiledTest("catch and recover via optimized return", {
 	input: `async function(foo, bar) { try { return foo(); } catch(e) { return await bar(); } }`,
-	output: `_async(function(foo,bar){return _catch(foo,function(e){return _call(bar);});})`,
+	output: `_async(function(foo,bar){return _catch(foo,function(){return _call(bar);});})`,
 	cases: {
 		success: async f => expect(await f(_ => "success")).toBe("success"),
 		fallback: async f => expect(await f(_ => { throw "test"; }, () => "fallback")).toBe("fallback"),
@@ -725,7 +725,7 @@ compiledTest("finally double", {
 
 compiledTest("try catch finally", {
 	input: `async function(foo, bar, baz) { var result; try { return await foo(); } catch (e) { return await bar(); } finally { baz(); } }`,
-	output: `_async(function(foo,bar,baz){var result;return _finallyRethrows(function(){return _catch(foo,function(e){return _call(bar);});},function(_wasThrown,_result){baz();return _rethrow(_wasThrown,_result);});})`,
+	output: `_async(function(foo,bar,baz){var result;return _finallyRethrows(function(){return _catch(foo,function(){return _call(bar);});},function(_wasThrown,_result){baz();return _rethrow(_wasThrown,_result);});})`,
 	cases: {
 		normal: async f => {
 			const foo = async () => true;
@@ -781,8 +781,8 @@ compiledTest("throw test", {
 
 compiledTest("throw from switch and catch", {
 	input: `async function() { try { switch (true) { case true: throw await 1; } return false; } catch (e) { return true; } }`,
-	output: `_async(function(){var _exit;return _catch(function(){return _continue(_switch(true,[[function(){return true;},function(){return _await(1,function(_){throw _;});}]]),function(_result){return _exit?_result:false;});},function(e){return true;});})`,
-	hoisted: `var _temp=function(_){throw _;},_true=function(){return true;},_one=function(){return _await(1,_temp);},_true2=function(e){return true;};return _async(function(){var _exit,_temp2=function(_result){return _exit?_result:false;};return _catch(function(){return _continue(_switch(true,[[_true,_one]]),_temp2);},_true2);})`,
+	output: `_async(function(){var _exit;return _catch(function(){return _continue(_switch(true,[[function(){return true;},function(){return _await(1,function(_){throw _;});}]]),function(_result){return _exit?_result:false;});},function(){return true;});})`,
+	hoisted: `var _temp=function(_){throw _;},_true=function(){return true;},_one=function(){return _await(1,_temp);},_true2=function(){return true;};return _async(function(){var _exit,_temp2=function(_result){return _exit?_result:false;};return _catch(function(){return _continue(_switch(true,[[_true,_one]]),_temp2);},_true2);})`,
 	cases: {
 		result: async f => { expect(await f()).toBe(true) },
 	},
@@ -1664,7 +1664,7 @@ compiledTest("Complex continuation ordering", {
 	},
 });
 
-compiledTest("Try...catch...finally event loop ordering", {
+compiledTest("try...catch...finally event loop ordering", {
 	input: `async function() {
 		let waitIndex = 0;
 		const messages = [];
@@ -1695,8 +1695,8 @@ compiledTest("Try...catch...finally event loop ordering", {
 		messages.push('stop');
 		return messages;
 	}`,
-	output: `_async(function(){let waitIndex=0;const messages=[];function wait(){let index=++waitIndex;messages.push(\"waitStart\"+index);return Promise.resolve().then(()=>{messages.push(\"waitStop\"+index);});}messages.push('start');return _continue(_finallyRethrows(function(){return _catch(function(){messages.push('tryStart');return _call(wait,function(){messages.push('tryStop');});},function(err){messages.push('catchStart');return _call(wait,function(){messages.push('catchStop');});});},function(_wasThrown,_result){messages.push('finallyStart');return _call(wait,function(){messages.push('finallyStop');return _rethrow(_wasThrown,_result);});}),function(){messages.push('stop');return messages;});})`,
-	hoisted: `_async(function(){var _temp=function(){messages.push('tryStop');},_temp2=function(){messages.push('catchStop');},_temp3=function(){messages.push('finallyStop');};let waitIndex=0;const messages=[];function wait(){let index=++waitIndex;messages.push(\"waitStart\"+index);return Promise.resolve().then(()=>{messages.push(\"waitStop\"+index);});}messages.push('start');return _continue(_finallyRethrows(function(){return _catch(function(){messages.push('tryStart');return _call(wait,_temp);},function(err){messages.push('catchStart');return _call(wait,_temp2);});},function(_wasThrown,_result){messages.push('finallyStart');return _call(wait,function(){messages.push('finallyStop');return _rethrow(_wasThrown,_result);});}),function(){messages.push('stop');return messages;});})`,
+	output: `_async(function(){let waitIndex=0;const messages=[];function wait(){let index=++waitIndex;messages.push("waitStart"+index);return Promise.resolve().then(()=>{messages.push("waitStop"+index);});}messages.push('start');return _continue(_finallyRethrows(function(){return _catch(function(){messages.push('tryStart');return _call(wait,function(){messages.push('tryStop');});},function(){messages.push('catchStart');return _call(wait,function(){messages.push('catchStop');});});},function(_wasThrown,_result){messages.push('finallyStart');return _call(wait,function(){messages.push('finallyStop');return _rethrow(_wasThrown,_result);});}),function(){messages.push('stop');return messages;});})`,
+	hoisted: `_async(function(){var _temp=function(){messages.push('tryStop');},_temp2=function(){messages.push('catchStop');},_temp3=function(){messages.push('finallyStop');};let waitIndex=0;const messages=[];function wait(){let index=++waitIndex;messages.push("waitStart"+index);return Promise.resolve().then(()=>{messages.push("waitStop"+index);});}messages.push('start');return _continue(_finallyRethrows(function(){return _catch(function(){messages.push('tryStart');return _call(wait,_temp);},function(){messages.push('catchStart');return _call(wait,_temp2);});},function(_wasThrown,_result){messages.push('finallyStart');return _call(wait,function(){messages.push('finallyStop');return _rethrow(_wasThrown,_result);});}),function(){messages.push('stop');return messages;});})`,
 	cases: {
 		result: async f => expect(await f()).toEqual(['start', 'tryStart', 'waitStart1', 'waitStop1', 'tryStop', 'finallyStart', 'waitStart2', 'waitStop2', 'finallyStop', 'stop']),
 	},

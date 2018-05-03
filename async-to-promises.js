@@ -455,8 +455,13 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 						this.scopes.push(this.path.scope.parent);
 					} else {
 						const binding = identifierPath.scope.getBinding(name);
-						if (binding && binding.scope && this.pathScopes.includes(binding.scope)) {
-							this.scopes.push(binding.scope);
+						if (binding) {
+							if (binding.scope && this.pathScopes.includes(binding.scope)) {
+								this.scopes.push(binding.scope);
+							}
+						} else {
+							// Could not find binding
+							this.scopes.push(this.path.scope.parent);
 						}
 					}
 				}

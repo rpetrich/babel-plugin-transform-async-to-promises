@@ -1,7 +1,9 @@
 const errorOnIncompatible = true;
 let helpers;
 
-exports.default = function({ types, template, traverse, transformFromAst }) {
+exports.default = function({ types, template, traverse, transformFromAst, version }) {
+
+	const isNewBabel = !/^6\./.test(version);
 
 	function wrapNodeInStatement(node) {
 		return types.isStatement(node) ? types.blockStatement([node]) : types.expressionStatement(node);
@@ -459,8 +461,8 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 							if (binding.scope && this.pathScopes.includes(binding.scope)) {
 								this.scopes.push(binding.scope);
 							}
-						} else {
-							// Could not find binding
+						} else if (isNewBabel) {
+							// Babel 7 doesn't resolve bindings for some reason, need to be conservative with hoisting
 							this.scopes.push(this.path.scope.parent);
 						}
 					}
@@ -591,7 +593,7 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 				const declarations = path.get("declarations");
 				for (const declaration of declarations) {
 					const binding = scope.getBinding(declaration.node.id.name);
-					if (!binding || (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath))) {
+					if (binding && (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath))) {
 						this.targetPath.scope.push({ id: declaration.node.id });
 						if (declaration.node.init) {
 							path.insertBefore(types.expressionStatement(types.assignmentExpression("=", declaration.node.id, declaration.node.init)));
@@ -1258,18 +1260,20 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 			while (targetPath !== path) {
 				const parent = targetPath.parentPath;
 				if (!parent.isSwitchCase() && !parent.isBlockStatement()) {
+					let exitIdentifier;
 					const explicitExits = pathsReturnOrThrow(parent);
 					if (!explicitExits.all && explicitExits.any && (parent.isLoop() || exitsInTail(parent))) {
 						if (!state.exitIdentifier) {
 							state.exitIdentifier = targetPath.scope.generateUidIdentifier("exit");
 							shouldPushExitIdentifier = true;
 						}
+						exitIdentifier = state.exitIdentifier;
 					}
 					paths.push({
 						targetPath,
 						explicitExits,
 						parent,
-						exitIdentifier: state.exitIdentifier,
+						exitIdentifier,
 					});
 				}
 				targetPath = parent;

@@ -1510,7 +1510,7 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 		ForAwaitStatement: rewriteAwaitPath,
 		ForOfStatement(path) {
 			if (path.node.await) {
-				rewriteAwaitPath(path);
+				rewriteAwaitPath.call(this, path);
 			}
 		},
 		CallExpression(path) {

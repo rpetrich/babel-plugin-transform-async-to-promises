@@ -1,7 +1,7 @@
 const errorOnIncompatible = true;
 let helpers;
 
-exports.default = function({ types, template, traverse }) {
+exports.default = function({ types, template, traverse, transformFromAst }) {
 
 	function wrapNodeInStatement(node) {
 		return types.isStatement(node) ? types.blockStatement([node]) : types.expressionStatement(node);
@@ -1649,7 +1649,7 @@ exports.default = function({ types, template, traverse }) {
 					const newHelpers = {};
 					const helperCode = require("fs").readFileSync(require("path").join(__dirname, "helpers.js")).toString();
 					const helperAst = require("babylon").parse(helperCode, { sourceType: "module" });
-					require("babel-core").transformFromAst(helperAst, helperCode, { babelrc: false, plugins: [{ visitor: {
+					transformFromAst(helperAst, helperCode, { babelrc: false, plugins: [{ visitor: {
 						ExportNamedDeclaration(path) {
 							const declaration = path.get("declaration");
 							if (declaration.isFunctionDeclaration()) {

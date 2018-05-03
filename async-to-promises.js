@@ -223,7 +223,9 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 							update.get("argument").isIdentifier() &&
 							update.node.argument.name === i.name
 						) {
-							if (!statement.scope.getBinding(i.name).constantViolations.some(cv => cv !== update.get("argument"))) {
+							const binding = statement.scope.getBinding(i.name);
+							const updateArgument = update.get("argument");
+							if (binding && !binding.constantViolations.some(cv => cv !== updateArgument && cv !== update)) {
 								return {
 									i,
 									array: test.node.right.object

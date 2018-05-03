@@ -1249,25 +1249,28 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 		{
 			// Determine if we need an exit identifier and rewrite break/return statements
 			let targetPath = awaitPath;
+			let shouldPushExitIdentifier = false;
 			while (targetPath !== path) {
 				const parent = targetPath.parentPath;
 				if (!parent.isSwitchCase() && !parent.isBlockStatement()) {
 					const explicitExits = pathsReturnOrThrow(parent);
-					let exitIdentifier;
 					if (!explicitExits.all && explicitExits.any && (parent.isLoop() || exitsInTail(parent))) {
 						if (!state.exitIdentifier) {
-							path.scope.push({ id: state.exitIdentifier = targetPath.scope.generateUidIdentifier("exit") });
+							state.exitIdentifier = targetPath.scope.generateUidIdentifier("exit");
+							shouldPushExitIdentifier = true;
 						}
-						exitIdentifier = state.exitIdentifier;
 					}
 					paths.push({
 						targetPath,
 						explicitExits,
 						parent,
-						exitIdentifier,
+						exitIdentifier: state.exitIdentifier,
 					});
 				}
 				targetPath = parent;
+			}
+			if (shouldPushExitIdentifier) {
+				path.scope.push({ id: state.exitIdentifier });
 			}
 		}
 		for (const item of paths) {

@@ -72,7 +72,12 @@ function compiledTest(name, { input, output, hoisted, cases, error, checkSyntax 
 							babel.transformFromAst(ast, parseInput, { plugins: [[pluginUnderTest, {}]], compact: true })
 							throw new Error("Expected error: " + error.toString());
 						} catch (e) {
-							expect(e.toString()).toBe(error);
+							const errorString = e.toString();
+							if (typeof error === "string") {
+								expect(errorString).toBe(error);
+							} else {
+								expect(errorString).toMatch(error);
+							}
 						}
 					});
 					return;
@@ -1758,5 +1763,5 @@ async function test(v) {
 
 compiledTest("eval is evil", {
 	input: `async function(code) { return await eval(code); }`,
-	error: `SyntaxError: unknown: Calling eval from inside an async function is not supported!`,
+	error: /Calling eval from inside an async function is not supported\!/,
 });

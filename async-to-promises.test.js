@@ -1,6 +1,8 @@
 const asyncToPromises = require("./async-to-promises");
-const babel = require("babel-core");
-const types = require("babel-types");
+const babel6 = require("babel-core");
+const types6 = require("babel-types");
+const babel7 = require("@babel/core");
+const types7 = require("@babel/types");
 const babylon = require("babylon");
 
 const checkTestCases = true;
@@ -40,14 +42,17 @@ const stripHelpersVisitor = {
 	}
 };
 
-const pluginUnderTest = asyncToPromises(babel);
+const environments = [
+	["babel 6", babel6, types6, asyncToPromises(babel6)],
+	["babel 7", babel7, types7, asyncToPromises(babel7)],
+];
 
-function extractOnlyUserCode(result) {
-	return babel.transformFromAst(result.ast, result.code, { plugins: [{ visitor: stripHelpersVisitor }], compact: true }).code;
+function extractOnlyUserCode(babel, result) {
+	return babel.transformFromAst(result.ast, result.code, { plugins: [{ visitor: stripHelpersVisitor }], compact: true, ast: false }).code;
 }
 
-function extractJustFunction(result) {
-	const extracted = extractOnlyUserCode(result);
+function extractJustFunction(babel, result) {
+	const extracted = extractOnlyUserCode(babel, result);
 	const match = extracted.match(/(^return\s*)?(.*);$/);
 	return match ? match[2] : extracted;
 }
@@ -57,97 +62,107 @@ function compiledTest(name, { input, output, hoisted, cases, error, checkSyntax 
 		return;
 	}
 	describe(name, () => {
-		const parseInput = module ? input : "return " + input;
-		const ast = babylon.parse(parseInput, { allowReturnOutsideFunction: true, sourceType: "module", plugins: ["asyncGenerators"] });
-		if (error) {
-			test("error", () => {
-				try {
-					babel.transformFromAst(ast, parseInput, { plugins: [[pluginUnderTest, {}]], compact: true })
-					throw new Error("Expected error: " + error.toString());
-				} catch (e) {
-					expect(e.toString()).toBe(error);
+		for (const [babelName, babel, types, pluginUnderTest] of environments) {
+			describe(babelName, () => {
+				const parseInput = module ? input : "return " + input;
+				const ast = babel.parse ? babel.parse(parseInput, { parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] }, sourceType: "module" }) : babylon.parse(parseInput, { allowReturnOutsideFunction: true, sourceType: "module", plugins: ["asyncGenerators"] });
+				if (error) {
+					test("error", () => {
+						try {
+							babel.transformFromAst(ast, parseInput, { plugins: [[pluginUnderTest, {}]], compact: true })
+							throw new Error("Expected error: " + error.toString());
+						} catch (e) {
+							expect(e.toString()).toBe(error);
+						}
+					});
+					return;
 				}
-			});
-			return;
-		}
-		const extractFunction = module ? extractOnlyUserCode : extractJustFunction;
-		const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, {}]], compact: true });
-		const strippedResult = extractFunction(result);
-		const hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { hoist: true }]], compact: true });
-		const hoistedAndStrippedResult = extractFunction(hoistedResult);
-		if (logCompiledOutput) {
-			console.log(name + " input", input);
-			console.log(name + " output", strippedResult);
-			if (hoistedAndStrippedResult !== strippedResult) {
-				console.log(name + " hoisted", hoistedAndStrippedResult);
-			}
-		}
-		let fn, rewrittenFn, hoistedFn;
-		try {
-			fn = new Function(`/* ${name} original */${parseInput}`)
-		} catch (e) {
-		}
-		if (checkSyntax) {
-			test("syntax", () => {
-				const code = result.code;
-				try {
-					rewrittenFn = new Function(`/* ${name} */${code}`);
-				} catch (e) {
-					if (e instanceof SyntaxError) {
-						e.message += "\n" + code;
+				const extractFunction = module ? extractOnlyUserCode : extractJustFunction;
+				const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, {}]], compact: true, ast: true });
+				const strippedResult = extractFunction(babel, result);
+				const hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { hoist: true }]], compact: true, ast: true });
+				const hoistedAndStrippedResult = extractFunction(babel, hoistedResult);
+				if (logCompiledOutput) {
+					console.log(name + " input", input);
+					console.log(name + " output", strippedResult);
+					if (hoistedAndStrippedResult !== strippedResult) {
+						console.log(name + " hoisted", hoistedAndStrippedResult);
 					}
-					throw e;
 				}
-			});
-			test("hoisted syntax", () => {
-				const code = hoistedResult.code;
+				let fn, rewrittenFn, hoistedFn;
 				try {
-					hoistedFn = new Function(`/* ${name} hoisted */${code}`);
+					fn = new Function(`/* ${name} original */${parseInput}`)
 				} catch (e) {
-					if (e instanceof SyntaxError) {
-						e.message += "\n" + code;
-					}
-					throw e;
 				}
-			});
-		}
-		if (checkOutputMatches) {
-			if (typeof output !== "undefined") {
-				test("output", () => {
-					expect(strippedResult).toBe(output);
-				});
-				test("hoisted output", () => {
-					expect(hoistedAndStrippedResult).toBe(typeof hoisted !== "undefined" ? hoisted : output);
-				});
-			}
-		} else {
-			if (strippedResult !== output) {
-				console.log(name + ": " + strippedResult);
-			}
-			if (hoistedAndStrippedResult !== hoisted) {
-				console.log(name + " hoisted: " + hoistedAndStrippedResult);
-			}
-		}
-		if (checkTestCases) {
-			for (let key in cases) {
-				if (cases.hasOwnProperty(key)) {
-					if (fn) {
-						test(key + " original", async () => {
-							return cases[key](fn());
+				if (checkSyntax) {
+					describe("syntax", () => {
+						test("normal", () => {
+							const code = result.code;
+							try {
+								rewrittenFn = new Function(`/* ${name} */${code}`);
+							} catch (e) {
+								if (e instanceof SyntaxError) {
+									e.message += "\n" + code;
+								}
+								throw e;
+							}
+						});
+						test("hoisted", () => {
+							const code = hoistedResult.code;
+							try {
+								hoistedFn = new Function(`/* ${name} hoisted */${code}`);
+							} catch (e) {
+								if (e instanceof SyntaxError) {
+									e.message += "\n" + code;
+								}
+								throw e;
+							}
+						});
+					});
+				}
+				if (checkOutputMatches) {
+					if (typeof output !== "undefined") {
+						describe("output", () => {
+							test("normal", () => {
+								expect(strippedResult).toBe(output);
+							});
+							test("hoisted", () => {
+								expect(hoistedAndStrippedResult).toBe(typeof hoisted !== "undefined" ? hoisted : output);
+							});
 						});
 					}
-					test(key, async () => {
-						if (rewrittenFn) {
-							return cases[key](rewrittenFn());
-						}
-					});
-					test(key + " hoisted", async () => {
-						if (hoistedFn) {
-							return cases[key](hoistedFn());
-						}
-					});
+				} else {
+					if (strippedResult !== output) {
+						console.log(name + ": " + strippedResult);
+					}
+					if (hoistedAndStrippedResult !== hoisted) {
+						console.log(name + " hoisted: " + hoistedAndStrippedResult);
+					}
 				}
-			}
+				if (checkTestCases) {
+					for (let key in cases) {
+						if (cases.hasOwnProperty(key)) {
+							describe(key, () => {
+								if (fn) {
+									test("original", () => {
+										return cases[key](fn());
+									});
+								}
+								test("normal", () => {
+									if (rewrittenFn) {
+										return cases[key](rewrittenFn());
+									}
+								});
+								test("hoisted", () => {
+									if (hoistedFn) {
+										return cases[key](hoistedFn());
+									}
+								});
+							});
+						}
+					}
+				}
+			});
 		}
 	});
 }

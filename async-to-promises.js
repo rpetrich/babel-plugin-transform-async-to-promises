@@ -1236,7 +1236,7 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 		const pluginState = state.pluginState;
 		const path = state.path;
 		const additionalConstantNames = state.additionalConstantNames;
-		let processExpressions = !awaitPath.isForAwaitStatement();
+		let processExpressions = awaitPath.isAwaitExpression();
 		if (!processExpressions) {
 			awaitPath = awaitPath.get("left");
 		}
@@ -1506,6 +1506,11 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 		Function: skipNode,
 		AwaitExpression: rewriteAwaitPath,
 		ForAwaitStatement: rewriteAwaitPath,
+		ForOfStatement(path) {
+			if (path.node.await) {
+				rewriteAwaitPath(path);
+			}
+		},
 		CallExpression(path) {
 			const callee = path.get("callee");
 			if (callee.isIdentifier() && callee.node.name === "eval") {

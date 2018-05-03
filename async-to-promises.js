@@ -586,7 +586,7 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 				const declarations = path.get("declarations");
 				for (const declaration of declarations) {
 					const binding = scope.getBinding(declaration.node.id.name);
-					if (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath)) {
+					if (!binding || (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath))) {
 						this.targetPath.scope.push({ id: declaration.node.id });
 						if (declaration.node.init) {
 							path.insertBefore(types.expressionStatement(types.assignmentExpression("=", declaration.node.id, declaration.node.init)));

@@ -227,7 +227,7 @@ exports.default = function({ types, template, traverse, transformFromAst, versio
 						) {
 							const binding = statement.scope.getBinding(i.name);
 							const updateArgument = update.get("argument");
-							if (binding && !binding.constantViolations.some(cv => cv !== updateArgument && cv !== update)) {
+							if (!binding.constantViolations.some(cv => cv !== updateArgument && cv !== update)) {
 								return {
 									i,
 									array: test.node.right.object
@@ -593,7 +593,7 @@ exports.default = function({ types, template, traverse, transformFromAst, versio
 				const declarations = path.get("declarations");
 				for (const declaration of declarations) {
 					const binding = scope.getBinding(declaration.node.id.name);
-					if (binding && (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath))) {
+					if (!binding || (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath))) {
 						this.targetPath.scope.push({ id: declaration.node.id });
 						if (declaration.node.init) {
 							path.insertBefore(types.expressionStatement(types.assignmentExpression("=", declaration.node.id, declaration.node.init)));
@@ -608,12 +608,15 @@ exports.default = function({ types, template, traverse, transformFromAst, versio
 			}
 		},
 		FunctionDeclaration(path) {
-			// Hoist function declarations
 			const siblings = path.getAllPrevSiblings();
 			if (siblings.some(sibling => !sibling.isFunctionDeclaration())) {
 				const node = path.node;
+				const parentPath = path.parentPath;
 				path.remove();
-				siblings[0].insertBefore(node);
+				const paths = siblings[0].insertBefore(node);
+				if (isNewBabel) {
+					parentPath.scope.registerDeclaration(paths[0]);
+				}
 			}
 		},
 	};
@@ -1497,7 +1500,10 @@ exports.default = function({ types, template, traverse, transformFromAst, versio
 							additionalConstantNames.push(id.name);
 						}
 						if (parent.parentPath.isBlockStatement()) {
-							parent.insertBefore(types.variableDeclaration("var", declarations));
+							const newPaths = parent.insertBefore(types.variableDeclaration("var", declarations));
+							if (isNewBabel) {
+								parent.scope.registerDeclaration(newPaths[0]);
+							}
 						} else {
 							parent.replaceWith(blockStatement([types.variableDeclaration("var", declarations), parent.node]));
 							parent = parent.get("body.1");

@@ -1740,6 +1740,32 @@ async function test(v) {
 	}
 });
 
+compiledTest("invoke rewrite with empty continuation", {
+	input: `async function(expression1, expression2, actionAsync) {
+	    if (expression1) {
+	        return;
+	    }
+
+	    if (expression2) {
+			var a = 1;
+	    } else {
+	        try {
+	            let res = await actionAsync();
+	            var b = 2;
+	            return res;
+	        }
+	        catch (error) {
+	            return false;
+	        };
+	    }
+	}`,
+	output: `_async(function(expression1,expression2,actionAsync){if(expression1){return;}return function(){if(expression2){var a=1;}else{return _catch(function(){return _call(actionAsync,function(res){var b=2;return res;});},function(){return false;});}}();})`,
+	hoisted: `var _temp=function(res){var b=2;return res;},_false=function(){return false;};return _async(function(expression1,expression2,actionAsync){var _actionAsync=function(){return _call(actionAsync,_temp);};if(expression1){return;}return function(){if(expression2){var a=1;}else{return _catch(_actionAsync,_false);}}();})`,
+	cases: {
+		result: async f => expect(await f(false, false, () => true)).toBe(true),
+	},
+});
+
 
 compiledTest("eval is evil", {
 	input: `async function(code) { return await eval(code); }`,

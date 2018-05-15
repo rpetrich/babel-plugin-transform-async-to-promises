@@ -331,8 +331,13 @@ exports.default = function({ types, template, traverse, transformFromAst }) {
 		if (ignoreResult) {
 			helperName += "Ignored";
 		}
-		if (helperName === "_continue" && args.length === 1) {
-			return args[0];
+		if (args.length === 1) {
+			switch (helperName) {
+				case "_invoke":
+					return types.callExpression(args[0], []);
+				case "_continue":
+					return args[0];
+			}
 		}
 		return types.callExpression(helperReference(state, path, helperName), args);
 	}

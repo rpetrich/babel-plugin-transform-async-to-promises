@@ -1333,8 +1333,8 @@ exports.default = function({ types, template, traverse, transformFromAst, versio
 					}
 				}
 			} else if (parent.isTryStatement()) {
-				const temporary = explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
-				const success = explicitExits.all ? returnStatement(temporary) : null;
+				const temporary = explicitExits.any && !explicitExits.all ? path.scope.generateUidIdentifier("result") : null;
+				const exitCheck = buildBreakExitCheck(explicitExits.any && !explicitExits.all ? exitIdentifier : null, []);
 				let expression = rewriteAsyncNode(pluginState, parent, parent.node.block, additionalConstantNames, exitIdentifier);
 				const catchClause = parent.node.handler;
 				if (catchClause) {
@@ -1348,7 +1348,7 @@ exports.default = function({ types, template, traverse, transformFromAst, versio
 					let finallyArgs = [];
 					let finallyBody = parent.node.finalizer.body;
 					if (!pathsReturnOrThrow(parent.get("finalizer")).all) {
-						const resultIdentifier = path.scope.generateUidIdentifier("result");
+						const resultIdentifier = temporary || path.scope.generateUidIdentifier("result");
 						additionalConstantNames.push(resultIdentifier.name);
 						const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
 						additionalConstantNames.push(wasThrownIdentifier.name);
@@ -1362,7 +1362,7 @@ exports.default = function({ types, template, traverse, transformFromAst, versio
 					const rewritten = rewriteAsyncNode(pluginState, parent, fn, additionalConstantNames, exitIdentifier);
 					expression = types.callExpression(helperReference(pluginState, parent, finallyName), [unwrapReturnCallWithEmptyArguments(functionize(expression), path.scope, additionalConstantNames), rewritten])
 				}
-				relocateTail(pluginState, expression, success, parent, additionalConstantNames, temporary);
+				relocateTail(pluginState, expression, null, parent, additionalConstantNames, temporary, exitCheck);
 				processExpressions = false;
 			} else if (parent.isForStatement() || parent.isWhileStatement() || parent.isDoWhileStatement() || parent.isForInStatement() || parent.isForOfStatement() || parent.isForAwaitStatement()) {
 				const breaks = pathsBreak(parent);

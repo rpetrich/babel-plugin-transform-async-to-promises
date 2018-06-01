@@ -1789,6 +1789,47 @@ compiledTest("invoke rewrite with empty continuation", {
 	},
 });
 
+compiledTest("return inside try", {
+	input: `async function test(wait, messages) {
+    messages.push('before-try');
+    try {
+        messages.push('start-try');
+        await wait(1);
+        messages.push('stop-try');
+
+        return 'result-try';
+    }
+    catch (e) {
+        messages.push('catch');
+    }
+    messages.push('after-try');
+
+    return 'result-after-try';
+}`,
+	output: `_async(function(wait,messages){var _exit;messages.push('before-try');return _continue(_catch(function(){messages.push('start-try');return _await(wait(1),function(){messages.push('stop-try');_exit=1;return'result-try';});},function(){messages.push('catch');}),function(_result){if(_exit)return _result;messages.push('after-try');return'result-after-try';});})`,
+	hoisted: `_async(function(wait,messages){var _exit,_temp=function(){messages.push('stop-try');_exit=1;return'result-try';};messages.push('before-try');return _continue(_catch(function(){messages.push('start-try');return _await(wait(1),_temp);},function(){messages.push('catch');}),function(_result){if(_exit)return _result;messages.push('after-try');return'result-after-try';});})`,
+	cases: {
+		value: async f => expect(await f(() => 0, [])).toBe('result-try'),
+		messages: async f => {
+			const messages = [];
+			messages.push(await f((index) => {
+				messages.push(`waitStart${index}`);
+				return Promise.resolve().then(() => messages.push(`waitStop${index}`));
+			}, messages));
+			messages.push("stop");
+			expect(messages).toEqual([
+				"before-try",
+				"start-try",
+				"waitStart1",
+				"waitStop1",
+				"stop-try",
+				"result-try",
+				"stop",
+			]);
+		}
+	}
+});
+
 
 compiledTest("eval is evil", {
 	input: `async function(code) { return await eval(code); }`,

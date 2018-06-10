@@ -4,6 +4,7 @@
   "description": "Transform async/await to promise chains",
   "main": "async-to-promises.js",
   "scripts": {
+    "prepare": "tsc --strict --lib es5,es6,es2016 --types node --module commonjs async-to-promises.ts",
     "test": "jest"
   },
   "repository": {
@@ -27,8 +28,15 @@
   "devDependencies": {
     "@babel/core": "^7.0.0-beta.49",
     "@babel/traverse": "^7.0.0-beta.49",
+    "@types/babel-traverse": "^6.25.3",
+    "@types/babel-types": "^6.25.2",
+    "@types/node": "^10.3.2",
     "babel-core": "^6.26.3",
     "babel-traverse": "^6.26.0",
-    "jest": "^23.1.0"
+    "jest": "^23.1.0",
+    "typescript": "^2.9.1"
+  },
+  "dependencies": {
+    "@types/babel-template": "^6.25.0"
   }
 }

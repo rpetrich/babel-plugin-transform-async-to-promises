@@ -866,6 +866,18 @@ compiledTest("for to length iteration", {
 	},
 });
 
+compiledTest("for to length iteration with computed length", {
+	input: `async function(list) { var result = 0; for (var i = 0; i < list["length"]; i++) { result += await list[i](); } return result;}`,
+	output: `_async(function(list){var result=0;return _continue(_forTo(list,function(i){return _await(list[i](),function(_list$i){result+=_list$i;});}),function(){return result;});})`,
+	hoisted: `_async(function(list){var _temp=function(_list$i){result+=_list$i;};var result=0;return _continue(_forTo(list,function(i){return _await(list[i](),_temp);}),function(){return result;});})`,
+	cases: {
+		zero: async f => expect(await f([])).toBe(0),
+		one: async f => expect(await f([async _ => 1])).toBe(1),
+		four: async f => expect(await f([async _ => 1, async _ => 3])).toBe(4),
+		nine: async f => expect(await f([async _ => 1, async _ => 3, async _ => 5])).toBe(9),
+	},
+});
+
 compiledTest("for to length with break", {
 	input: `async function(list) { for (var i = 0; i < list.length; i++) { if (await list[i]()) { break; } }}`,
 	output: `_async(function(list){var _interrupt;var i=0;return _continueIgnored(_for(function(){return!_interrupt&&i<list.length;},function(){return i++;},function(){return _await(list[i](),function(_list$i){if(_list$i){_interrupt=1;}});}));})`,

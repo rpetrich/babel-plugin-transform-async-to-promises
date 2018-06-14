@@ -452,7 +452,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (continuation && isPassthroughContinuation(continuation)) {
 			continuation = undefined;
 		}
-		if (!continuation && directExpression && types.isBooleanLiteral(directExpression) && directExpression.value) {
+		if (!continuation && directExpression && extractLooseBooleanValue(directExpression) === true) {
 			return value;
 		}
 		let useCallHelper: boolean;
@@ -468,7 +468,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (!ignoreResult && continuation) {
 			args.push(unwrapReturnCallWithPassthroughArgument(continuation, path.scope));
 		}
-		if (directExpression && !(types.isBooleanLiteral(directExpression) && !directExpression.value)) {
+		if (directExpression && extractLooseBooleanValue(directExpression) !== false) {
 			if (!ignoreResult && !continuation) {
 				args.push(voidExpression());
 			}

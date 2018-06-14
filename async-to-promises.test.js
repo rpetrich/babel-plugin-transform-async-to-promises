@@ -191,6 +191,22 @@ compiledTest("basic async", {
 	},
 });
 
+compiledTest("async await", {
+	input: `async function() { return await true; }`,
+	output: `function(){return _await(true);}`,
+	cases: {
+		result: async f => expect(await f()).toBe(true),
+	},
+});
+
+compiledTest("async await with variable", {
+	input: `async function() { var result = await true; return result; }`,
+	output: `function(){return _await(true);}`,
+	cases: {
+		result: async f => expect(await f()).toBe(true),
+	},
+});
+
 compiledTest("call chains", {
 	input: `async function(a, b, c) { return await a(await b(), await c()); }`,
 	output: `function(a,b,c){return _call(b,function(_b){return _call(c,function(_c){return _await(a(_b,_c));});});}`,

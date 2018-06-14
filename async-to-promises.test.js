@@ -252,6 +252,21 @@ compiledTest("await logical right optimized", {
 	},
 });
 
+compiledTest("await logical statement if", {
+	input: `async function(left, right) { if (true) { const result = left() && await right(); return result || result; } return false; }`,
+	output: `_async(function(left,right){var _exit;return _invoke(function(){if(true){var _left=left();return _await(_left&&right(),function(result){_exit=1;return result||result;},!_left);}},function(_result){return _exit?_result:false;});})`,
+	hoisted: `_async(function(left,right){var _exit,_temp=function(result){_exit=1;return result||result;};return _invoke(function(){if(true){var _left=left();return _await(_left&&right(),_temp,!_left);}},function(_result){return _exit?_result:false;});})`,
+	cases: {
+		false: async f => expect(await f(_ => 0, async _ => 2)).toBe(0),
+		true: async f => expect(await f(_ => 5, async _ => 2)).toBe(2),
+		order: async f => {
+			let lastCalled = 0;
+			await f(() => lastCalled = 1, () => lastCalled = 2);
+			expect(lastCalled).toBe(2);
+		}
+	},
+});
+
 compiledTest("await logical statement scope", {
 	input: `async function(left, right) { if (true) { const result = left() && await right(); return result || result; } else { return false; } }`,
 	output: `_async(function(left,right){if(true){var _left=left();return _await(_left&&right(),function(result){return result||result;},!_left);}else{return false;}})`,

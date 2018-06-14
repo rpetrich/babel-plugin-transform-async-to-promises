@@ -232,6 +232,15 @@ compiledTest("assign to variable", {
 	},
 });
 
+compiledTest("assign to pattern", {
+	input: `async function(foo) { const { result } = await foo(); return result + 1; }`,
+	output: `function(foo){return _call(foo,function(_foo){const{result}=_foo;return result+1;});}`,
+	hoisted: `var _temp=function(_foo){const{result}=_foo;return result+1;};return function(foo){return _call(foo,_temp);}`,
+	cases: {
+		result: async f => expect(await f(async _ => ({ result: 4 }))).toBe(5),
+	},
+});
+
 compiledTest("two variables", {
 	input: `async function(foo, bar) { var f = await foo(); var b = await bar(); return f + b; }`,
 	output: `function(foo,bar){return _call(foo,function(f){return _call(bar,function(b){return f+b;});});}`,
@@ -1050,6 +1059,16 @@ compiledTest("for await of in body", {
 		empty: async f => expect(await f([])).toBe(0),
 		single: async f => expect(await f([1])).toBe(1),
 		multiple: async f => expect(await f([1,2])).toBe(3),
+	},
+});
+
+compiledTest("for await of pattern in body", {
+	input: `async function(iter) { let result = 0; for await (const { value } of iter) { result += value; } return result; }`,
+	output: `_async(function(iter){let result=0;return _continue(_forAwaitOf(iter,function({value}){result+=value;}),function(){return result;});})`,
+	cases: {
+		empty: async f => expect(await f([])).toBe(0),
+		single: async f => expect(await f([{ value: 1 }])).toBe(1),
+		multiple: async f => expect(await f([{ value: 1 },{ value: 2 }])).toBe(3),
 	},
 });
 

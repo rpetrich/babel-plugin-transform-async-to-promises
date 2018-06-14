@@ -941,6 +941,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function conditionalExpression(test: Expression, consequent: Expression, alternate: Expression) {
+		const looseValue = extractLooseBooleanValue(test);
+		if (typeof looseValue !== "undefined") {
+			return looseValue ? consequent : alternate;
+		}
 		while (types.isUnaryExpression(test) && test.operator === "!") {
 			test = test.argument;
 			const temp = consequent;
@@ -962,9 +966,13 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (types.isBooleanLiteral(node)) {
 			return node.value;
 		}
-		if (types.isUnaryExpression(node) && node.operator === "!") {
-			const result = extractLooseBooleanValue(node.argument);
-			return typeof result === "undefined" ? undefined : !result;
+		if (types.isUnaryExpression(node)) {
+			if (node.operator === "!") {
+				const result = extractLooseBooleanValue(node.argument);
+				return typeof result === "undefined" ? undefined : !result;
+			} else if (node.operator === "void") {
+				return typeof extractLooseBooleanValue(node.argument) !== "undefined" ? false : undefined;
+			}
 		}
 	}
 
@@ -983,10 +991,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				return false;
 			}
 		}
-		if (types.isUnaryExpression(node) && node.operator === "!") {
-			const result = extractLooseBooleanValue(node.argument);
-			return typeof result === "undefined" ? undefined : !result;
-		}
+		return extractBooleanValue(node);
 	}
 
 	function logicalOr(left: Expression, right: Expression): Expression {

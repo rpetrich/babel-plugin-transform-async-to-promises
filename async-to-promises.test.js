@@ -1143,8 +1143,8 @@ compiledTest("while promise direct", {
 
 compiledTest("while promise indirect", {
 	input: `async function() { function passthrough(value) { return value; } while (passthrough(true ? Promise.resolve(false) : await false)) { return true; } return false; }`,
-	output: `_async(function(){var _exit;function passthrough(value){return value;}return _continue(_for(function(){return _await(!_exit&&(true?Promise.resolve(false):false),function(_false){return!_exit&&!!passthrough(_false);},true);},void 0,function(){return _exit=true;}),function(_result){return _exit?_result:false;});})`,
-	hoisted: `_async(function(){var _exit,_temp=function(_false){return!_exit&&!!passthrough(_false);};function passthrough(value){return value;}return _continue(_for(function(){return _await(!_exit&&(true?Promise.resolve(false):false),_temp,true);},void 0,function(){return _exit=true;}),function(_result){return _exit?_result:false;});})`,
+	output: `_async(function(){var _exit;function passthrough(value){return value;}return _continue(_for(function(){return _await(!_exit&&Promise.resolve(false),function(_false){return!_exit&&!!passthrough(_false);},true);},void 0,function(){return _exit=true;}),function(_result){return _exit?_result:false;});})`,
+	hoisted: `_async(function(){var _exit,_temp=function(_false){return!_exit&&!!passthrough(_false);};function passthrough(value){return value;}return _continue(_for(function(){return _await(!_exit&&Promise.resolve(false),_temp,true);},void 0,function(){return _exit=true;}),function(_result){return _exit?_result:false;});})`,
 	cases: {
 		result: async f => expect(await f()).toBe(true),
 	}

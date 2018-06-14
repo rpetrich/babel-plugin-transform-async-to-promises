@@ -2,3 +2,4 @@
 babel-plugin-transform-async-to-promises-*.tgz
 coverage
 .travis.yml
+*.ts

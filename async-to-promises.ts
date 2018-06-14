@@ -1223,7 +1223,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							const newArguments: (Expression | SpreadElement)[] = [object.node];
 							parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), newArguments.concat(parent.node.arguments)));
 							declarations.unshift(types.variableDeclarator(calleeIdentifier, calleeNode));
-						} else if (!callee.isIdentifier() || !(!callee.node._helperName || (awaitPath.scope.getBinding(callee.node.name) || { constant: false }).constant)) {
+						} else if (!callee.isIdentifier() || !(callee.node._helperName || (awaitPath.scope.getBinding(callee.node.name) || { constant: false }).constant)) {
 							const calleeIdentifier = generateIdentifierForPath(callee);
 							const calleeNode = callee.node;
 							callee.replaceWith(calleeIdentifier);

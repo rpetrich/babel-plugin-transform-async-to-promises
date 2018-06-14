@@ -933,7 +933,11 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function generateIdentifierForPath(path: NodePath): Identifier {
-		return path.scope.generateUidIdentifierBasedOnNode(path.node, "temp");
+		const result = path.scope.generateUidIdentifierBasedOnNode(path.node, "temp");
+		if (path.isIdentifier() && path.node.name === result.name) {
+			return path.scope.generateUidIdentifier("temp");
+		}
+		return result;
 	}
 
 	function conditionalExpression(test: Expression, consequent: Expression, alternate: Expression) {

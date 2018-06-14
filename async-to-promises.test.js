@@ -662,7 +662,7 @@ compiledTest("compound variable declarator", {
 	},
 });
 
-compiledTest("calling member functions", {
+compiledTest("calling member functions directly", {
 	input: `async function(foo, bar) { return bar.baz(await foo()); }`,
 	output: `_async(function(foo,bar){var _baz=bar.baz;return _call(foo,function(_foo){return _baz.call(bar,_foo);});})`,
 	cases: {
@@ -672,6 +672,34 @@ compiledTest("calling member functions", {
 				baz: () => true,
 			};
 			expect(await f(() => bar.baz = () => false, bar)).toBe(true)
+		}
+	},
+});
+
+compiledTest("calling member functions via computed literal", {
+	input: `async function(foo, bar) { return bar["baz"](await foo()); }`,
+	output: `_async(function(foo,bar){var _baz=bar["baz"];return _call(foo,function(_foo){return _baz.call(bar,_foo);});})`,
+	cases: {
+		normal: async f => expect(await f(async _ => true, { baz: arg => arg })).toBe(true),
+		reassign: async f => {
+			const bar = {
+				baz: () => true,
+			};
+			expect(await f(() => bar.baz = () => false, bar)).toBe(true)
+		}
+	},
+});
+
+compiledTest("calling member functions via computed expression", {
+	input: `async function(foo, bar, baz) { return bar[baz](await foo()); }`,
+	output: `_async(function(foo,bar,baz){var _baz=bar[baz];return _call(foo,function(_foo){return _baz.call(bar,_foo);});})`,
+	cases: {
+		normal: async f => expect(await f(async _ => true, { baz: arg => arg }, "baz")).toBe(true),
+		reassign: async f => {
+			const bar = {
+				baz: () => true,
+			};
+			expect(await f(() => bar.baz = () => false, bar, "baz")).toBe(true)
 		}
 	},
 });

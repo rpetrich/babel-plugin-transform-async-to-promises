@@ -990,13 +990,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function logicalOr(left: Expression, right: Expression): Expression {
-		switch (extractBooleanValue(left)) {
-			case true:
-				return left;
-			case false:
-				return right;
-			default:
-				return types.logicalExpression("||", left, right);
+		if (extractLooseBooleanValue(left) === true) {
+			return left;
+		} else if (extractBooleanValue(left) === false) {
+			return right;
+		} else {
+			return types.logicalExpression("||", left, right);
 		}
 	}
 

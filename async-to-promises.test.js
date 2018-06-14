@@ -234,8 +234,8 @@ compiledTest("assign to variable", {
 
 compiledTest("assign to pattern", {
 	input: `async function(foo) { const { result } = await foo(); return result + 1; }`,
-	output: `function(foo){return _call(foo,function(_foo){const{result}=_foo;return result+1;});}`,
-	hoisted: `var _temp=function(_foo){const{result}=_foo;return result+1;};return function(foo){return _call(foo,_temp);}`,
+	output: `function(foo){return _call(foo,function({result}){return result+1;});}`,
+	hoisted: `var _temp=function({result}){return result+1;};return function(foo){return _call(foo,_temp);}`,
 	cases: {
 		result: async f => expect(await f(async _ => ({ result: 4 }))).toBe(5),
 	},
@@ -1709,8 +1709,8 @@ compiledTest("for await of event loop ordering", {
 
 compiledTest("Object spreading", {
 	input: `async function(foo) { const { bar } = await foo(); return bar; }`,
-	output: `function(foo){return _call(foo,function(_foo){const{bar}=_foo;return bar;});}`,
-	hoisted: `var _temp=function(_foo){const{bar}=_foo;return bar;};return function(foo){return _call(foo,_temp);}`,
+	output: `function(foo){return _call(foo,function({bar}){return bar;});}`,
+	hoisted: `var _bar=function({bar}){return bar;};return function(foo){return _call(foo,_bar);}`,
 	cases: {
 		value: async f => expect(await f(() => ({ bar: "baz" }))).toBe("baz"),
 	},
@@ -1718,8 +1718,8 @@ compiledTest("Object spreading", {
 
 compiledTest("Array spreading", {
 	input: `async function(foo) { const [bar] = await foo(); return bar; }`,
-	output: `function(foo){return _call(foo,function(_foo){const[bar]=_foo;return bar;});}`,
-	hoisted: `var _temp=function(_foo){const[bar]=_foo;return bar;};return function(foo){return _call(foo,_temp);}`,
+	output: `function(foo){return _call(foo,function([bar]){return bar;});}`,
+	hoisted: `var _bar=function([bar]){return bar;};return function(foo){return _call(foo,_bar);}`,
 	cases: {
 		value: async f => expect(await f(() => ["baz"])).toBe("baz"),
 	},

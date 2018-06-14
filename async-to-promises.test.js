@@ -1725,6 +1725,15 @@ compiledTest("Array spreading", {
 	},
 });
 
+compiledTest("Array rest spreading", {
+	input: `async function(foo) { const [bar, ...rest] = await foo(); return rest; }`,
+	output: `function(foo){return _call(foo,function([bar,...rest]){return rest;});}`,
+	hoisted: `var _rest=function([bar,...rest]){return rest;};return function(foo){return _call(foo,_rest);}`,
+	cases: {
+		value: async f => expect(await f(() => ["foo", "bar", "baz"])).toEqual(["bar", "baz"]),
+	},
+});
+
 
 compiledTest("Complex continuation ordering", {
 	input: `() => {

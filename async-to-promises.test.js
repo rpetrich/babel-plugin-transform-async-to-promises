@@ -1851,7 +1851,7 @@ async function test(v) {
     return messages;
 }`,
 	output: `var test=_async(function(v){var _interrupt=false;let messages=[];return _continue(_switch(v,[[function(){return'case1';},function(){messages.push('case1Start');return _await(wait(messages),function(){messages.push('case1Stop');_interrupt=true;});}],[function(){return'case2';},function(){messages.push('case2Start');return _await(wait(messages),function(){messages.push('case2Stop');});},_empty],[function(){return'case3';},function(){messages.push('case3Start');return _await(wait(messages),function(){messages.push('case3Stop');_interrupt=true;});}]]),function(){return messages;});});return Promise.all([test('case1'),test('case2'),test('case3')]);function wait(messages){messages.push('waitStart');return new Promise((resolve,reject)=>setTimeout(resolve,0)).then(()=>{messages.push('waitStop');});}`,
-	hoisted: `var _caseone=function(){return'case1';},_casetwo=function(){return'case2';},_casethree=function(){return'case3';},_caseone2=function(){return'case1';},_casetwo2=function(){return'case2';},_casethree2=function(){return'case3';};var test=_async(function(v){var _interrupt,_temp=function(){messages.push('case1Stop');_interrupt=1;},_temp2=function(){messages.push('case2Stop');},_temp3=function(){messages.push('case3Stop');_interrupt=1;},_temp4=function(){messages.push('case2Stop');},_temp5=function(){messages.push('case1Stop');_interrupt=1;},_temp6=function(){messages.push('case3Stop');_interrupt=1;},_temp7=function(){messages.push('case1Start');return _await(wait(messages),_temp5);},_temp8=function(){messages.push('case2Start');return _await(wait(messages),_temp4);},_temp9=function(){messages.push('case3Start');return _await(wait(messages),_temp6);},_messages=function(){return messages;};let messages=[];return _continue(_switch(v,[[_caseone,function(){messages.push('case1Start');return _await(wait(messages),_temp);}],[_casetwo,function(){messages.push('case2Start');return _await(wait(messages),_temp2);},_empty],[_casethree,function(){messages.push('case3Start');return _await(wait(messages),_temp3);}]]),function(){return messages;});});return Promise.all([test('case1'),test('case2'),test('case3')]);function wait(messages){messages.push('waitStart');return new Promise((resolve,reject)=>setTimeout(resolve,0)).then(()=>{messages.push('waitStop');});}`,
+	hoisted: `var _caseone=function(){return'case1';},_casetwo=function(){return'case2';},_casethree=function(){return'case3';};var test=_async(function(v){var _interrupt,_temp=function(){messages.push('case1Stop');_interrupt=1;},_temp2=function(){messages.push('case2Stop');},_temp3=function(){messages.push('case3Stop');_interrupt=1;},_temp4=function(){messages.push('case1Start');return _await(wait(messages),_temp);},_temp5=function(){messages.push('case2Start');return _await(wait(messages),_temp2);},_temp6=function(){messages.push('case3Start');return _await(wait(messages),_temp3);},_messages=function(){return messages;};let messages=[];return _continue(_switch(v,[[_caseone,function(){messages.push('case1Start');return _await(wait(messages),_temp);}],[_casetwo,function(){messages.push('case2Start');return _await(wait(messages),_temp2);},_empty],[_casethree,function(){messages.push('case3Start');return _await(wait(messages),_temp3);}]]),function(){return messages;});});return Promise.all([test('case1'),test('case2'),test('case3')]);function wait(messages){messages.push('waitStart');return new Promise((resolve,reject)=>setTimeout(resolve,0)).then(()=>{messages.push('waitStop');});}`,
 	cases: {
 		run: async v => {
 			expect(await v).toEqual([
@@ -1927,6 +1927,27 @@ compiledTest("return inside try", {
 				"stop",
 			]);
 		}
+	}
+});
+
+compiledTest("hoist deduping", {
+	input: `async function(a, b, c) {
+		if (await a()) {
+			if (await b()) {
+				const result = await c();
+				return result || result;
+			}
+		} else {
+			const result = await c();
+			return result || result;
+		}
+	}`,
+	output: `function(a,b,c){return _call(a,function(_a){return function(){if(_a){return _call(b,function(_b){return function(){if(_b){return _call(c,function(result){return result||result;});}}();});}else{return _call(c,function(result){return result||result;});}}();});}`,
+	hoisted: `var _temp=function(result){return result||result;};return function(a,b,c){var _temp2=function(_b){return function(){if(_b){return _call(c,_temp);}}();};return _call(a,function(_a){return function(){if(_a){return _call(b,_temp2);}else{return _call(c,_temp);}}();});}`,
+	cases: {
+		one: async (f) => expect(await f(() => true, () => true, () => true)).toBe(true),
+		two: async (f) => expect(await f(() => true, () => false, () => true)).toBe(undefined),
+		three: async (f) => expect(await f(() => false, () => false, () => true)).toBe(true),
 	}
 });
 

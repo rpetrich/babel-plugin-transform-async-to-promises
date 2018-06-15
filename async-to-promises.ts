@@ -624,6 +624,18 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return types.isStringLiteral(node) || types.isNumericLiteral(node) || types.isBooleanLiteral(node);
 	}
 
+	function keyFilter(key: string, value: any) {
+		return key === "start" || key === "end" || key === "loc" ? null : value;
+	}
+
+	function nodesAreIdentical<T extends Node>(node: T): (node: T) => boolean {
+		// Temporary deduping mechanism that filters source locations to see if nodes are otherwise identical
+		const cached = JSON.stringify(node, keyFilter);
+		return (other: T) => {
+			return cached === JSON.stringify(other, keyFilter);
+		}
+	}
+
 	const hoistCallArgumentsVisitor: Visitor<HoistCallArgumentsState> = {
 		FunctionExpression(path) {
 			path.skip();
@@ -658,6 +670,28 @@ export default function({ types, template, traverse, transformFromAst, version }
 				}
 			}
 			if (!ancestry.includes(path.scope.parent)) {
+				const bindings = scope.bindings;
+				let filter: undefined | ((node: FunctionExpression) => boolean);
+				for (const key in bindings) {
+					if (Object.hasOwnProperty.call(bindings, key)) {
+						const binding = bindings[key];
+						if (binding.constant) {
+							const bindingPath = binding.path;
+							if (bindingPath.isVariableDeclarator()) {
+								const init = bindingPath.get("init");
+								if (init.isFunctionExpression()) {
+									if (!filter) {
+										filter = nodesAreIdentical(path.node);
+									}
+									if (filter(init.node)) {
+										path.replaceWith(binding.identifier);
+										return;
+									}
+								}
+							}
+						}
+					}
+				}
 				let nameNode: Node = path.node;
 				if (types.isFunctionExpression(nameNode) && nameNode.body.body.length === 1) {
 					nameNode = nameNode.body.body[0];

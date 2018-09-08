@@ -31,10 +31,10 @@
     "@types/babel-template": "^6.25.1",
     "@types/babel-traverse": "^6.25.4",
     "@types/babel-types": "^7.0.4",
-    "@types/node": "^10.3.3",
+    "@types/node": "^10.9.4",
     "babel-core": "^6.26.3",
     "babel-traverse": "^6.26.0",
     "jest": "^23.1.0",
-    "typescript": "^2.9.2"
+    "typescript": "^3.0.3"
   }
 }

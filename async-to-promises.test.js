@@ -680,8 +680,25 @@ compiledTest("forwarding to const async optimization bail out", {
 
 
 compiledTest("compound variable declarator", {
+	input: `async function(foo, bar) { var a = foo(), b = await bar(), c = 3; return a + b + c; }`,
+	output: `_async(function(foo,bar){var a=foo();return _call(bar,function(b){var c=3;return a+b+c;});})`,
+	cases: {
+		result: async f => expect(await f(() => 1, async _ => 2)).toBe(6),
+	},
+});
+
+compiledTest("compound variable declarator optimized", {
 	input: `async function(foo) { var a = 1, b = await foo(), c = 3; return a + b + c; }`,
-	output: `function(foo){var a=1;return _call(foo,function(b){var c=3;return a+b+c;});}`,
+	output: `function(foo){return _call(foo,function(b){var a=1,c=3;return a+b+c;});}`,
+	hoisted: `var _temp=function(b){var a=1,c=3;return a+b+c;};return function(foo){return _call(foo,_temp);}`,
+	cases: {
+		result: async f => expect(await f(async _ => 2)).toBe(6),
+	},
+});
+
+compiledTest("compound variable declarator optimized bail-out", {
+	input: `async function(foo, bar) { var a = 0, b = foo(), c = await bar(), d = 3; return a + b + c + d; }`,
+	output: `_async(function(foo,bar){var a=0,b=foo();return _call(bar,function(c){var d=3;return a+b+c+d;});})`,
 	cases: {
 		result: async f => expect(await f(async _ => 2)).toBe(6),
 	},

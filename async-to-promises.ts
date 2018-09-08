@@ -1153,11 +1153,16 @@ export default function({ types, template, traverse, transformFromAst, version }
 			const parent = awaitPath.parentPath;
 			if (parent.isVariableDeclarator()) {
 				const beforeDeclarations: VariableDeclarator[] = [];
+				let skipLiterals = true;
 				for (let key = (parent.key as number) - 1; key >= 0; --key) {
 					const sibling = parent.getSibling(key);
 					if (sibling.isVariableDeclarator()) {
-						beforeDeclarations.push(sibling.node);
-						sibling.remove();
+						const init = sibling.get("init");
+						if (!skipLiterals || (init && !isExpressionOfLiterals(init, additionalConstantNames))) {
+							skipLiterals = false;
+							beforeDeclarations.unshift(sibling.node);
+							sibling.remove();
+						}
 					} else {
 						throw sibling.buildCodeFrameError(`Expected a variable declarator, got a ${sibling.type}!`);
 					}

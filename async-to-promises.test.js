@@ -215,6 +215,22 @@ compiledTest("call chains", {
 	},
 });
 
+compiledTest("call member expression", {
+	input: `async function(foo, baz) { return foo.bar(await baz) }`,
+	output: `_async(function(foo,baz){var _bar=foo.bar;return _await(baz,function(_baz){return _bar.call(foo,_baz);});})`,
+	cases: {
+		result: async f => expect(await f({ bar: (value) => value }, Promise.resolve(1))).toBe(1),
+	},
+});
+
+compiledTest("call non-pure member expression", {
+	input: `async function(foo, baz) { foo = foo; return foo.bar(await baz) }`,
+	output: `_async(function(foo,baz){foo=foo;var _foo=foo,_bar=_foo.bar;return _await(baz,function(_baz){return _bar.call(_foo,_baz);});})`,
+	cases: {
+		result: async f => expect(await f({ bar: (value) => value }, Promise.resolve(1))).toBe(1),
+	},
+});
+
 compiledTest("argument evaluation order", {
 	input: `async function(a, b, c) { return await a(1, b() + 1, await c()); }`,
 	output: `_async(function(a,b,c){var _temp=b()+1;return _call(c,function(_c){return _await(a(1,_temp,_c));});})`,

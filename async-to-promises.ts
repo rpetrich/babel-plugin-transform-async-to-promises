@@ -1275,9 +1275,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 					if (!isExpressionOfLiterals(callee, additionalConstantNames)) {
 						if (callee.isMemberExpression()) {
 							const object = callee.get("object");
+							let objectDeclarator: VariableDeclarator | undefined;
 							if (!isExpressionOfLiterals(object, additionalConstantNames)) {
 								const objectIdentifier = generateIdentifierForPath(object);
-								declarations.unshift(types.variableDeclarator(objectIdentifier, object.node));
+								objectDeclarator = types.variableDeclarator(objectIdentifier, object.node);
 								object.replaceWith(objectIdentifier);
 							}
 							const property = callee.get("property");
@@ -1286,6 +1287,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 							const newArguments: (Expression | SpreadElement)[] = [object.node];
 							parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), newArguments.concat(parent.node.arguments)));
 							declarations.unshift(types.variableDeclarator(calleeIdentifier, calleeNode));
+							if (typeof objectDeclarator !== "undefined") {
+								declarations.unshift(objectDeclarator);
+							}
 						} else if (!callee.isIdentifier() || !(callee.node._helperName || (awaitPath.scope.getBinding(callee.node.name) || { constant: false }).constant)) {
 							const calleeIdentifier = generateIdentifierForPath(callee);
 							const calleeNode = callee.node;

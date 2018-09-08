@@ -972,6 +972,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (path.isConditionalExpression()) {
 			return isExpressionOfLiterals(path.get("test"), literalNames) && isExpressionOfLiterals(path.get("consequent"), literalNames) && isExpressionOfLiterals(path.get("alternate"), literalNames);
 		}
+		if (path.isFunctionExpression() && !path.node.id) {
+			return true;
+		}
+		if (path.isArrowFunctionExpression()) {
+			return true;
+		}
 		return false;
 	}
 

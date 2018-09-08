@@ -716,7 +716,7 @@ compiledTest("compound variable declarator optimized bail-out", {
 	input: `async function(foo, bar) { var a = 0, b = foo(), c = await bar(), d = 3; return a + b + c + d; }`,
 	output: `_async(function(foo,bar){var a=0,b=foo();return _call(bar,function(c){var d=3;return a+b+c+d;});})`,
 	cases: {
-		result: async f => expect(await f(async _ => 2)).toBe(6),
+		result: async f => expect(await f(() => 1, async _ => 2)).toBe(6),
 	},
 });
 

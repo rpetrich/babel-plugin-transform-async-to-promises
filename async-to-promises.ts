@@ -1153,8 +1153,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 			const parent = awaitPath.parentPath;
 			if (parent.isVariableDeclarator()) {
 				const beforeDeclarations: VariableDeclarator[] = [];
-				while (parent.key !== 0) {
-					const sibling = parent.getSibling(0);
+				for (let key = (parent.key as number) - 1; key >= 0; --key) {
+					const sibling = parent.getSibling(key);
 					if (sibling.isVariableDeclarator()) {
 						beforeDeclarations.push(sibling.node);
 						sibling.remove();

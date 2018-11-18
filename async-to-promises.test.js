@@ -1597,6 +1597,12 @@ export async function foo() { return await Promise.resolve(true); }
 	module: true,
 });
 
+compiledTest("export default hoisting", {
+	input: `export default async function foo() { return await Promise.resolve(true); }`,
+	output: `export default foo;const foo=_async(function(){return Promise.resolve(true);});`,
+	checkSyntax: false,
+	module: true,
+});
 
 compiledTest("helper names", {
 	input: `async function(_async, _await) { return await _async(0) && _await(); }`,

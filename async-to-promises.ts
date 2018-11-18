@@ -2331,7 +2331,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 					const declarators = [types.variableDeclarator(node.id, expression)];
 					let targetPath: NodePath<Node>;
 					if (path.parentPath.isExportDeclaration()) {
-						path.replaceWith(types.variableDeclaration("const", declarators));
+						if (path.parentPath.isExportDefaultDeclaration()) {
+							path.parentPath.insertBefore(types.variableDeclaration("const", declarators));
+							path.replaceWith(node.id);
+						} else {
+							path.replaceWith(types.variableDeclaration("const", declarators));
+						}
 						targetPath = path.parentPath;
 					} else {
 						path.replaceWith(types.variableDeclaration("var", declarators));

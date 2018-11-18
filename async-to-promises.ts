@@ -2319,6 +2319,17 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	function reorderPathBeforeSiblingStatements(targetPath: NodePath) {
+		for (const sibling of targetPath.getAllPrevSiblings().reverse()) {
+			if (!sibling.isFunctionDeclaration()) {
+				const newNode = targetPath.node;
+				targetPath.remove();
+				sibling.insertBefore(newNode);
+				return;
+			}
+		}
+	}
+
 	return {
 		manipulateOptions(options: any, parserOptions: { plugins: string[] }) {
 			parserOptions.plugins.push("asyncGenerators");
@@ -2332,23 +2343,18 @@ export default function({ types, template, traverse, transformFromAst, version }
 					let targetPath: NodePath<Node>;
 					if (path.parentPath.isExportDeclaration()) {
 						if (path.parentPath.isExportDefaultDeclaration()) {
-							path.parentPath.insertBefore(types.variableDeclaration("const", declarators));
-							path.replaceWith(node.id);
+							// export default function... is a function declaration in babel 7
+							const targetPath = path.parentPath;
+							targetPath.replaceWith(types.variableDeclaration("const", declarators));
+							targetPath.insertAfter(types.exportDefaultDeclaration(node.id));
+							reorderPathBeforeSiblingStatements(targetPath);
 						} else {
 							path.replaceWith(types.variableDeclaration("const", declarators));
+							reorderPathBeforeSiblingStatements(path.parentPath);
 						}
-						targetPath = path.parentPath;
 					} else {
 						path.replaceWith(types.variableDeclaration("var", declarators));
-						targetPath = path;
-					}
-					for (const sibling of targetPath.getAllPrevSiblings().reverse()) {
-						if (!sibling.isFunctionDeclaration()) {
-							const newNode = targetPath.node;
-							targetPath.remove();
-							sibling.insertBefore(newNode);
-							return;
-						}
+						reorderPathBeforeSiblingStatements(path);
 					}
 				}
 			},
@@ -2362,6 +2368,15 @@ export default function({ types, template, traverse, transformFromAst, version }
 			},
 			FunctionExpression(path) {
 				if (path.node.async) {
+					const id = path.node.id;
+					if (path.parentPath.isExportDefaultDeclaration() && id !== null) {
+						// export default function... is a function expression in babel 6
+						const targetPath = path.parentPath;
+						targetPath.replaceWith(types.variableDeclaration("const", [types.variableDeclarator(path.node.id, types.functionExpression(path.node.id, path.node.params, path.node.body, path.node.generator, path.node.async))]));
+						targetPath.insertAfter(types.exportDefaultDeclaration(id));
+						reorderPathBeforeSiblingStatements(targetPath);
+						return;
+					}
 					rewriteThisArgumentsAndHoistFunctions(path, path);
 					rewriteAsyncBlock(this, path, []);
 					const inlineAsync = this.opts.inlineAsync;

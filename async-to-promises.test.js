@@ -1599,7 +1599,14 @@ export async function foo() { return await Promise.resolve(true); }
 
 compiledTest("export default hoisting", {
 	input: `export default async function foo() { return await Promise.resolve(true); }`,
-	output: `export default foo;const foo=_async(function(){return Promise.resolve(true);});`,
+	output: `const foo=_async(function(){return Promise.resolve(true);});export default foo;`,
+	checkSyntax: false,
+	module: true,
+});
+
+compiledTest("export default hoisting order", {
+	input: `foo();export default async function foo() { return await Promise.resolve(true); }`,
+	output: `const foo=_async(function(){return Promise.resolve(true);});foo();export default foo;`,
 	checkSyntax: false,
 	module: true,
 });

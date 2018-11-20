@@ -2339,6 +2339,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 				const node = path.node;
 				if (node.async) {
 					const expression = types.functionExpression(undefined, node.params, node.body, node.generator, node.async);
+					if (node.id === null) {
+						path.replaceWith(expression);
+						return;
+					}
 					const declarators = [types.variableDeclarator(node.id, expression)];
 					let targetPath: NodePath<Node>;
 					if (path.parentPath.isExportDeclaration()) {

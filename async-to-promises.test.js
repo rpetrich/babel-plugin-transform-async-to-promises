@@ -1611,6 +1611,13 @@ compiledTest("export default hoisting order", {
 	module: true,
 });
 
+compiledTest("export default unnamed", {
+	input: `export default async function() { return true; }`,
+	output: `export default(function(){return _await(true);});`,
+	checkSyntax: false,
+	module: true,
+});
+
 compiledTest("helper names", {
 	input: `async function(_async, _await) { return await _async(0) && _await(); }`,
 	// Output test doesn't work now that we have a more precise check

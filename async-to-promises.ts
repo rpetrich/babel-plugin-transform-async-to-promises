@@ -1,4 +1,4 @@
-import { AwaitExpression, BlockStatement, CallExpression, LabeledStatement, Node, Expression, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal } from "babel-types";
+import { AwaitExpression, BlockStatement, CallExpression, LabeledStatement, Node, Expression, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal } from "babel-types";
 import { NodePath, Scope, Visitor } from "babel-traverse";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -607,12 +607,18 @@ export default function({ types, template, traverse, transformFromAst, version }
 					} else {
 						const binding = identifierPath.scope.getBinding(name);
 						if (binding) {
-							if (binding.scope && this.pathScopes.includes(binding.scope)) {
-								this.scopes.push(binding.scope);
+							let scope = binding.scope;
+							if (scope !== null) {
+								if (binding.kind === "var" && !binding.path.isFunction()) {
+									const functionScope = scope.getFunctionParent() || scope.getProgramParent();
+									if (functionScope !== null) {
+										scope = functionScope;
+									}
+								}
+								if (this.pathScopes.includes(scope)) {
+									this.scopes.push(scope);
+								}
 							}
-						} else if (isNewBabel) {
-							// Babel 7 doesn't resolve bindings for some reason, need to be conservative with hoisting
-							this.scopes.push(this.path.scope.parent);
 						}
 					}
 				}
@@ -635,6 +641,20 @@ export default function({ types, template, traverse, transformFromAst, version }
 			return cached === JSON.stringify(other, keyFilter);
 		}
 	}
+
+	const reregisterVariableVisitor: Visitor<{ originalScope: Scope }> = {
+		VariableDeclaration(path) {
+			for (const declarator of path.node.declarations) {
+				if (declarator.id.type === "Identifier") {
+					this.originalScope.removeBinding(declarator.id.name);
+				}
+			}
+			path.scope.registerDeclaration(path);
+		},
+		Function(path) {
+			path.skip();
+		}
+	};
 
 	const hoistCallArgumentsVisitor: Visitor<HoistCallArgumentsState> = {
 		FunctionExpression(path) {
@@ -661,7 +681,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				path,
 				additionalConstantNames: this.additionalConstantNames,
 			});
-			let scope = path.scope.getProgramParent()
+			let scope = path.scope.getProgramParent();
 			let ancestry = [scope];
 			for (let otherScope of scopes) {
 				if (!ancestry.includes(otherScope)) {
@@ -705,15 +725,34 @@ export default function({ types, template, traverse, transformFromAst, version }
 						nameNode = nameNode.arguments[0];
 					}
 				}
-				const identifier = isValueLiteral(nameNode) ? path.scope.generateUidIdentifier(nameNode.value.toString().replace(/\d/g, (number: any) => numberNames[number as number])) : path.scope.generateUidIdentifierBasedOnNode(nameNode, "temp");
-				scope.push({ id: identifier, init: path.node });
-				path.replaceWith(identifier);
+				const id = isValueLiteral(nameNode) ? scope.generateUidIdentifier(nameNode.value.toString().replace(/\d/g, (number: any) => numberNames[number as number])) : path.scope.generateUidIdentifierBasedOnNode(nameNode, "temp");
+				const init = path.node;
+				// Replace with the generated ID
+				path.replaceWith(id);
+				// Insert a const declaration containing the function
+				scope.push({ kind: "const", id, init, unique: true });
+				// Find the declaration we just inserted
+				const binding = scope.getBinding(id.name);
+				if (typeof binding === "undefined") {
+					throw new Error(`Could not find newly created binding for ${id.name}!`);
+				}
+				// Replace it with a function declaration, because it generates smaller code and we no longer have to worry about const/let ordering issues
+				const newDeclarationPath = binding.path.parentPath;
+				newDeclarationPath.replaceWith(types.functionDeclaration(id, init.params, init.body, init.generator));
+				scope.registerDeclaration(newDeclarationPath);
 			}
 		}
 	};
 
 	function hoistCallArguments(state: PluginState, path: NodePath, additionalConstantNames: string[]) {
 		if (path.isCallExpression()) {
+			if (isNewBabel) {
+				// Workaround problems with babel 7 not detecting scope properly with vars that are relocated
+				const functionParent = path.getFunctionParent();
+				if (functionParent !== null) {
+					functionParent.traverse(reregisterVariableVisitor, { originalScope: path.scope });
+				}
+			}
 			const callee = path.node.callee;
 			if (types.isIdentifier(callee) && callee._helperName) {
 				path.traverse(hoistCallArgumentsVisitor, { state, additionalConstantNames });
@@ -731,7 +770,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			if (exitCheck) {
 				if (temporary && !types.isIdentifier(temporary)) {
 					const temporaryIdentifier = temporary = target.scope.generateUidIdentifier("temp")
-					const declaration = types.variableDeclaration("var", [types.variableDeclarator(temporary, temporaryIdentifier)]) as any as Statement;
+					const declaration = types.variableDeclaration("const", [types.variableDeclarator(temporary, temporaryIdentifier)]) as any as Statement;
 					blocks = [declaration].concat(blocks);
 					temporary= temporaryIdentifier;
 				}
@@ -772,7 +811,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		const state: { thisIdentifier?: Identifier } = {};
 		rewritePath.traverse(rewriteThisVisitor, state);
 		if (state.thisIdentifier) {
-			targetPath.scope.push({ id: state.thisIdentifier, init: types.thisExpression() });
+			targetPath.scope.push({ kind: "const", id: state.thisIdentifier, init: types.thisExpression() });
 		}
 	}
 
@@ -830,9 +869,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				const parentPath = path.parentPath;
 				path.remove();
 				const paths = siblings[0].insertBefore(node);
-				if (isNewBabel) {
-					parentPath.scope.registerDeclaration(paths[0]);
-				}
+				parentPath.scope.registerDeclaration(paths[0]);
 			}
 		},
 	};
@@ -841,10 +878,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 		const state: { targetPath: NodePath, thisIdentifier?: Identifier, argumentsIdentifier?: Identifier } = { targetPath };
 		rewritePath.traverse(rewriteThisArgumentsAndHoistVisitor, state);
 		if (state.thisIdentifier) {
-			targetPath.scope.push({ id: state.thisIdentifier, init: types.thisExpression() });
+			targetPath.scope.push({ kind: "const", id: state.thisIdentifier, init: types.thisExpression() });
 		}
 		if (state.argumentsIdentifier) {
-			targetPath.scope.push({ id: state.argumentsIdentifier, init: types.identifier("arguments") });
+			targetPath.scope.push({ kind: "const", id: state.argumentsIdentifier, init: types.identifier("arguments") });
 		}
 	}
 
@@ -1141,7 +1178,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
-	function extractDeclarations(state: PluginState, originalAwaitPath: NodePath<AwaitExpression>, awaitExpression: Expression, additionalConstantNames: string[]): { declarations: VariableDeclarator[], awaitExpression: Expression, directExpression: Expression, reusingExisting: NodePath<VariableDeclarator> | undefined, resultIdentifier?: Identifier | Pattern } {
+	function extractDeclarations(state: PluginState, originalAwaitPath: NodePath<AwaitExpression>, awaitExpression: Expression, additionalConstantNames: string[]): { declarationKind: "var" | "const" | "let", declarations: VariableDeclarator[], awaitExpression: Expression, directExpression: Expression, reusingExisting: NodePath<VariableDeclarator> | undefined, resultIdentifier?: Identifier | Pattern } {
 		let awaitPath: NodePath<Exclude<Node, Statement>> = originalAwaitPath;
 		const reusingExisting = findDeclarationToReuse(awaitPath);
 		const reusingExistingId = reusingExisting ? reusingExisting.get("id") : undefined;
@@ -1346,7 +1383,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				}
 			}
 			if (parent.isStatement()) {
-				return { declarations, awaitExpression, directExpression, reusingExisting, resultIdentifier };
+				return { declarationKind: reusingExisting ? (reusingExisting.parent as VariableDeclaration).kind : "const", declarations, awaitExpression, directExpression, reusingExisting, resultIdentifier };
 			} else {
 				awaitPath = parent;
 			}
@@ -1457,7 +1494,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		path.traverse(replaceReturnsAndBreaksVisitor, state);
 		for (const identifier of state.usedIdentifiers) {
 			if (!identifier.path.parentPath.scope.getBinding(identifier.identifier.name)) {
-				identifier.path.parentPath.scope.push({ id: identifier.identifier, init: pluginState.opts.minify ? undefined : booleanLiteral(false, pluginState.opts.minify) });
+				identifier.path.parentPath.scope.push({ kind: "let", id: identifier.identifier, init: pluginState.opts.minify ? undefined : booleanLiteral(false, pluginState.opts.minify) });
 			}
 		}
 		return state.usedIdentifiers;
@@ -1677,7 +1714,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				targetPath = parent;
 			}
 			if (shouldPushExitIdentifier) {
-				path.scope.push({ id: state.exitIdentifier, init: state.pluginState.opts.minify ? undefined : booleanLiteral(false, state.pluginState.opts.minify) });
+				path.scope.push({ kind: "let", id: state.exitIdentifier, init: state.pluginState.opts.minify ? undefined : booleanLiteral(false, state.pluginState.opts.minify) });
 			}
 		}
 		for (const item of paths) {
@@ -1888,7 +1925,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					relocateTail(pluginState, originalArgument, undefined, awaitPath.parentPath, additionalConstantNames, undefined, undefined, booleanLiteral(false, this.pluginState.opts.minify));
 				} else {
 					let parent = getStatementParent(awaitPath);
-					const { declarations, awaitExpression, directExpression, reusingExisting, resultIdentifier } = extractDeclarations(this.pluginState, awaitPath, originalArgument, additionalConstantNames);
+					const { declarationKind, declarations, awaitExpression, directExpression, reusingExisting, resultIdentifier } = extractDeclarations(this.pluginState, awaitPath, originalArgument, additionalConstantNames);
 					if (resultIdentifier) {
 						addConstantNames(additionalConstantNames, resultIdentifier);
 					}
@@ -1897,12 +1934,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 							addConstantNames(additionalConstantNames, id);
 						}
 						if (parent.parentPath.isBlockStatement()) {
-							const newPaths = parent.insertBefore(types.variableDeclaration("var", declarations));
-							if (isNewBabel) {
-								parent.scope.registerDeclaration(newPaths[0]);
-							}
+							parent.insertBefore(types.variableDeclaration(declarationKind, declarations));
 						} else {
-							parent.replaceWith(blockStatement([types.variableDeclaration("var", declarations), parent.node]));
+							parent.replaceWith(blockStatement([types.variableDeclaration(declarationKind, declarations), parent.node]));
 							if (parent.isBlockStatement()) {
 								parent = parent.get("body")[1];
 							}
@@ -2357,7 +2391,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							reorderPathBeforeSiblingStatements(path.parentPath);
 						}
 					} else {
-						path.replaceWith(types.variableDeclaration("var", declarators));
+						path.replaceWith(types.variableDeclaration("const", declarators));
 						reorderPathBeforeSiblingStatements(path);
 					}
 				}

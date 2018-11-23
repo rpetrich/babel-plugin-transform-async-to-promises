@@ -31,7 +31,7 @@
     "@types/babel-template": "^6.25.1",
     "@types/babel-traverse": "^6.25.4",
     "@types/babel-types": "^7.0.4",
-    "@types/node": "^10.12.9",
+    "@types/node": "^10.12.10",
     "babel-core": "^6.26.3",
     "babel-traverse": "^6.26.0",
     "jest": "^23.6.0",

@@ -687,12 +687,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 			let scope = path.scope.getProgramParent();
 			let ancestry = [scope];
 			for (let otherScope of scopes) {
-				if (!ancestry.indexOf(otherScope) !== -1) {
+				if (ancestry.indexOf(otherScope) === -1) {
 					scope = otherScope;
 					ancestry = ancestry.concat(allScopes(otherScope));
 				}
 			}
-			if (!ancestry.indexOf(path.scope.parent) !== -1) {
+			if (ancestry.indexOf(path.scope.parent) === -1) {
 				const bindings = scope.bindings;
 				const filter = nodesAreIdentical([...path.node.params, path.node.body]);
 				for (const key of Object.getOwnPropertyNames(bindings)) {

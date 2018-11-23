@@ -634,10 +634,13 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return key === "start" || key === "end" || key === "loc" ? null : value;
 	}
 
-	function nodesAreIdentical<T extends Node>(node: T): (node: T) => boolean {
+	function nodesAreIdentical<T extends Node | ReadonlyArray<Node>>(node: T): (node: T) => boolean {
 		// Temporary deduping mechanism that filters source locations to see if nodes are otherwise identical
-		const cached = JSON.stringify(node, keyFilter);
+		let cached: string | undefined;
 		return (other: T) => {
+			if (typeof cached === "undefined") {
+				cached = JSON.stringify(node, keyFilter);
+			}
 			return cached === JSON.stringify(other, keyFilter);
 		}
 	}

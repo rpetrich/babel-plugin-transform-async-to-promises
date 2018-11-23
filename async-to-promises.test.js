@@ -8,7 +8,7 @@ const babylon = require("babylon");
 const checkTestCases = true;
 const checkOutputMatches = true;
 const logCompiledOutput = false;
-const onlyRunTestName = undefined;
+const testsToRun = [];
 
 const helperNames = ["_Pact", "_settle", "_isSettledPact", "_async", "_await", "_awaitIgnored", "_continue", "_continueIgnored", "_forTo", "_forValues", "_forIn", "_forOwn", "_forOf", "_forAwaitOf", "_for", "_do", "_switch", "_call", "_callIgnored", "_invoke", "_invokeIgnored", "_catch", "_finallyRethrows", "_finally", "_rethrow", "_empty"];
 
@@ -58,7 +58,7 @@ function extractJustFunction(babel, result) {
 }
 
 function compiledTest(name, { input, output, hoisted, cases, error, checkSyntax = true, module = false }) {
-	if (onlyRunTestName && onlyRunTestName !== name) {
+	if (testsToRun.length && testsToRun.indexOf(name) === -1) {
 		return;
 	}
 	describe(name, () => {

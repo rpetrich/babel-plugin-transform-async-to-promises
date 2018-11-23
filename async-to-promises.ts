@@ -631,7 +631,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function keyFilter(key: string, value: any) {
-		return key === "start" || key === "end" || key === "loc" ? null : value;
+		return key === "start" || key === "end" || key === "loc" || key === "leadingComments" || key === "trailingComments" || key === "innerComments" || key[0] === "_" ? undefined : value;
 	}
 
 	function nodesAreIdentical<T extends Node | ReadonlyArray<Node>>(node: T): (node: T) => boolean {

@@ -18,7 +18,7 @@ async function fetchAsObjectURL(url) {
 ### Output:
 
 ```javascript
-var fetchAsObjectURL = _async(function(url) {
+const fetchAsObjectURL = _async(function(url) {
 	return _await(fetch(url), function(response) {
 		return _await(response.blob(), function(blob) {
 			return URL.createObjectURL(blob);
@@ -30,12 +30,13 @@ var fetchAsObjectURL = _async(function(url) {
 ### Output with hoisting enabled:
 
 ```javascript
-var _URL$createObjectURL = function(blob) {
-	return URL.createObjectURL(blob);
-}, _response$blob = function(response) {
+function _response$blob(response) {
 	return _await(response.blob(), _URL$createObjectURL);
-};
-var fetchAsObjectURL = _async(function(url) {
+}
+function _URL$createObjectURL = function(blob) {
+	return URL.createObjectURL(blob);
+}
+const fetchAsObjectURL = _async(function(url) {
 	return _await(fetch(url), _response$blob);
 });
 ```

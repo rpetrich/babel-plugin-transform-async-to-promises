@@ -131,12 +131,9 @@ function compiledTest(name, { input, output, hoisted, cases, error, checkSyntax 
 							test("normal", () => {
 								expect(strippedResult).toBe(output);
 							});
-							if (babelName !== "babel 7") {
-								// Hoisting doesn't yet track scope properly on babel 7, temporarily ignoring tests
-								test("hoisted", () => {
-									expect(hoistedAndStrippedResult).toBe(typeof hoisted !== "undefined" ? hoisted : output);
-								});
-							}
+							test("hoisted", () => {
+								expect(hoistedAndStrippedResult).toBe(typeof hoisted !== "undefined" ? hoisted : output);
+							});
 						});
 					}
 				} else {
@@ -905,7 +902,7 @@ compiledTest("throw test", {
 compiledTest("throw from switch and catch", {
 	input: `async function() { try { switch (true) { case true: throw await 1; } return false; } catch (e) { return true; } }`,
 	output: `_async(function(){let _exit=false;return _catch(function(){return _continue(_switch(true,[[function(){return true;},function(){return _await(1,function(_){throw _;});}]]),function(_result){return _exit?_result:false;});},function(){return true;});})`,
-	hoisted: `function _true2(){return true;}function _one(){return _await(1,_temp);}function _true(){return true;}function _temp(_){throw _;}return _async(function(){let _exit;function _temp2(_result){return _exit?_result:false;}return _catch(function(){return _continue(_switch(true,[[_true,_one]]),_temp2);},_true2);})`,
+	hoisted: `function _one(){return _await(1,_temp);}function _true(){return true;}function _temp(_){throw _;}return _async(function(){let _exit;function _temp2(_result){return _exit?_result:false;}return _catch(function(){return _continue(_switch(true,[[_true,_one]]),_temp2);},_true);})`,
 	cases: {
 		result: async f => { expect(await f()).toBe(true) },
 	},

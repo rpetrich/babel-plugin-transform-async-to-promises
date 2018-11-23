@@ -631,7 +631,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function keyFilter(key: string, value: any) {
-		return key === "start" || key === "end" || key === "loc" || key === "leadingComments" || key === "trailingComments" || key === "innerComments" || key[0] === "_" ? undefined : value;
+		return key === "start" || key === "end" || key === "loc" || key === "directives" || key === "leadingComments" || key === "trailingComments" || key === "innerComments" || key[0] === "_" ? undefined : value;
 	}
 
 	function nodesAreIdentical<T extends Node | ReadonlyArray<Node>>(node: T): (node: T) => boolean {
@@ -694,23 +694,21 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 			if (!ancestry.includes(path.scope.parent)) {
 				const bindings = scope.bindings;
-				let filter: undefined | ((node: FunctionExpression) => boolean);
-				for (const key in bindings) {
-					if (Object.hasOwnProperty.call(bindings, key)) {
-						const binding = bindings[key];
-						if (binding.constant) {
-							const bindingPath = binding.path;
-							if (bindingPath.isVariableDeclarator()) {
-								const init = bindingPath.get("init");
-								if (init.isFunctionExpression()) {
-									if (!filter) {
-										filter = nodesAreIdentical(path.node);
-									}
-									if (filter(init.node)) {
-										path.replaceWith(binding.identifier);
-										return;
-									}
-								}
+				const filter = nodesAreIdentical([...path.node.params, path.node.body]);
+				for (const key of Object.getOwnPropertyNames(bindings)) {
+					const binding = bindings[key];
+					const bindingPath = binding.path;
+					if (bindingPath.isFunctionDeclaration()) {
+						if (filter([...bindingPath.node.params, bindingPath.node.body])) {
+							path.replaceWith(binding.identifier);
+							return;
+						}
+					} else if (bindingPath.isVariableDeclarator()) {
+						const init = bindingPath.get("init");
+						if (init.isFunctionExpression()) {
+							if (filter([...init.node.params, init.node.body])) {
+								path.replaceWith(binding.identifier);
+								return;
 							}
 						}
 					}
@@ -740,9 +738,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					throw new Error(`Could not find newly created binding for ${id.name}!`);
 				}
 				// Replace it with a function declaration, because it generates smaller code and we no longer have to worry about const/let ordering issues
-				const newDeclarationPath = binding.path.parentPath;
-				newDeclarationPath.replaceWith(types.functionDeclaration(id, init.params, init.body, init.generator));
-				scope.registerDeclaration(newDeclarationPath);
+				binding.path.parentPath.replaceWith(types.functionDeclaration(id, init.params, init.body, init.generator));
 			}
 		}
 	};

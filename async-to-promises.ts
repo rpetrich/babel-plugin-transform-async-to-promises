@@ -615,7 +615,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 										scope = functionScope;
 									}
 								}
-								if (this.pathScopes.includes(scope)) {
+								if (this.pathScopes.indexOf(scope) !== -1) {
 									this.scopes.push(scope);
 								}
 							}
@@ -687,12 +687,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 			let scope = path.scope.getProgramParent();
 			let ancestry = [scope];
 			for (let otherScope of scopes) {
-				if (!ancestry.includes(otherScope)) {
+				if (!ancestry.indexOf(otherScope) !== -1) {
 					scope = otherScope;
 					ancestry = ancestry.concat(allScopes(otherScope));
 				}
 			}
-			if (!ancestry.includes(path.scope.parent)) {
+			if (!ancestry.indexOf(path.scope.parent) !== -1) {
 				const bindings = scope.bindings;
 				const filter = nodesAreIdentical([...path.node.params, path.node.body]);
 				for (const key of Object.getOwnPropertyNames(bindings)) {
@@ -1073,7 +1073,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			return false;
 		}
 		if (types.isIdentifier(node)) {
-			if (alwaysTruthy.includes(node.name)) {
+			if (alwaysTruthy.indexOf(node.name) !== -1) {
 				return true;
 			}
 			if (node.name === "undefined") {

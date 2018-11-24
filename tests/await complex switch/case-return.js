@@ -1,3 +1,1 @@
-async f => {
-			expect((await f(0, async () => 0))).toBe(1);
-		}
+expect((await f(0, async () => 0))).toBe(1);

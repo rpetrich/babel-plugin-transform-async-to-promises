@@ -1,3 +1,1 @@
-async f => {
-			expect((await f(async () => false, async () => true))).toEqual(true);
-		}
+expect((await f(async () => false, async () => true))).toEqual(true);

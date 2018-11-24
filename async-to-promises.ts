@@ -797,7 +797,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 				// Find the declaration we just inserted
 				const binding = scope.getBinding(id.name);
 				if (typeof binding === "undefined") {
-					throw new Error(`Could not find newly created binding for ${id.name}!`);
+					/* istanbul ignore next */
+					throw path.buildCodeFrameError(`Could not find newly created binding for ${id.name}!`, Error);
 				}
 				// Replace it with a function declaration, because it generates smaller code and we no longer have to worry about const/let ordering issues
 				binding.path.parentPath.replaceWith(types.functionDeclaration(id, init.params, init.body, init.generator));
@@ -823,11 +824,13 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	function checkPathValidity(path: NodePath) {
 		if (path.container === null) {
+			/* istanbul ignore next */
 			throw path.buildCodeFrameError(`Path was expected to have a container!`, TypeError);
 		}
 		if ("resync" in (path as any) && typeof (path as any).resync === "function") {
 			(path as any).resync();
 			if (path.container === null) {
+				/* istanbul ignore next */
 				throw path.buildCodeFrameError(`Path was expected to have a container, and lost its container upon resync!`, TypeError);
 			}
 		}
@@ -1219,6 +1222,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (path.isSpreadElement()) {
 			return path.get("argument");
 		}
+		/* istanbul ignore next */
 		throw path.buildCodeFrameError(`Expected either an expression or a spread element, got a ${path.type}!`, TypeError);
 	}
 
@@ -1285,6 +1289,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							sibling.remove();
 						}
 					} else {
+						/* istanbul ignore next */
 						throw sibling.buildCodeFrameError(`Expected a variable declarator, got a ${sibling.type}!`, TypeError);
 					}
 				}
@@ -1693,6 +1698,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				return parent;
 			}
 		} while (parent = parent.parentPath);
+		/* istanbul ignore next */
 		throw path.buildCodeFrameError(`Expected a statement parent!`, TypeError);
 	}
 
@@ -1749,6 +1755,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 			processExpressions = false;
 		} else {
+			/* istanbul ignore next */
 			throw rewritePathCopy.buildCodeFrameError(`Expected either an await expression or a for await statement, got a ${rewritePathCopy.type}!`, TypeError)
 		}
 		const paths: {
@@ -1905,6 +1912,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							relocateTail(pluginState, loopCall, undefined, label && parent.parentPath.isStatement() ? parent.parentPath : parent, additionalConstantNames, resultIdentifier, exitIdentifier);
 							processExpressions = false;
 						} else {
+							/* istanbul ignore next */
 							throw loopIdentifier.buildCodeFrameError(`Expected an identifier or pattern, but got a ${loopIdentifier.type}!`, TypeError);
 						}
 					}
@@ -2212,6 +2220,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 									return;
 								}
 							}
+							/* istanbul ignore next */
 							throw path.buildCodeFrameError("Expected a named export from built-in helper!", TypeError);
 						}
 					} as Visitor }] });
@@ -2616,9 +2625,11 @@ export default function({ types, template, traverse, transformFromAst, version }
 								rewriteAsyncBlock(this, callArgument, []);
 								path.replaceWith(types.classMethod(path.node.kind, path.node.key, path.node.params, path.node.body, path.node.computed, path.node.static));
 							} else {
+								/* istanbul ignore next */
 								throw returnArgument.buildCodeFrameError("Expected a call expression!", TypeError);
 							}
 						} else {
+							/* istanbul ignore next */
 							throw returnPath.buildCodeFrameError("Expected a return statement!", TypeError);
 						}
 					}

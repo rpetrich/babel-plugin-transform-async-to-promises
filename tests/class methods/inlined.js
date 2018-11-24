@@ -1,0 +1,1 @@
+function(){return class{foo(baz){return _call(function(){return Promise.resolve(baz());});}static bar(baz){return _call(function(){return Promise.resolve(baz());});}};}

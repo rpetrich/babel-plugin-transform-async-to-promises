@@ -1,0 +1,1 @@
+function _false(){return false;}function _true(){return true;}return function(foo,bar){function _bar2(){return _call(bar);}return _call(foo,function(_foo){return _switch(_foo,[[_bar2,_true],[void 0,_false]]);});}

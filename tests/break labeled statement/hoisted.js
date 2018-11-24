@@ -1,0 +1,1 @@
+function(foo){let _exit,_labeledInterrupt;function _temp(_foo){if(_foo){_labeledInterrupt=1;return;}_exit=1;return false;}return _invoke(function(){return _call(foo,_temp);},function(_result){return _await(_exit?_result:true);});}

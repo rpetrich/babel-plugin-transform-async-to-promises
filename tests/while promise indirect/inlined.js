@@ -1,0 +1,1 @@
+function(){try{let _exit=false;function passthrough(value){return value;}return Promise.resolve(_continue(_for(function(){return!!function(_false){return!_exit&&passthrough(_false);}(!_exit&&Promise.resolve(false));},void 0,function(){_exit=true;return true;}),function(_result){return _exit?_result:false;}));}catch(e){return Promise.reject(e);}}

@@ -1,0 +1,1 @@
+_async(function(foo){var values=[];return _continue(_forOwn(foo,function(key){const _push=values.push;return _await(foo[key](),function(_foo$key){_push.call(values,_foo$key);});}),function(){return values.sort();});})

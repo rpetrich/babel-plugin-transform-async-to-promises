@@ -1,0 +1,1 @@
+_async(function(){let _exit;function _temp(_false){return!_exit&&!!passthrough(_false);}function passthrough(value){return value;}return _continue(_for(function(){return _await(!_exit&&Promise.resolve(false),_temp,1);},void 0,function(){return _exit=true;}),function(_result){return _exit?_result:false;});})

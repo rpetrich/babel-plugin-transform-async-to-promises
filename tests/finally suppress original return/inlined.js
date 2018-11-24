@@ -1,0 +1,1 @@
+function(value){try{return Promise.resolve(_finally(function(){return Promise.resolve(value());},function(){return"suppressed";}));}catch(e){return Promise.reject(e);}}

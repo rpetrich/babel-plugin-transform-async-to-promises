@@ -1,0 +1,1 @@
+function _bar([bar]){return bar;}return function(foo){return _call(foo,_bar);}

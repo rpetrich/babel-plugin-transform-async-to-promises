@@ -1,0 +1,1 @@
+const foo=function(){try{return Promise.resolve(Promise.resolve(true));}catch(e){return Promise.reject(e);}};foo();export default foo;

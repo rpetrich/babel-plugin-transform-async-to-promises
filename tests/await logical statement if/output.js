@@ -1,0 +1,1 @@
+_async(function(left,right){let _exit=false;return _invoke(function(){if(true){const _left=left();return _await(_left&&right(),function(result){_exit=true;return result||result;},!_left);}},function(_result){return _exit?_result:false;});})

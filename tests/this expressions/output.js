@@ -1,0 +1,1 @@
+_async(function(){const _this=this;const test=()=>_this;return _await(_this.foo(),function(_this$foo){return _await(_this.bar(),function(_this$bar){return _this$foo+_this$bar;});});})

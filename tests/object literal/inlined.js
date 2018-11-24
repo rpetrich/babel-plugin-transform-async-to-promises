@@ -1,0 +1,1 @@
+function(left,right,two){try{const _two=two(),_left=left();return Promise.resolve(right()).then(function(_right){return{zero:0,one:_left,[_two]:2,three:_right,four:4};});}catch(e){return Promise.reject(e);}}

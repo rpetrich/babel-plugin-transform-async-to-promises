@@ -1,0 +1,1 @@
+_async(function(wait,messages){let _exit=false;messages.push('before-try');return _continue(_catch(function(){messages.push('start-try');return _await(wait(1),function(){messages.push('stop-try');_exit=true;return'result-try';});},function(){messages.push('catch');}),function(_result){if(_exit)return _result;messages.push('after-try');return'result-after-try';});})

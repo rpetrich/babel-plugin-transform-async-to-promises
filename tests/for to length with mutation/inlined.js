@@ -1,0 +1,1 @@
+function(list){try{var i=0;return Promise.resolve(_continueIgnored(_for(function(){return i<list.length;},function(){return i++;},function(){return Promise.resolve(list[i]()).then(function(_list$i){if(_list$i){i=list.length;}});})));}catch(e){return Promise.reject(e);}}

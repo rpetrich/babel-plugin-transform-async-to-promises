@@ -1,0 +1,1 @@
+function(iter,callback){try{return Promise.resolve(_continue(_forAwaitOf(iter,function(){}),function(){return callback();}));}catch(e){return Promise.reject(e);}}

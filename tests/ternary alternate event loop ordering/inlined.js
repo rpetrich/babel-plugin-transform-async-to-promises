@@ -1,0 +1,1 @@
+function(delay,callback){try{return Promise.resolve(delay?Promise.resolve(0).then(callback):callback(0));}catch(e){return Promise.reject(e);}}

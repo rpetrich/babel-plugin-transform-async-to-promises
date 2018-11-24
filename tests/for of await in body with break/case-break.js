@@ -1,0 +1,1 @@
+async f => expect((await f([1, 10, 4]))).toBe(11)

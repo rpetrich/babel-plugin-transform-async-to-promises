@@ -1,0 +1,1 @@
+function(value,log){try{return Promise.resolve(_finallyRethrows(function(){return Promise.resolve(value());},function(_wasThrown,_result){log("finished value(), might rethrow");if(_wasThrown)throw _result;return _result;}));}catch(e){return Promise.reject(e);}}

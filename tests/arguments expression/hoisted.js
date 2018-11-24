@@ -1,0 +1,1 @@
+_async(function(){const _arguments=arguments;function _temp(_arguments$i){if(_arguments$i)result=true;}var result=false;return _continue(_forTo(_arguments,function(i){return _await(_arguments[i](),_temp);}),function(){return result;});})

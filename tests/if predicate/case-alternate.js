@@ -1,0 +1,1 @@
+async f => expect((await f(async _ => 0))).toBe(0)

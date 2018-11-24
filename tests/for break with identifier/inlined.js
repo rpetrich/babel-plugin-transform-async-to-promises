@@ -1,0 +1,1 @@
+function(foo){try{let _loopInterrupt=false;loop:return Promise.resolve(_continueIgnored(_for(function(){return!_loopInterrupt;},void 0,function(){return Promise.resolve(foo()).then(function(){_loopInterrupt=true;});})));}catch(e){return Promise.reject(e);}}

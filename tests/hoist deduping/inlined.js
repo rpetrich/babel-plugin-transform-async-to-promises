@@ -1,0 +1,1 @@
+function(a,b,c){try{return Promise.resolve(a()).then(function(_a){return function(){if(_a){return Promise.resolve(b()).then(function(_b){return function(){if(_b){return Promise.resolve(c()).then(function(result){return result||result;});}}();});}else{return Promise.resolve(c()).then(function(result){return result||result;});}}();});}catch(e){return Promise.reject(e);}}

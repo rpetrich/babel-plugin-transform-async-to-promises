@@ -1,0 +1,1 @@
+function(left,right){return _call(left,function(_left){return _left+1&&right();});}

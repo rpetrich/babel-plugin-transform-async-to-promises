@@ -1,0 +1,1 @@
+_async(function(foo,bar,baz){var result;return _invoke(function(){if(foo()){return _call(bar,function(_bar){result=_bar;});}else{return _call(baz,function(_baz){result=_baz;});}},function(){return result;});})

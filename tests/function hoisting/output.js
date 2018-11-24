@@ -1,0 +1,1 @@
+const fun=function(){return _call(wait,function(){return true;});};return fun();function wait(){return Promise.resolve();}var dummy

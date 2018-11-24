@@ -1,0 +1,1 @@
+function _true(){return true;}function _false(){return false;}return _async(function(delay,callback){let _interrupt;function _temp(){_interrupt=1;}return _continue(_switch(delay,[[_false,function(){_interrupt=1;}],[_true,function(){return _await(true,_temp);}]]),function(){return callback();});})

@@ -1,0 +1,1 @@
+function(foo){try{let shouldContinue;return Promise.resolve(_continueIgnored(_do(function(){return Promise.resolve(foo()).then(function(_foo){shouldContinue=_foo;});},function(){return!!shouldContinue;})));}catch(e){return Promise.reject(e);}}

@@ -1,0 +1,1 @@
+function(left,right){try{const _left=left();return Promise.resolve(right()).then(function(_right){return _left+_right;});}catch(e){return Promise.reject(e);}}

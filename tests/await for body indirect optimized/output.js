@@ -1,0 +1,1 @@
+_async(function(foo,bar){switch(foo()){case 1:return bar();default:return false;}})

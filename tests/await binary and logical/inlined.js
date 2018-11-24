@@ -1,0 +1,1 @@
+function(left,middle,right){try{return Promise.resolve(left()).then(function(_left){return Promise.resolve(middle()).then(function(_middle){return _left+!_middle?Promise.resolve(_left+!_middle&&right()):_left+!_middle&&right();});});}catch(e){return Promise.reject(e);}}

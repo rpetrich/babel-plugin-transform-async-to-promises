@@ -1,0 +1,1 @@
+_async(function(iter){function _temp(_value){result+=_value;}var result=0;return _continue(_forOf(iter,function(value){return _await(value,_temp);}),function(){return result;});})

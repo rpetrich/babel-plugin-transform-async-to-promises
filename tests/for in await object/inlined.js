@@ -1,0 +1,1 @@
+function(foo){try{var keys=[];return Promise.resolve(foo()).then(function(_foo){for(var key in _foo){keys.push(key);}return keys.sort();});}catch(e){return Promise.reject(e);}}

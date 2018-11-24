@@ -1,0 +1,1 @@
+function _temp({result}){return result+1;}return function(foo){return _call(foo,_temp);}

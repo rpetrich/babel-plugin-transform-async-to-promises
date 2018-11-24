@@ -1,0 +1,1 @@
+_async(function(foo){return _await(foo["bar"](),function(result){return result||result;});})

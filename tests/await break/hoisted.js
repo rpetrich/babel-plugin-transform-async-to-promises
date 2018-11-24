@@ -1,0 +1,1 @@
+function(foo,bar){function _result(){return result;}function _temp2(){result=false;}function _temp(){result=true;}function _bar2(){return _call(bar);}var result;return _call(foo,function(_foo){return _continue(_switch(_foo,[[_bar2,_temp],[void 0,_temp2]]),_result);});}

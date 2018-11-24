@@ -1,0 +1,1 @@
+function(list){try{var result=0;return Promise.resolve(_continue(_forTo(list,function(i){return Promise.resolve(list[i]()).then(function(_list$i){result+=_list$i;});}),function(){return result;}));}catch(e){return Promise.reject(e);}}

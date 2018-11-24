@@ -1,0 +1,1 @@
+_async(function(a,b,c,d){const _a=a(),_b=_a&&b();return _await(_a?_b&&c():d(),function(result){return result||result;},!_b);})

@@ -1,0 +1,1 @@
+function(foo,bar){try{return Promise.resolve(foo()).then(function(f){return Promise.resolve(bar()).then(function(b){return f+b;});});}catch(e){return Promise.reject(e);}}

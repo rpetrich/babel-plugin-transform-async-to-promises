@@ -1,0 +1,1 @@
+function(a,b,c,d){try{const _a=a(),_b=_a&&b();return Promise.resolve(_a?_b&&c():d());}catch(e){return Promise.reject(e);}}

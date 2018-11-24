@@ -1,0 +1,1 @@
+_async(function(left,right){if(true){const _left=left();return _await(_left&&right(),function(result){return result||result;},!_left);}else{return false;}})

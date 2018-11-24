@@ -1,0 +1,1 @@
+function(_async,_await){try{return Promise.resolve(_async(0)).then(function(_async2){return _async2&&_await();});}catch(e){return Promise.reject(e);}}

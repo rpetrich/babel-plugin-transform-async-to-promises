@@ -1,0 +1,1 @@
+function(foo,bar){try{const _baz=bar.baz;return Promise.resolve(foo()).then(function(_foo){return _baz.call(bar,_foo);});}catch(e){return Promise.reject(e);}}

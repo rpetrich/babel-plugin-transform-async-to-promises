@@ -1,0 +1,1 @@
+_async(function(){let _exit;function _exit2(){return _exit=true;}return _continue(_for(function(){return!_exit&&!!Promise.resolve(false);},void 0,function(){return _await(1,_exit2);}),function(_result){return _exit?_result:false;});})

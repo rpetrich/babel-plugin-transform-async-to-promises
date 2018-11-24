@@ -1,0 +1,1 @@
+async f => expect((await f(async _ => ({ result: 4 })))).toBe(5)

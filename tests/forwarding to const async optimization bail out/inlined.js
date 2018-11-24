@@ -1,0 +1,1 @@
+function(value){const add=(l,r)=>l+r;return function(foo){try{return Promise.resolve(add(1,foo));}catch(e){return Promise.reject(e);}};}

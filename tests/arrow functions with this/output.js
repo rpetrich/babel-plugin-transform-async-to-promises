@@ -1,0 +1,1 @@
+function(){const _this=this;return function(){return _await(_this);};}

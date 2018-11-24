@@ -1,0 +1,1 @@
+function(iter){try{let result=0;for(const value of iter){result+=value;}return Promise.resolve(result);}catch(e){return Promise.reject(e);}}

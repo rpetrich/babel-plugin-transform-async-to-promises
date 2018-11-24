@@ -1,0 +1,1 @@
+_async(function(delay,callback){return _await(0,callback,!delay);})

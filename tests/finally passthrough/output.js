@@ -1,0 +1,1 @@
+_async(function(value,log){return _finallyRethrows(value,function(_wasThrown,_result){log("finished value(), might rethrow");return _rethrow(_wasThrown,_result);});})

@@ -1,0 +1,1 @@
+function(foo){return _call(foo,function(b){var a=1,c=3;return a+b+c;});}

@@ -1,0 +1,1 @@
+async f => expect((await f(async () => [1, 2]))).toBe(3)

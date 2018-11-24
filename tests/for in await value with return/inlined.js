@@ -1,0 +1,1 @@
+function(foo){try{let _exit=false;return Promise.resolve(_continue(_forIn(foo,function(key){return Promise.resolve(foo[key]()).then(function(_foo$key){if(_foo$key){_exit=true;return true;}});},function(){return _exit;}),function(_result){return _exit?_result:false;}));}catch(e){return Promise.reject(e);}}

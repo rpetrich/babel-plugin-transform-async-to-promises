@@ -1,0 +1,1 @@
+function(foo){return _call(foo,function(_foo){if(_foo){return 1;}else{return 0;}});}

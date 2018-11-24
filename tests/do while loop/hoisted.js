@@ -1,0 +1,1 @@
+_async(function(foo){function _temp(_foo){shouldContinue=_foo;}let shouldContinue;return _continueIgnored(_do(function(){return _call(foo,_temp);},function(){return!!shouldContinue;}));})

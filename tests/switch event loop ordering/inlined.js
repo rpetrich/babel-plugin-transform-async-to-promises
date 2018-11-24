@@ -1,0 +1,1 @@
+function(delay,callback){try{let _interrupt=false;return Promise.resolve(_continue(_switch(delay,[[function(){return false;},function(){_interrupt=true;}],[function(){return true;},function(){return Promise.resolve(true).then(function(){_interrupt=true;});}]]),function(){return callback();}));}catch(e){return Promise.reject(e);}}

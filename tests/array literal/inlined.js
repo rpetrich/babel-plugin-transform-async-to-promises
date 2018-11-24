@@ -1,0 +1,1 @@
+function(left,right){try{const _left=left();return Promise.resolve(right()).then(function(_right){return[undefined|0,_left,[true,"",{foo:1}]&&2,_right,4];});}catch(e){return Promise.reject(e);}}

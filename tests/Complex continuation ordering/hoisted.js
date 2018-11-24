@@ -1,0 +1,1 @@
+return _continue(_for(_temp2,void 0,function(){messages.push("wait "+num);return _awaitIgnored(promise);}),function(){promise=new Promise(r=>{promiseResolve=r;});return _call(wait,_temp);});});let index=0;let promise=null;let messages=[];function wait(){return Promise.resolve();}return Promise.all([test(),test(),test()]).then(()=>messages);}

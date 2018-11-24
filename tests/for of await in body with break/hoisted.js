@@ -1,0 +1,1 @@
+_async(function(iter){let _interrupt;function _temp(_value){result+=_value;if(result>10){_interrupt=1;}}var result=0;return _continue(_forOf(iter,function(value){return _await(value,_temp);},function(){return _interrupt;}),function(){return result;});})

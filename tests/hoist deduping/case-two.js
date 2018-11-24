@@ -1,0 +1,1 @@
+async f => expect((await f(() => true, () => false, () => true))).toBe(undefined)

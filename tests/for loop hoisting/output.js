@@ -1,0 +1,1 @@
+function(foo){var i;return _call(foo,function(_foo){i=_foo;for(i in{}){}return i;});}

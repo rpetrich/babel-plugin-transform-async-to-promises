@@ -1,0 +1,1 @@
+function(value,log){try{var result;return Promise.resolve(_continue(_catch(function(){return Promise.resolve(value()).then(function(_value){result=_value;});},function(){result="an error";}),function(){log("result:",result);return result;}));}catch(e){return Promise.reject(e);}}

@@ -1,0 +1,1 @@
+_async(function(foo,baz){const _bar=foo.bar;return _await(baz,function(_baz){return _bar.call(foo,_baz);});})

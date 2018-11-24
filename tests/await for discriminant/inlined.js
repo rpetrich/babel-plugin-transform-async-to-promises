@@ -1,0 +1,1 @@
+function(foo){try{return Promise.resolve(foo()).then(function(_foo){switch(_foo){case 1:return true;default:return false;}});}catch(e){return Promise.reject(e);}}

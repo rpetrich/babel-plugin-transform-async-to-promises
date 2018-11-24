@@ -1,0 +1,1 @@
+function(foo,bar,baz){try{return Promise.resolve(foo()?bar():baz()).then(function(result){return result||result;});}catch(e){return Promise.reject(e);}}

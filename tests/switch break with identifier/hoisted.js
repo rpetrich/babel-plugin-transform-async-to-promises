@@ -1,0 +1,1 @@
+_async(function(foo){let _exitInterrupt;function _temp(){_exitInterrupt=1;}return _continueIgnored(_switch(0,[[void 0,function(){return _call(foo,_temp);}]]));})

@@ -1,0 +1,1 @@
+_async(function(matrix){var result=0;return _continue(_forOf(matrix,function(row){let _innerInterrupt=false;return _continueIgnored(_forOf(row,function(cell){return _await(cell,function(value){if(value>10)return;result+=value;if(result<0){_innerInterrupt=true;}});},function(){return _innerInterrupt;}));}),function(){return result;});})

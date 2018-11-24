@@ -1,0 +1,1 @@
+_async(function(foo){let _exit;function _temp(_foo){if(!_foo)return _exit=true;}let shouldContinue;return _do(function(){return _call(foo,_temp);},function(){return!_exit;});})

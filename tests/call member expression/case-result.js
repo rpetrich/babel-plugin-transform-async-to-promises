@@ -1,0 +1,1 @@
+async f => expect((await f({ bar: value => value }, Promise.resolve(1)))).toBe(1)

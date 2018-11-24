@@ -1,0 +1,1 @@
+function _fallback(){return"fallback";}return _async(function(foo){return _catch(foo,_fallback);})

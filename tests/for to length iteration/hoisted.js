@@ -1,0 +1,1 @@
+_async(function(list){function _temp(_list$i){result+=_list$i;}var result=0;return _continue(_forTo(list,function(i){return _await(list[i](),_temp);}),function(){return result;});})

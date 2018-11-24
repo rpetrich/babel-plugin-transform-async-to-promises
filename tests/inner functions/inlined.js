@@ -1,0 +1,1 @@
+function(value){return function(other){try{return Promise.resolve(value+other);}catch(e){return Promise.reject(e);}};}

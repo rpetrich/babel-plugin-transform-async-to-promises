@@ -1,0 +1,1 @@
+async f => expect((await f([[-1, 10], [5, 4]]))).toBe(8)

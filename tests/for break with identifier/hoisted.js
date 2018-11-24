@@ -1,0 +1,1 @@
+_async(function(foo){let _loopInterrupt;function _temp(){_loopInterrupt=1;}loop:return _continueIgnored(_for(function(){return!_loopInterrupt;},void 0,function(){return _call(foo,_temp);}));})

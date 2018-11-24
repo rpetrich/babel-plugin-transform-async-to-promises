@@ -1,0 +1,1 @@
+_async(function(foo){let _exit;function _temp(_foo$key){if(_foo$key)return _exit=true;}return _continue(_forIn(foo,function(key){return _await(foo[key](),_temp);},function(){return _exit;}),function(_result){return _exit?_result:false;});})

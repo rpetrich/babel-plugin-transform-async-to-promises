@@ -1,0 +1,1 @@
+function _one(){return _await(1,_temp);}function _true(){return true;}function _temp(_){throw _;}return _async(function(){let _exit;function _temp2(_result){return _exit?_result:false;}return _catch(function(){return _continue(_switch(true,[[_true,_one]]),_temp2);},_true);})

@@ -1,0 +1,1 @@
+export const foo=_async(function(){return Promise.resolve(true);});foo();let dummy;

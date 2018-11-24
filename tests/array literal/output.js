@@ -1,0 +1,1 @@
+_async(function(left,right){const _left=left();return _call(right,function(_right){return[undefined|0,_left,[true,"",{foo:1}]&&2,_right,4];});})

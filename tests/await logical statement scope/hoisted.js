@@ -1,0 +1,1 @@
+function _temp(result){return result||result;}return _async(function(left,right){if(true){const _left=left();return _await(_left&&right(),_temp,!_left);}else{return false;}})

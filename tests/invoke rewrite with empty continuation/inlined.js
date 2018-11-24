@@ -1,0 +1,1 @@
+function(expression1,expression2,actionAsync){try{if(expression1){return Promise.resolve();}return Promise.resolve(function(){if(expression2){var a=1;}else{return _catch(function(){return Promise.resolve(actionAsync()).then(function(res){var b=2;return res;});},function(){return false;});}}());}catch(e){return Promise.reject(e);}}

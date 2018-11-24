@@ -1,0 +1,1 @@
+function _temp(result){return result||result;}return _async(function(foo,bar,baz){return _await(foo()?bar():baz(),_temp);})

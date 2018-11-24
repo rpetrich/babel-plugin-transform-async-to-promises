@@ -1,0 +1,1 @@
+function(foo){try{let _exit=false,_labeledInterrupt=false;return _invoke(function(){return Promise.resolve(foo()).then(function(_foo){if(_foo){_labeledInterrupt=true;return;}_exit=true;return false;});},function(_result){return Promise.resolve(_exit?_result:true);});}catch(e){return Promise.reject(e);}}

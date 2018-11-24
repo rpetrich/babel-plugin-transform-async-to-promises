@@ -1,0 +1,1 @@
+async f => expect((await f([{ value: 1 }]))).toBe(1)

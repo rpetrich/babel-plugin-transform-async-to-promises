@@ -1,0 +1,1 @@
+_async(function(delay,callback){let _interrupt=false;return _continue(_switch(delay,[[function(){return false;},function(){_interrupt=true;}],[function(){return true;},function(){return _await(true,function(){_interrupt=true;});}]]),function(){return callback();});})

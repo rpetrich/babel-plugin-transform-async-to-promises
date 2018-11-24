@@ -1,0 +1,1 @@
+function _temp(_foo){switch(_foo){case 1:return true;default:return false;}}return function(foo){return _call(foo,_temp);}

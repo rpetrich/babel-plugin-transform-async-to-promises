@@ -1,0 +1,1 @@
+_async(function(foo){return _catch(foo,_empty);})

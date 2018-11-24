@@ -1,0 +1,1 @@
+function(foo){let _exit=false,_labeledInterrupt=false;return _invoke(function(){return _call(foo,function(_foo){if(_foo){_labeledInterrupt=true;return;}_exit=true;return false;});},function(_result){return _await(_exit?_result:true);});}

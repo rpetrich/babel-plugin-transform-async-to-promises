@@ -69,36 +69,16 @@ export function _isSettledPact(thenable) {
 }
 
 // Converts argument to a function that always returns a Promise
-export const _async = (function() {
-	try {
-		if (isNaN.apply(null, {})) {
-			return function(f) {
-				return function() {
-					try {
-						return Promise.resolve(f.apply(this, arguments));
-					} catch(e) {
-						return Promise.reject(e);
-					}
-				}
-			};
-		}
-	} catch (e) {
+export function _async() {
+	for (var args = [], i = 0; i < arguments.length; i++) {
+		args[i] = arguments[i];
 	}
-	return function(f) {
-		// Pre-ES5.1 JavaScript runtimes don't accept array-likes in Function.apply
-		return function() {
-			var args = [];
-			for (var i = 0; i < arguments.length; i++) {
-				args[i] = arguments[i];
-			}
-			try {
-				return Promise.resolve(f.apply(this, args));
-			} catch(e) {
-				return Promise.reject(e);
-			}
-		}
-	};
-})();
+	try {
+		return Promise.resolve(f.apply(this, args));
+	} catch(e) {
+		return Promise.reject(e);
+	}
+}
 
 // Awaits on a value that may or may not be a Promise (equivalent to the await keyword in ES2015, with continuations passed explicitly)
 export function _await(value, then, direct) {

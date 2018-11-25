@@ -21,6 +21,9 @@ declare module "babel-types" {
 	interface Identifier {
 		_helperName?: string;
 	}
+	interface MemberExpression {
+		_helperName?: string;
+	}
 	interface ArrowFunctionExpression {
 		_async?: true;
 	}
@@ -816,7 +819,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				}
 			}
 			const callee = path.node.callee;
-			if (types.isIdentifier(callee) && callee._helperName) {
+			if ((types.isIdentifier(callee) || types.isMemberExpression(callee)) && callee._helperName) {
 				path.traverse(hoistCallArgumentsVisitor, { state, additionalConstantNames });
 			}
 		}
@@ -995,12 +998,21 @@ export default function({ types, template, traverse, transformFromAst, version }
 					let callTarget;
 					switch (expression.arguments.length) {
 						case 0:
+							// Match function() { return ...(); }
 							callTarget = expression.callee;
 							break;
 						case 1: {
 							const callee = expression.callee;
+							const onlyArgument = expression.arguments[0];
+							// Match function() { return _call(...); }
 							if (types.isIdentifier(callee) && callee._helperName === "_call") {
-								callTarget = expression.arguments[0];
+								callTarget = onlyArgument;
+							}
+							// Match function() { return _await(...()); } or function() { return Promise.resolve(...()); }
+							if ((types.isIdentifier(callee) || types.isMemberExpression(callee)) && callee._helperName === "_await") {
+								if (types.isCallExpression(onlyArgument) && onlyArgument.arguments.length === 0) {
+									callTarget = onlyArgument.callee;
+								}
 							}
 							break;
 						}
@@ -2105,17 +2117,17 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (path.isUpdateExpression()) {
 			return;
 		}
-		if (path.isCallExpression() && types.isIdentifier(path.node.callee) && path.node.callee._helperName) {
+		if (path.isCallExpression() && (types.isIdentifier(path.node.callee) || types.isMemberExpression(path.node.callee)) && path.node.callee._helperName) {
 			switch (path.node.callee._helperName) {
 				case "_await":
 				case "_call": {
 					const args = path.get("arguments");
 					if (args.length > 2) {
-						const firstArg = args[1];
-						if (firstArg.isFunctionExpression()) {
-							firstArg.traverse(unpromisifyVisitor, pluginState);
-						} else if (firstArg.isIdentifier()) {
-							const binding = firstArg.scope.getBinding(firstArg.node.name);
+						const secondArg = args[1];
+						if (secondArg.isFunctionExpression()) {
+							secondArg.traverse(unpromisifyVisitor, pluginState);
+						} else if (secondArg.isIdentifier()) {
+							const binding = secondArg.scope.getBinding(secondArg.node.name);
 							if (binding && binding.path.isVariableDeclarator()) {
 								binding.path.get("init").traverse(unpromisifyVisitor, pluginState);
 							}
@@ -2258,11 +2270,13 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function promiseResolve() {
-		return types.memberExpression(types.identifier("Promise"), types.identifier("resolve"));
+		const result = types.memberExpression(types.identifier("Promise"), types.identifier("resolve"));
+		result._helperName = "_await";
+		return result;
 	}
 
 	function isAsyncCallExpression(path: NodePath<CallExpression>): boolean {
-		if (types.isIdentifier(path.node.callee)) {
+		if (types.isIdentifier(path.node.callee) || types.isMemberExpression(path.node.callee)) {
 			switch (path.node.callee._helperName) {
 				case "_await":
 				case "_call":
@@ -2504,7 +2518,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						// fallthrough
 					}
 					case 1:
-						if (types.isIdentifier(argument.node.callee)) {
+						if (types.isIdentifier(argument.node.callee) || types.isMemberExpression(argument.node.callee)) {
 							const firstArgument = callArgs[0];
 							if (types.isExpression(firstArgument)) {
 								switch (argument.node.callee._helperName) {

@@ -1,1 +1,1 @@
-function(func){try{return Promise.resolve(_finally(function(){return _finallyRethrows(function(){return Promise.resolve(func());},function(_wasThrown,_result){if(0){return"not this";}if(_wasThrown)throw _result;return _result;});},function(){return"suppressed";}));}catch(e){return Promise.reject(e);}}
+function(func){try{return Promise.resolve(_finally(function(){return _finallyRethrows(func,function(_wasThrown,_result){if(0){return"not this";}if(_wasThrown)throw _result;return _result;});},function(){return"suppressed";}));}catch(e){return Promise.reject(e);}}

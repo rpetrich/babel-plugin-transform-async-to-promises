@@ -1,1 +1,1 @@
-function(foo,bar,baz){try{const _foo=foo();return Promise.resolve(_foo?function(result){return result||result;}(_foo?bar():baz()):Promise.resolve(_foo?bar():baz()).then(function(result){return result||result;}));}catch(e){return Promise.reject(e);}}
+function(foo,bar,baz){try{function _temp(result){return result||result;}const _foo=foo();return Promise.resolve(_foo?_temp(bar()):Promise.resolve(baz()).then(_temp));}catch(e){return Promise.reject(e);}}

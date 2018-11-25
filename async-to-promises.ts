@@ -461,11 +461,39 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function simplifyWithIdentifier(expression: Expression, identifier: Identifier, truthy: boolean): Expression {
-		if (types.isCallExpression(expression) && promiseCallExpressionType(expression) === "resolve") {
-			const firstArgument = expression.arguments[0];
-			if (typeof firstArgument !== "undefined" && !types.isSpreadElement(firstArgument)) {
-				const simplified = simplifyWithIdentifier(firstArgument, identifier, truthy);
-				return simplified === expression.arguments[0] ? expression : types.callExpression(promiseResolve(), [simplified]);
+		if (types.isCallExpression(expression)) {
+			switch (promiseCallExpressionType(expression)) {
+				case "all":
+				case "race":
+				case "reject":
+				case "resolve": {
+					const firstArgument = expression.arguments[0];
+					if (typeof firstArgument !== "undefined" && !types.isSpreadElement(firstArgument)) {
+						const simplified = simplifyWithIdentifier(firstArgument, identifier, truthy);
+						return simplified === expression.arguments[0] ? expression : types.callExpression(expression.callee, [simplified]);
+					}
+				}
+				case "then": {
+					const callee = expression.callee;
+					if (types.isMemberExpression(callee)) {
+						const thenArgument = expression.arguments[0];
+						const object = callee.object;
+						if (types.isCallExpression(object)) {
+							const valueArgument = object.arguments[0];
+							if (typeof valueArgument !== "undefined" && !types.isSpreadElement(valueArgument) && typeof thenArgument !== "undefined" && !types.isSpreadElement(thenArgument)) {
+								const simplified = simplifyWithIdentifier(valueArgument, identifier, truthy);
+								return simplified === valueArgument ? expression : callThenMethod(types.callExpression(object.callee, [simplified]), thenArgument);
+							}
+						}
+					}
+				}
+			}
+			if (expression.arguments.length === 1 && types.isIdentifier(expression.callee) || types.isFunctionExpression(expression.callee)) {
+				const firstArgument = expression.arguments[0];
+				if (types.isExpression(firstArgument)) {
+					const simplified = simplifyWithIdentifier(firstArgument, identifier, truthy);
+					return simplified === expression.arguments[0] ? expression : types.callExpression(expression.callee, [simplified]);
+				}
 			}
 		}
 		if (types.isConditionalExpression(expression) && types.isIdentifier(expression.test) && expression.test.name === identifier.name) {
@@ -483,24 +511,41 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function awaitAndContinue(state: PluginState, path: NodePath, value: Expression, continuation?: Expression, directExpression?: Expression) {
-		if (continuation && isPassthroughContinuation(continuation)) {
-			continuation = undefined;
+		if (continuation) {
+			if (isPassthroughContinuation(continuation)) {
+				continuation = undefined;
+			} else {
+				continuation = unwrapReturnCallWithPassthroughArgument(continuation, path.scope);
+			}
 		}
 		if (!continuation && directExpression && extractLooseBooleanValue(directExpression) === true) {
 			return value;
 		}
-		let useCallHelper: boolean;
-		let args: Expression[];
-		if (types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee)) {
-			useCallHelper = true;
-			args = [value.callee];
-		} else {
-			useCallHelper = false;
-			args = [value];
+		const callTarget = types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee) ? value.callee : undefined;
+		if (state.opts.inlineHelpers && directExpression) {
+			const resolvedValue = types.callExpression(promiseResolve(), [value]);
+			const direct = extractLooseBooleanValue(directExpression);
+			if (typeof direct === "undefined") {
+				if (continuation) {
+					if (types.isFunctionExpression(continuation)) {
+						const id = path.scope.generateUidIdentifierBasedOnNode(continuation, "temp");
+						insertFunctionIntoScope(continuation, id, path.scope);
+						continuation = id;
+					}
+					return conditionalExpression(directExpression, types.callExpression(continuation, [value]), callThenMethod(resolvedValue, continuation));
+				} else {
+					return conditionalExpression(directExpression, value, resolvedValue);
+				}
+			} else if (direct) {
+				return continuation ? types.callExpression(continuation, [value]) : value;
+			} else {
+				return continuation ? callThenMethod(resolvedValue, continuation) : resolvedValue;
+			}
 		}
+		const args: Expression[] = [callTarget || value];
 		const ignoreResult = continuation && isEmptyContinuation(continuation, path);
 		if (!ignoreResult && continuation) {
-			args.push(unwrapReturnCallWithPassthroughArgument(continuation, path.scope));
+			args.push(continuation);
 		}
 		if (directExpression && extractLooseBooleanValue(directExpression) !== false) {
 			if (!ignoreResult && !continuation) {
@@ -508,35 +553,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 			args.push(directExpression);
 		}
-		let helperName = directExpression ? (useCallHelper ? "_call" : "_await") : (useCallHelper ? "_invoke" : "_continue");
-		if ((helperName === "_await" || helperName === "_call") && state.opts.inlineHelpers) {
-			const resolveArgs = args.length >= 1 ? [helperName === "_call" ? types.callExpression(args[0], []) : args[0]] : [];
-			const resolved = types.callExpression(promiseResolve(), resolveArgs);
-			const hasCallback = args.length >= 2 && !isSideEffectFreeVoidExpression(args[1]);
-			const awaited = hasCallback ? types.callExpression(types.memberExpression(resolved, types.identifier("then")), [ignoreResult ? emptyFunction(state, path) : args[1]]) : resolved;
-			if (args.length <= 2) {
-				return awaited;
-			}
-			const direct = hasCallback ? (ignoreResult ? voidExpression.call(resolveArgs) : types.callExpression(args[1], resolveArgs)) : (resolveArgs[0] || voidExpression());
-			const directArg = args[2];
-			if (types.isBooleanLiteral(directArg)) {
-				return directArg.value ? direct : awaited;
-			}
-			let test: Expression = directArg;
-			let consequent: Expression = direct;
-			let alternate: Expression = awaited;
-			while (types.isUnaryExpression(test) && test.operator === "!") {
-				test = test.argument;
-				const other = consequent;
-				consequent = alternate;
-				alternate = other;
-			}
-			if (types.isIdentifier(test)) {
-				consequent = simplifyWithIdentifier(consequent, test, true);
-				alternate = simplifyWithIdentifier(alternate, test, false);
-			}
-			return types.conditionalExpression(test, consequent, alternate);
-		}
+		let helperName = directExpression ? (callTarget ? "_call" : "_await") : (callTarget ? "_invoke" : "_continue");
 		if (ignoreResult) {
 			helperName += "Ignored";
 		}
@@ -724,6 +741,19 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	};
 
+	function insertFunctionIntoScope(func: FunctionExpression, id: Identifier, scope: Scope) {
+		// Insert a const declaration containing the function
+		scope.push({ kind: "const", id, init: func, unique: true });
+		// Find the declaration we just inserted
+		const binding = scope.getBinding(id.name);
+		if (typeof binding === "undefined") {
+			/* istanbul ignore next */
+			throw scope.path.buildCodeFrameError(`Could not find newly created binding for ${id.name}!`, Error);
+		}
+		// Replace it with a function declaration, because it generates smaller code and we no longer have to worry about const/let ordering issues
+		binding.path.parentPath.replaceWith(types.functionDeclaration(id, func.params, func.body, func.generator, func.async));
+	}
+
 	const hoistCallArgumentsVisitor: Visitor<HoistCallArgumentsState> = {
 		FunctionExpression(path) {
 			path.skip();
@@ -795,16 +825,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 				const init = path.node;
 				// Replace with the generated ID
 				path.replaceWith(id);
-				// Insert a const declaration containing the function
-				scope.push({ kind: "const", id, init, unique: true });
-				// Find the declaration we just inserted
-				const binding = scope.getBinding(id.name);
-				if (typeof binding === "undefined") {
-					/* istanbul ignore next */
-					throw path.buildCodeFrameError(`Could not find newly created binding for ${id.name}!`, Error);
-				}
-				// Replace it with a function declaration, because it generates smaller code and we no longer have to worry about const/let ordering issues
-				binding.path.parentPath.replaceWith(types.functionDeclaration(id, init.params, init.body, init.generator));
+				// Insert the function into the scope
+				insertFunctionIntoScope(init, id, scope);
 			}
 		}
 	};
@@ -1132,15 +1154,19 @@ export default function({ types, template, traverse, transformFromAst, version }
 			test = test.argument;
 			const temp = consequent;
 			consequent = alternate;
-			alternate = consequent;
+			alternate = temp;
 		}
 		if ((isValueLiteral(consequent) && isValueLiteral(alternate) && consequent.value === alternate.value) ||
 			(types.isNullLiteral(consequent) && types.isNullLiteral(alternate)) ||
 			(types.isIdentifier(consequent) && types.isIdentifier(alternate) && consequent.name === alternate.name)
 		) {
-			if (types.isIdentifier(test) || types.isLiteral(test)) {
+			if (types.isIdentifier(test)) {
 				return consequent;
 			}
+		}
+		if (types.isIdentifier(test)) {
+			consequent = simplifyWithIdentifier(consequent, test, true);
+			alternate = simplifyWithIdentifier(alternate, test, false);
 		}
 		return types.conditionalExpression(test, consequent, alternate);
 	}
@@ -2275,6 +2301,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return result;
 	}
 
+	function callThenMethod(target: Expression, then: Expression) {
+		return types.callExpression(types.memberExpression(target, types.identifier("then")), [then]);
+	}
+
 	function isAsyncCallExpression(path: NodePath<CallExpression>): boolean {
 		if (types.isIdentifier(path.node.callee) || types.isMemberExpression(path.node.callee)) {
 			switch (path.node.callee._helperName) {
@@ -2462,14 +2492,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 							// Simplify Promise.resolve(foo ? bar : Promise.resolve(baz)) to Promise.resolve(foo ? bar : baz)
 							const consequent = arg.consequent.arguments[0];
 							if (consequent && !types.isSpreadElement(consequent)) {
-								arg = types.conditionalExpression(arg.test, consequent, arg.alternate);
+								arg = conditionalExpression(arg.test, consequent, arg.alternate);
 							}
 						}
 						if (types.isConditionalExpression(arg) && types.isCallExpression(arg.alternate) && promiseCallExpressionType(arg.alternate) === "resolve") {
 							// Simplify Promise.resolve(foo ? Promise.resolve(bar) : baz) to Promise.resolve(foo ? bar : baz)
 							const alternate = arg.alternate.arguments[0];
 							if (alternate && !types.isSpreadElement(alternate)) {
-								arg = types.conditionalExpression(arg.test, arg.consequent, alternate);
+								arg = conditionalExpression(arg.test, arg.consequent, alternate);
 							}
 						}
 						if (types.isConditionalExpression(arg) && types.isIdentifier(arg.test)) {

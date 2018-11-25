@@ -1,1 +1,1 @@
-function(left,right){try{const _left=left();return Promise.resolve(_left?Promise.resolve(_left&&right()).then(function(_right){return _left&&1+_right;}):function(_right){return _left&&1+_right;}(_left&&right()));}catch(e){return Promise.reject(e);}}
+function(left,right){try{function _temp(_right){return _left&&1+_right;}const _left=left();return Promise.resolve(_left?Promise.resolve(right()).then(_temp):_temp(_left));}catch(e){return Promise.reject(e);}}

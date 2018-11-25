@@ -27,7 +27,7 @@ const fetchAsObjectURL = _async(function(url) {
 });
 ```
 
-### Output with hoisting enabled:
+### Output with `hoist` enabled:
 
 ```javascript
 function _response$blob(response) {
@@ -39,6 +39,22 @@ function _URL$createObjectURL = function(blob) {
 const fetchAsObjectURL = _async(function(url) {
 	return _await(fetch(url), _response$blob);
 });
+```
+
+### Output with `inlineHelpers` enabled:
+
+```javascript
+const fetchAsObjectURL = function(url) {
+	try {
+		return Promise.resolve(fetch(url)).then(function(response) {
+			return Promise.resolve(response.blob()).then(function(blob){
+				return URL.createObjectURL(blob);
+			});
+		});
+	} catch(e) {
+		return Promise.reject(e);
+	}
+}
 ```
 
 ## JavaScript Language Features

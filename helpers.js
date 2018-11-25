@@ -69,14 +69,16 @@ export function _isSettledPact(thenable) {
 }
 
 // Converts argument to a function that always returns a Promise
-export function _async() {
-	for (var args = [], i = 0; i < arguments.length; i++) {
-		args[i] = arguments[i];
-	}
-	try {
-		return Promise.resolve(f.apply(this, args));
-	} catch(e) {
-		return Promise.reject(e);
+export function _async(f) {
+	return function() {
+		for (var args = [], i = 0; i < arguments.length; i++) {
+			args[i] = arguments[i];
+		}
+		try {
+			return Promise.resolve(f.apply(this, args));
+		} catch(e) {
+			return Promise.reject(e);
+		}
 	}
 }
 

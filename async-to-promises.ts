@@ -2237,7 +2237,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					// Read helpers from ./helpers.js
 					const newHelpers: { [name: string]: Helper } = {};
 					const helperCode = readFileSync(join(__dirname, "helpers.js")).toString();
-					const helperAst = require("babylon").parse(helperCode, { sourceType: "module" });
+					const helperAst = require(isNewBabel ? "@babel/core" : "babylon").parse(helperCode, { sourceType: "module" });
 					transformFromAst(helperAst, helperCode, { babelrc: false, plugins: [{ visitor: {
 						ExportNamedDeclaration(path) {
 							const declaration = path.get("declaration");

@@ -1,1 +1,1 @@
-function(foo,bar){let _exit=false;return _invoke(function(){if(foo){return _call(bar,function(baz){if(baz){_exit=true;return baz;}});}},function(_result){return _await(_exit?_result:0);});}
+function(foo,bar){let _exit=false;return _await(_invoke(function(){if(foo){return _call(bar,function(baz){if(baz){_exit=true;return baz;}});}},function(_result){return _exit?_result:0;}));}

@@ -1,1 +1,1 @@
-function(foo,bar){try{let _exit=false;return _invoke(function(){if(foo){return Promise.resolve(bar()).then(function(baz){if(baz){_exit=true;return baz;}});}},function(_result){return Promise.resolve(_exit?_result:0);});}catch(e){return Promise.reject(e);}}
+function(foo,bar){try{let _exit=false;return Promise.resolve(_invoke(function(){if(foo){return Promise.resolve(bar()).then(function(baz){if(baz){_exit=true;return baz;}});}},function(_result){return _exit?_result:0;}));}catch(e){return Promise.reject(e);}}

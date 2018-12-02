@@ -1,1 +1,1 @@
-function(delay,callback){try{return _invoke(function(){if(delay)return Promise.resolve(0).then(function(){});},function(){return Promise.resolve(callback());});}catch(e){return Promise.reject(e);}}
+function(delay,callback){try{return Promise.resolve(_invoke(function(){if(delay)return Promise.resolve(0).then(function(){});},function(){return callback();}));}catch(e){return Promise.reject(e);}}

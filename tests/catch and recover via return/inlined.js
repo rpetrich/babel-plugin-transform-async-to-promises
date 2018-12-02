@@ -1,1 +1,1 @@
-function(foo){return Promise.resolve(_catch(foo,function(){return Promise.resolve("fallback");}));}
+function(foo){return Promise.resolve(_catch(foo,function(){return"fallback";}));}

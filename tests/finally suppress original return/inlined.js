@@ -1,1 +1,1 @@
-function(value){return Promise.resolve(_finally(value,function(){return Promise.resolve("suppressed");}));}
+function(value){return Promise.resolve(_finally(value,function(){return"suppressed";}));}

@@ -2465,7 +2465,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 					case "_finally":
 					case "_finallyRethrows":
 						if (args[1]) {
-							args[1].traverse(checkForErrorsAndRewriteReturnsVisitor, this);
+							if (checkForErrorsAndRewriteReturns(args[1], this.plugin)) {
+								this.canThrow = true;
+							}
 						}
 						break;
 					case undefined: {
@@ -2517,7 +2519,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			if (this.rewriteReturns) {
 				const argument = path.get("argument");
 				if (argument.node) {
-					if (!((argument.isCallExpression() && (isAsyncCallExpression(argument) || typeof promiseCallExpressionType(argument.node) !== "undefined")) || invokeTypeOfExpression(argument) === "_invoke" || (argument.isCallExpression() && isAsyncFunctionIdentifier(argument.get("callee"))))) {
+					if (!((argument.isCallExpression() && (isAsyncCallExpression(argument) || typeof promiseCallExpressionType(argument.node) !== "undefined")) || (argument.isCallExpression() && isAsyncFunctionIdentifier(argument.get("callee"))))) {
 						const target = this.plugin.opts.inlineHelpers ? promiseResolve() : helperReference(this.plugin, path, "_await");
 						let arg = argument.node;
 						if (types.isConditionalExpression(arg) && types.isIdentifier(arg.test)) {

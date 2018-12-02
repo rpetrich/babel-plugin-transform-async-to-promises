@@ -1965,9 +1965,13 @@ export default function({ types, template, traverse, transformFromAst, version }
 						testExpression = rewriteAsyncNode(pluginState, parent, functionize(testExpression), additionalConstantNames, exitIdentifier, true);
 					}
 					const isDoWhile = parent.isDoWhileStatement();
-					if (!breaks.any && !explicitExits.any && forToIdentifiers && !isDoWhile) {
-						const loopCall = types.callExpression(helperReference(pluginState, parent, "_forTo"), [forToIdentifiers.array, rewriteAsyncNode(pluginState, parent, types.functionExpression(undefined, [forToIdentifiers.i], blockStatement(parent.node.body)), additionalConstantNames, exitIdentifier)])
-						relocateTail(pluginState, loopCall, undefined, parent, additionalConstantNames, undefined, exitIdentifier);
+					let loopCall;
+					if (forToIdentifiers && !isDoWhile) {
+						const args = [forToIdentifiers.array, rewriteAsyncNode(pluginState, parent, types.functionExpression(undefined, [forToIdentifiers.i], blockStatement(parent.node.body)), additionalConstantNames, exitIdentifier)];
+						if (breakExitCheck) {
+							args.push(functionize(breakExitCheck));
+						}
+						loopCall = types.callExpression(helperReference(pluginState, parent, "_forTo"), args);
 					} else {
 						let updateExpression: Expression | null = null;
 						if (parent.isForStatement()) {
@@ -1984,14 +1988,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 						const bodyFunction = rewriteAsyncNode(pluginState, parent, types.functionExpression(undefined, [], blockStatement(parent.node.body)), additionalConstantNames, exitIdentifier);
 						const testFunction = unwrapReturnCallWithEmptyArguments(testExpression || voidExpression(), path.scope, additionalConstantNames);
 						const updateFunction = unwrapReturnCallWithEmptyArguments(updateExpression || voidExpression(), path.scope, additionalConstantNames);
-						const loopCall = isDoWhile ? types.callExpression(helperReference(pluginState, parent, "_do"), [bodyFunction, testFunction]) : types.callExpression(helperReference(pluginState, parent, "_for"), [testFunction, updateFunction, bodyFunction]);
-						let resultIdentifier = undefined;
-						if (explicitExits.any) {
-							resultIdentifier = path.scope.generateUidIdentifier("result");
-							addConstantNames(additionalConstantNames, resultIdentifier);
-						}
-						relocateTail(pluginState, loopCall, undefined, parent, additionalConstantNames, resultIdentifier, exitIdentifier);
+						loopCall = isDoWhile ? types.callExpression(helperReference(pluginState, parent, "_do"), [bodyFunction, testFunction]) : types.callExpression(helperReference(pluginState, parent, "_for"), [testFunction, updateFunction, bodyFunction]);
 					}
+					let resultIdentifier = undefined;
+					if (explicitExits.any) {
+						resultIdentifier = path.scope.generateUidIdentifier("result");
+						addConstantNames(additionalConstantNames, resultIdentifier);
+					}
+					relocateTail(pluginState, loopCall, undefined, parent, additionalConstantNames, resultIdentifier, exitIdentifier);
 					processExpressions = false;
 				}
 			} else if (parent.isSwitchStatement()) {

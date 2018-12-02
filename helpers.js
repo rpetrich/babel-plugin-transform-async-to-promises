@@ -111,45 +111,32 @@ export function _continueIgnored(value) {
 }
 
 // Asynchronously iterate through an object that has a length property, passing the index as the first argument to the callback (even as the length property changes)
-export function _forTo(array, body) {
-	for (var i = 0; i < array.length; ++i) {
-		var result = body(i);
-		if (result && result.then) {
-			if (_isSettledPact(result)) {
-				result = result.v;
-			} else {
-				var pact = new _Pact();
-				var reject = _settle.bind(null, pact, 2);
-				result.then(_cycle, reject);
-				return pact;
-			}
-		}
-	}
+export function _forTo(array, body, check) {
+	var i = -1, pact, reject;
 	function _cycle(result) {
 		try {
-			while (++i < array.length) {
+			while (++i < array.length && (!check || !check())) {
 				result = body(i);
 				if (result && result.then) {
 					if (_isSettledPact(result)) {
 						result = result.v;
 					} else {
-						result.then(_cycle, reject);
+						result.then(_cycle, reject || (reject = _settle.bind(null, pact = new _Pact(), 2)));
 						return;
 					}
 				}
 			}
-			_settle(pact, 1, result);
+			if (pact) {
+				_settle(pact, 1, result);
+			} else {
+				pact = result;
+			}
 		} catch (e) {
-			reject(e);
+			_settle(pact || (pact = new Pact()), 2, e);
 		}
 	}
-	return result;
-}
-
-// Asynchronously iterate through an object that has a length property, passing the value as the first argument to the callback (even as the length property changes)
-export function _forValues(array, body, check) {
-	var i = 0;
-	return _for(check ? function() { return i < array.length && !check(); } : function() { return i < array.length; }, function() { i++; }, function() { return body(array[i]); });
+	_cycle();
+	return pact;
 }
 
 // Asynchronously iterate through an object's properties (including properties inherited from the prototype)
@@ -159,7 +146,7 @@ export function _forIn(target, body, check) {
 	for (var key in target) {
 		keys.push(key);
 	}
-	return _forValues(keys, body, check);
+	return _forTo(keys, function(i) { return body(keys[i]); }, check);
 }
 
 // Asynchronously iterate through an object's own properties (excluding properties inherited from the prototype)
@@ -171,7 +158,7 @@ export function _forOwn(target, body, check) {
 			keys.push(key);
 		}
 	}
-	return _forValues(keys, body, check);
+	return _forTo(keys, function(i) { return body(keys[i]); }, check);
 }
 
 // Asynchronously iterate through an object's values
@@ -180,36 +167,48 @@ export function _forOf(target, body, check) {
 	if (typeof Symbol !== "undefined") {
 		var iteratorSymbol = Symbol.iterator;
 		if (iteratorSymbol && (iteratorSymbol in target)) {
-			var iterator = target[iteratorSymbol]();
-			var step;
-			var iteration = _for(check ? function() {
-				return !(step = iterator.next()).done && !check();
-			} : function() {
-				return !(step = iterator.next()).done;
-			}, void 0, function() {
-				return body(step.value);
-			});
-			if (iterator.return) {
-				function _fixup(value) {
-					// Inform iterator of early exit
-					if ((!step || !step.done) && iterator.return) {
-						try {
-							iterator.return();
-						} catch(e) {
+			var iterator = target[iteratorSymbol](), step, pact, reject;
+			function _cycle(result) {
+				try {
+					while (!(step = iterator.next()).done && (!check || !check())) {
+						result = body(step.value);
+						if (result && result.then) {
+							if (_isSettledPact(result)) {
+								result = result.v;
+							} else {
+								result.then(_cycle, reject || (reject = _settle.bind(null, pact = new _Pact(), 2)));
+								return;
+							}
 						}
 					}
-					return value;
-				};
-				if (iteration && iteration.then) {
-					return iteration.then(_fixup, function(error) {
-						throw _fixup(error);
-					});
-				} else {
-					return _fixup(iteration);
+					if (pact) {
+						_settle(pact, 1, result);
+					} else {
+						pact = result;
+					}
+				} catch (e) {
+					_settle(pact || (pact = new Pact()), 2, e);
 				}
-			} else {
-				return iteration;
 			}
+			_cycle();
+			if (iterator.return) {
+				var _fixup = function(value) {
+					try {
+						if (!step.done) {
+							iterator.return();
+						}
+					} catch(e) {
+					}
+					return value;
+				}
+				if (pact && pact.then) {
+					return pact.then(_fixup, function(e) {
+						throw _fixup(e);
+					});
+				}
+				_fixup();
+			}
+			return pact;
 		}
 	}
 	// No support for Symbol.iterator
@@ -221,7 +220,7 @@ export function _forOf(target, body, check) {
 	for (var i = 0; i < target.length; i++) {
 		values.push(target[i]);
 	}
-	return _forValues(values, body, check);
+	return _forTo(values, function(i) { return body(values[i]); }, check);
 }
 
 export function _forAwaitOf(target, body, check) {

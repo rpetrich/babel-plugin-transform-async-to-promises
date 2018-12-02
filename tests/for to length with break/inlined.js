@@ -1,1 +1,1 @@
-function(list){try{let _interrupt=false;var i=0;return Promise.resolve(_continueIgnored(_for(function(){return!_interrupt&&i<list.length;},function(){return i++;},function(){return Promise.resolve(list[i]()).then(function(_list$i){if(_list$i){_interrupt=true;}});})));}catch(e){return Promise.reject(e);}}
+function(list){try{let _interrupt=false;return Promise.resolve(_continueIgnored(_forTo(list,function(i){return Promise.resolve(list[i]()).then(function(_list$i){if(_list$i){_interrupt=true;}});},function(){return _interrupt;})));}catch(e){return Promise.reject(e);}}

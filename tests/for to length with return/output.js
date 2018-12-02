@@ -1,1 +1,1 @@
-_async(function(list){let _exit=false;var i=0;return _for(function(){return!_exit&&i<list.length;},function(){return i++;},function(){return _await(list[i](),function(_list$i){if(_list$i){_exit=true;}});});})
+_async(function(list){let _exit=false;return _forTo(list,function(i){return _await(list[i](),function(_list$i){if(_list$i){_exit=true;}});},function(){return _exit;});})

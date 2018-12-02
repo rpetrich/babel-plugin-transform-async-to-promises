@@ -1,1 +1,1 @@
-_async(function(list){let _exit=false;var i=0;return _continue(_for(function(){return!_exit&&i<list.length;},function(){return i++;},function(){return _await(list[i](),function(_list$i){if(_list$i){return;}_exit=true;return false;});}),function(_result){return _exit?_result:true;});})
+_async(function(list){let _exit=false;return _continue(_forTo(list,function(i){return _await(list[i](),function(_list$i){if(_list$i){return;}_exit=true;return false;});},function(){return _exit;}),function(_result){return _exit?_result:true;});})

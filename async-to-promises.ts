@@ -2278,6 +2278,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					file.path.unshiftContainer("body", value);
 					traversePath = file.path.get("body")[0];
 				}
+				// Rename references to other helpers due to name conflicts
 				traversePath.traverse({
 					Identifier(path) {
 						const name = path.node.name;
@@ -2286,6 +2287,28 @@ export default function({ types, template, traverse, transformFromAst, version }
 						}
 					}
 				} as Visitor);
+				// Rewrite IIFE to a series of statements that assign
+				if (traversePath.isVariableDeclaration()) {
+					const init = traversePath.get("declarations")[0].get("init");
+					if (init.isCallExpression() && init.get("arguments").length === 0) {
+						const callee = init.get("callee");
+						if (callee.isFunctionExpression() && callee.node.params.length === 0) {
+							const body = callee.get("body").get("body");
+							const last = body[body.length - 1];
+							if (last.isReturnStatement() && last.node.argument !== null) {
+								for (const bodyPath of body.slice(0, body.length - 1)) {
+									traversePath.insertBefore(bodyPath.node);
+								}
+								const argument = last.get("argument");
+								if (argument.isIdentifier() && argument.node._helperName === name) {
+									traversePath.remove();
+								} else {
+									init.replaceWith(argument.node);
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 		return result;

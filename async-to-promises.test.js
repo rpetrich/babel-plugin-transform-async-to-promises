@@ -21,6 +21,7 @@ const helperNames = ["_Pact", "_settle", "_isSettledPact", "_async", "_await", "
 
 const stripHelpersVisitor = {
 	FunctionDeclaration(path) {
+		// Remove function declaration of a helper
 		if (helperNames.indexOf(path.node.id.name) === -1) {
 			path.skip();
 		} else {
@@ -28,6 +29,7 @@ const stripHelpersVisitor = {
 		}
 	},
 	VariableDeclarator(path) {
+		// Remove variable declarator of a helper
 		if (helperNames.indexOf(path.node.id.name) === -1) {
 			path.skip();
 		} else if (path.isFunction() && path.id) {
@@ -45,6 +47,18 @@ const stripHelpersVisitor = {
 			}
 		} else if (!path.node.ignored) {
 			path.remove();
+		}
+	},
+	AssignmentExpression(path) {
+		// Remove assignment to a helper
+		if (path.parentPath.isExpressionStatement()) {
+			let left = path.get("left");
+			while (left.isMemberExpression()) {
+				left = left.get("object");
+			}
+			if (left.isIdentifier() && helperNames.indexOf(left.node.name) !== -1) {
+				path.parentPath.remove();
+			}
 		}
 	}
 };

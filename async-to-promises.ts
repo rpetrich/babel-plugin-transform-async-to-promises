@@ -87,7 +87,7 @@ interface Helper {
 };
 let helpers: { [name: string]: Helper } | undefined;
 
-const alwaysTruthy = ["Object", "Function", "Boolean", "Error", "String", "Number", "Math", "Date", "RegExp", "Array"];
+const alwaysTruthy = ["Object", "Function", "Boolean", "Error", "String", "Number", "Math", "Date", "RegExp", "Array", "Promise"];
 const numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
 export default function({ types, template, traverse, transformFromAst, version }: {
@@ -2343,12 +2343,15 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return false;
 	}
 
-	function invokeTypeOfExpression(path: NodePath<Node | null>): "_invoke" | "_invokeIgnored" | void {
+	function invokeTypeOfExpression(path: NodePath<Node | null>): "_invoke" | "_invokeIgnored" | "_catch" | "_finally" | "_finallyRethrows" | void {
 		if (path.isCallExpression() && types.isIdentifier(path.node.callee)) {
 			const helperName = path.node.callee._helperName;
 			switch (helperName) {
 				case "_invoke":
 				case "_invokeIgnored":
+				case "_catch":
+				case "_finally":
+				case "_finallyRethrows":
 					return helperName;
 			}
 		}
@@ -2443,7 +2446,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 		ForInStatement: canThrow,
 		ForOfStatement: canThrow,
 		WithStatement: canThrow,
-		MemberExpression: canThrow,
 		NewExpression: canThrow,
 		TryStatement(path) {
 			if (path.get("handler")) {
@@ -2452,18 +2454,25 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 		CallExpression(path) {
 			if (!isAsyncCallExpression(path)) {
-				if (invokeTypeOfExpression(path) === "_invoke") {
-					const args = path.get("arguments");
-					if (checkForErrorsAndRewriteReturns(args[0], this.plugin)) {
-						this.canThrow = true;
-					}
-					if (args[1]) {
-						args[1].traverse(checkForErrorsAndRewriteReturnsVisitor, this);
-					}
-				} else {
-					const callee = path.get("callee");
-					if (!isAsyncFunctionIdentifier(callee)) {
-						this.canThrow = true;
+				const args = path.get("arguments");
+				switch (invokeTypeOfExpression(path)) {
+					default:
+						if (checkForErrorsAndRewriteReturns(args[0], this.plugin)) {
+							this.canThrow = true;
+						}
+						// fallthrough
+					case "_catch":
+					case "_finally":
+					case "_finallyRethrows":
+						if (args[1]) {
+							args[1].traverse(checkForErrorsAndRewriteReturnsVisitor, this);
+						}
+						break;
+					case undefined: {
+						const callee = path.get("callee");
+						if (!isAsyncFunctionIdentifier(callee)) {
+							this.canThrow = true;
+						}
 					}
 				}
 			}
@@ -2490,7 +2499,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 		},
 		Identifier(path) {
-			if (identifierSearchesScope(path) && !path.scope.getBinding(path.node.name)) {
+			if (identifierSearchesScope(path) && !path.scope.getBinding(path.node.name) && alwaysTruthy.indexOf(path.node.name) === -1) {
+				this.canThrow = true;
+			}
+		},
+		MemberExpression(path) {
+			if (path.node._helperName !== "_await" && !(path.parentPath.isCallExpression() && promiseCallExpressionType(path.parentPath.node) !== undefined && path.parentPath.get("callee") === path)) {
 				this.canThrow = true;
 			}
 		},

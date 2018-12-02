@@ -1,1 +1,1 @@
-_async(function(foo){return _catch(foo,function(){return"fallback";});})
+function(foo){return _await(_catch(foo,function(){return _await("fallback");}));}

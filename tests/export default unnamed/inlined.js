@@ -1,1 +1,1 @@
-export default(function(){try{return Promise.resolve(true);}catch(e){return Promise.reject(e);}});
+export default(function(){return Promise.resolve(true);});

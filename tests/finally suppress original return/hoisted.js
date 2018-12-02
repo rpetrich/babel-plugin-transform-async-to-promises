@@ -1,1 +1,1 @@
-function _suppressed(){return"suppressed";}return _async(function(value){return _finally(value,_suppressed);})
+function _suppressed(){return"suppressed";}return function(value){return _await(_finally(value,_suppressed));}

@@ -2,13 +2,13 @@
 export const _Pact = (function() {
 	function _Pact() {}
 	_Pact.prototype.then = function(onFulfilled, onRejected) {
-		const state = this.__state;
+		const state = this.s;
 		if (state) {
-			const callback = state == 1 ? onFulfilled : onRejected;
+			const callback = state & 1 ? onFulfilled : onRejected;
 			if (callback) {
 				const result = new _Pact();
 				try {
-					_settle(result, 1, callback(this.__value));
+					_settle(result, 1, callback(this.v));
 				} catch (e) {
 					_settle(result, 2, e);
 				}
@@ -18,10 +18,10 @@ export const _Pact = (function() {
 			}
 		}
 		const result = new _Pact();
-		this.__observer = function(_this) {
+		this.o = function(_this) {
 			try {
-				const value = _this.__value;
-				if (_this.__state == 1) {
+				const value = _this.v;
+				if (_this.s & 1) {
 					_settle(result, 1, onFulfilled ? onFulfilled(value) : value);
 				} else if (onRejected) {
 					_settle(result, 1, onRejected(value));
@@ -39,15 +39,15 @@ export const _Pact = (function() {
 
 // Settles a pact synchronously
 export function _settle(pact, state, value) {
-	if (!pact.__state) {
+	if (!pact.s) {
 		if (value instanceof _Pact) {
-			if (value.__state) {
-				if (state === 1) {
-					state = value.__state;
+			if (value.s) {
+				if (state & 1) {
+					state = value.s;
 				}
-				value = value.__value;
+				value = value.v;
 			} else {
-				value.__observer = _settle.bind(null, pact, state);
+				value.o = _settle.bind(null, pact, state);
 				return;
 			}
 		}
@@ -55,9 +55,9 @@ export function _settle(pact, state, value) {
 			value.then(_settle.bind(null, pact, state), _settle.bind(null, pact, 2));
 			return;
 		}
-		pact.__state = state;
-		pact.__value = value;
-		const observer = pact.__observer;
+		pact.s = state;
+		pact.v = value;
+		const observer = pact.o;
 		if (observer) {
 			observer(pact);
 		}
@@ -65,7 +65,7 @@ export function _settle(pact, state, value) {
 }
 
 export function _isSettledPact(thenable) {
-	return thenable instanceof _Pact && thenable.__state === 1;
+	return thenable instanceof _Pact && thenable.s & 1;
 }
 
 // Converts argument to a function that always returns a Promise
@@ -116,7 +116,7 @@ export function _forTo(array, body) {
 		var result = body(i);
 		if (result && result.then) {
 			if (_isSettledPact(result)) {
-				result = result.__value;
+				result = result.v;
 			} else {
 				var pact = new _Pact();
 				var reject = _settle.bind(null, pact, 2);
@@ -131,7 +131,7 @@ export function _forTo(array, body) {
 				result = body(i);
 				if (result && result.then) {
 					if (_isSettledPact(result)) {
-						result = result.__value;
+						result = result.v;
 					} else {
 						result.then(_cycle, reject);
 						return;
@@ -257,7 +257,7 @@ export function _for(test, update, body) {
 	for (;;) {
 		var shouldContinue = test();
 		if (_isSettledPact(shouldContinue)) {
-			shouldContinue = shouldContinue.__value;
+			shouldContinue = shouldContinue.v;
 		}
 		if (!shouldContinue) {
 			return result;
@@ -269,7 +269,7 @@ export function _for(test, update, body) {
 		var result = body();
 		if (result && result.then) {
 			if (_isSettledPact(result)) {
-				result = result.__state;
+				result = result.s;
 			} else {
 				stage = 1;
 				break;
@@ -298,7 +298,7 @@ export function _for(test, update, body) {
 				}
 			}
 			shouldContinue = test();
-			if (!shouldContinue || (_isSettledPact(shouldContinue) && !shouldContinue.__value)) {
+			if (!shouldContinue || (_isSettledPact(shouldContinue) && !shouldContinue.v)) {
 				_settle(pact, 1, result);
 				return;
 			}
@@ -308,7 +308,7 @@ export function _for(test, update, body) {
 			}
 			result = body();
 			if (_isSettledPact(result)) {
-				result = result.__value;
+				result = result.v;
 			}
 		} while (!result || !result.then);
 		result.then(_resumeAfterBody).then(void 0, reject);
@@ -345,7 +345,7 @@ export function _do(body, test) {
 		var result = body();
 		if (result && result.then) {
 			if (_isSettledPact(result)) {
-				result = result.__value;
+				result = result.v;
 			} else {
 				awaitBody = true;
 				break;
@@ -353,7 +353,7 @@ export function _do(body, test) {
 		}
 		var shouldContinue = test();
 		if (_isSettledPact(shouldContinue)) {
-			shouldContinue = shouldContinue.__value;
+			shouldContinue = shouldContinue.v;
 		}
 		if (!shouldContinue) {
 			return result;
@@ -368,7 +368,7 @@ export function _do(body, test) {
 		for (;;) {
 			shouldContinue = test();
 			if (_isSettledPact(shouldContinue)) {
-				shouldContinue = shouldContinue.__value;
+				shouldContinue = shouldContinue.v;
 			}
 			if (!shouldContinue) {
 				break;
@@ -380,7 +380,7 @@ export function _do(body, test) {
 			result = body();
 			if (result && result.then) {
 				if (_isSettledPact(result)) {
-					result = result.__value;
+					result = result.v;
 				} else {
 					result.then(_resumeAfterBody).then(void 0, reject);
 					return;
@@ -395,7 +395,7 @@ export function _do(body, test) {
 				result = body();
 				if (result && result.then) {
 					if (_isSettledPact(result)) {
-						result = result.__value;
+						result = result.v;
 					} else {
 						result.then(_resumeAfterBody).then(void 0, reject);
 						return;
@@ -403,7 +403,7 @@ export function _do(body, test) {
 				}
 				shouldContinue = test();
 				if (_isSettledPact(shouldContinue)) {
-					shouldContinue = shouldContinue.__value;
+					shouldContinue = shouldContinue.v;
 				}
 				if (!shouldContinue) {
 					_settle(pact, 1, result);

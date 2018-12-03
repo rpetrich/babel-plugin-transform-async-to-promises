@@ -481,11 +481,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return (types.isIdentifier(continuation) && continuation === path.hub.file.declarations["_empty"]) || (types.isFunctionExpression(continuation) && continuation.body.body.length === 0);
 	}
 
-	// Check if an expression has no side effects and returns undefined
-	function isSideEffectFreeVoidExpression(expression: Expression): boolean {
-		return types.isUnaryExpression(expression) && expression.operator === "void" && types.isLiteral(expression.argument);
-	}
-
 	// Emit a void expression
 	function voidExpression(arg?: Expression) {
 		return types.unaryExpression("void", arg || types.numericLiteral(0));

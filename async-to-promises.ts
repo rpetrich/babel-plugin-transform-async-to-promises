@@ -3,14 +3,15 @@ import { NodePath, Scope, Visitor } from "babel-traverse";
 import { readFileSync } from "fs";
 import { join } from "path";
 
-interface PluginState {
-	opts: {
-		externalHelpers?: boolean;
-		hoist?: boolean;
-		inlineHelpers?: boolean;
-		minify?: boolean;
-	};
+// Configuration types
+interface AsyncToPromisesConfiguration {
+	externalHelpers?: boolean;
+	hoist?: boolean;
+	inlineHelpers?: boolean;
+	minify?: boolean;
 }
+
+// Type extensions
 
 declare module "babel-types" {
 	interface Node {
@@ -50,6 +51,10 @@ declare module "babel-traverse" {
 	}
 }
 
+interface PluginState {
+	opts: AsyncToPromisesConfiguration;
+}
+
 interface HoistCallArgumentsInnerState {
 	argumentNames: string[];
 	additionalConstantNames: string[];
@@ -79,6 +84,15 @@ interface ForToIdentifier {
 	array: Identifier;
 }
 
+interface ExtractedDeclarations {
+	declarationKind: "var" | "const" | "let";
+	declarations: VariableDeclarator[];
+	awaitExpression: Expression;
+	directExpression: Expression;
+	reusingExisting: NodePath<VariableDeclarator> | undefined;
+	resultIdentifier?: Identifier | Pattern;
+}
+
 const errorOnIncompatible = true;
 
 interface Helper {
@@ -90,6 +104,7 @@ let helpers: { [name: string]: Helper } | undefined;
 const alwaysTruthy = ["Object", "Function", "Boolean", "Error", "String", "Number", "Math", "Date", "RegExp", "Array", "Promise"];
 const numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
+// Main function, called by babel with module implementations for types, template, traverse, transformFromAST and its version information
 export default function({ types, template, traverse, transformFromAst, version }: {
 	types: typeof import("babel-types"),
 	template: typeof import("babel-template"),
@@ -100,6 +115,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	const isNewBabel = !/^6\./.test(version);
 
+	// Helper to wrap a node in a statement so it can be used by functions that require a statement
 	function wrapNodeInStatement(node: Node): Statement {
 		if (types.isStatement(node)) {
 			return types.blockStatement([node]);
@@ -110,12 +126,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 		throw new Error(`Expected either an expression or a statement, got a ${node.type}!`);
 	}
 
+	// Helper to wrap a fresh node in a path so that it can be traversed
 	function pathForNewNode<T extends Node>(node: T, parentPath: NodePath): NodePath<T> {
 		const result = parentPath.context.create(parentPath.node, [node], 0, "dummy");
 		result.setContext(parentPath.context);
 		return result;
 	}
 
+	// Checks whether nodes pass a test
 	function pathsPassTest(matchingNodeTest: (path: NodePath<Node | null>) => boolean, referenceOriginalNodes?: boolean): (path: NodePath<Node | null>) => TraversalTestResult {
 		function visit(path: NodePath, result: TraversalTestResult, state: { breakingLabels: string[], unnamedBreak: boolean }) {
 			if (referenceOriginalNodes) {
@@ -276,6 +294,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return pathsPassTest(path => path.type !== null && matchingNodeTypes.indexOf(path.type) !== -1, referenceOriginalNodes);
 	}
 
+	// Helpers to trace return, throw and break behaviours
 	const pathsReturnOrThrow = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement"], true);
 	const pathsReturnOrThrowCurrentNodes = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement"], false);
 	const pathsBreak = pathsReachNodeTypes(["BreakStatement"], true);
@@ -285,6 +304,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return !types.isEmptyStatement(statement);
 	}
 
+	// Extract a single return expression
 	function expressionInSingleReturnStatement(statements: Statement[]): Expression | void {
 		statements = statements.filter(isNonEmptyStatement);
 		if (statements.length === 1) {
@@ -298,6 +318,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Extract the static property of a member expression, if possible
 	function propertyNameOfMemberExpression(node: MemberExpression): string | undefined {
 		const property = node.property;
 		if (node.computed) {
@@ -311,6 +332,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Match a for (var i = 0; i < array.length; i++) pattern
 	function identifiersInForToLengthStatement(statement: NodePath<ForStatement>): ForToIdentifier | undefined {
 		// Match: for (var i = 0; i < array.length; i++)
 		const init = statement.get("init");
@@ -355,6 +377,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Extract a for (var key of obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) { ... } } pattern
 	function extractForOwnBodyPath(path: NodePath<ForInStatement>) {
 		// Match: for (var key of obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) { ... } }
 		let left = path.get("left");
@@ -430,6 +453,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Check if a function expression always returns its first argument, with no side effects
 	function isPassthroughContinuation(continuation?: Expression) {
 		if (!continuation || !types.isFunctionExpression(continuation)) {
 			return false;
@@ -452,14 +476,22 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return false;
 	}
 
+	// Check if an expression is a function that returns undefined and has no side effects or is a reference to the _empty helper
 	function isEmptyContinuation(continuation: Expression, path: NodePath): boolean {
 		return (types.isIdentifier(continuation) && continuation === path.hub.file.declarations["_empty"]) || (types.isFunctionExpression(continuation) && continuation.body.body.length === 0);
 	}
 
+	// Check if an expression has no side effects and returns undefined
 	function isSideEffectFreeVoidExpression(expression: Expression): boolean {
 		return types.isUnaryExpression(expression) && expression.operator === "void" && types.isLiteral(expression.argument);
 	}
 
+	// Emit a void expression
+	function voidExpression(arg?: Expression) {
+		return types.unaryExpression("void", arg || types.numericLiteral(0));
+	}
+
+	// Simplify an expression with a substituted "truthiness" value for an identifier
 	function simplifyWithIdentifier(expression: Expression, identifier: Identifier, truthy: boolean): Expression {
 		if (types.isCallExpression(expression)) {
 			switch (promiseCallExpressionType(expression)) {
@@ -510,6 +542,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return expression;
 	}
 
+	// Await an expression and resume control flow to the continuation, optionally calling directly
 	function awaitAndContinue(state: PluginState, path: NodePath, value: Expression, continuation?: Expression, directExpression?: Expression) {
 		if (continuation) {
 			if (isPassthroughContinuation(continuation)) {
@@ -568,10 +601,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return types.callExpression(helperReference(state, path, helperName), args);
 	}
 
-	function voidExpression(arg?: Expression) {
-		return types.unaryExpression("void", arg || types.numericLiteral(0));
-	}
-
+	// Borrow the tail continuation of a statement
 	function borrowTail(target: NodePath): Statement[] {
 		let current = target;
 		const dest = [];
@@ -592,6 +622,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return dest;
 	}
 
+	// Check if the tail continuation of an expression has a return or throw statement
 	function exitsInTail(target: NodePath) {
 		let current: NodePath | undefined = target;
 		while (current && current.node && current.inList && current.container && !current.isFunction()) {
@@ -606,6 +637,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return false;
 	}
 
+	// Emits a return statement, optionally referencing an original node
 	function returnStatement(argument: Expression | undefined, originalNode?: Node): ReturnStatement {
 		const result: ReturnStatement = types.returnStatement(argument);
 		result._skip = true;
@@ -613,6 +645,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return result;
 	}
 
+	// Merge unnecessary return statements and prune trailing empty returns
 	function removeUnnecessaryReturnStatements(blocks: Statement[]): Statement[] {
 		while (blocks.length) {
 			const lastStatement = blocks[blocks.length - 1];
@@ -664,12 +697,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return blocks;
 	}
 
+	// Rewrite an async node to be explicitly managed continuations split at async expressions
 	function rewriteAsyncNode<T extends Expression | Statement>(state: PluginState, parentPath: NodePath, node: T, additionalConstantNames: string[], exitIdentifier?: Identifier, unpromisify?: boolean) {
 		const path = pathForNewNode(node, parentPath);
 		rewriteAsyncBlock(state, path, additionalConstantNames, exitIdentifier, unpromisify);
 		return path.node;
 	}
 
+	// Return the entire stack of scopes for a given scope
 	function allScopes(scope: Scope): Scope[] {
 		const result = [];
 		while (scope) {
@@ -679,6 +714,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return result;
 	}
 
+	// Visitor that hoists call arguments
 	const hoistCallArgumentsInnerVisitor: Visitor<HoistCallArgumentsInnerState> = {
 		Identifier(identifierPath) {
 			if (identifierSearchesScope(identifierPath)) {
@@ -708,15 +744,18 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	};
 
+	// Check if a node is a literal that has its value on .value
 	function isValueLiteral(node: Node): node is (StringLiteral | NumericLiteral | BooleanLiteral) {
 		return types.isStringLiteral(node) || types.isNumericLiteral(node) || types.isBooleanLiteral(node);
 	}
 
+	// Filter out keys that vary from AST to AST, but don't have observably different behaviour when evaluated
 	function keyFilter(key: string, value: any) {
 		return key === "start" || key === "end" || key === "loc" || key === "directives" || key === "leadingComments" || key === "trailingComments" || key === "innerComments" || key[0] === "_" ? undefined : value;
 	}
 
-	function nodesAreIdentical<T extends Node | ReadonlyArray<Node>>(node: T): (node: T) => boolean {
+	// Helper function to check if nodes have equivalent behaviour when evaluated
+	function nodesAreEquivalent<T extends Node | ReadonlyArray<Node>>(node: T): (node: T) => boolean {
 		// Temporary deduping mechanism that filters source locations to see if nodes are otherwise identical
 		let cached: string | undefined;
 		return (other: T) => {
@@ -727,6 +766,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Helper visitor to reregister bindings on demand (working around some bugs in babel's scope tracking)
 	const reregisterVariableVisitor: Visitor<{ originalScope: Scope }> = {
 		VariableDeclaration(path) {
 			for (const declarator of path.node.declarations) {
@@ -741,6 +781,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	};
 
+	// Inserts a function declaration into a particular scope, abusing the binding system as necessary
 	function insertFunctionIntoScope(func: FunctionExpression, id: Identifier, scope: Scope) {
 		// Insert a const declaration containing the function
 		scope.push({ kind: "const", id, init: func, unique: true });
@@ -754,6 +795,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		binding.path.parentPath.replaceWith(types.functionDeclaration(id, func.params, func.body, func.generator, func.async));
 	}
 
+	// Hoist function expressions into a scope where they can be reused
 	const hoistCallArgumentsVisitor: Visitor<HoistCallArgumentsState> = {
 		FunctionExpression(path) {
 			path.skip();
@@ -789,7 +831,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 			if (ancestry.indexOf(path.scope.parent) === -1) {
 				const bindings = scope.bindings;
-				const filter = nodesAreIdentical([...path.node.params, path.node.body]);
+				const filter = nodesAreEquivalent([...path.node.params, path.node.body]);
 				for (const key of Object.getOwnPropertyNames(bindings)) {
 					const binding = bindings[key];
 					const bindingPath = binding.path;
@@ -831,6 +873,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	};
 
+	// Hoist the arguments of a call expression, so that additional closures aren't unnecessarily created at runtime
 	function hoistCallArguments(state: PluginState, path: NodePath, additionalConstantNames: string[]) {
 		if (path.isCallExpression()) {
 			if (isNewBabel) {
@@ -847,6 +890,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Sanity check that a path is still valid and hasn't been removed
 	function checkPathValidity(path: NodePath) {
 		if (path.container === null) {
 			/* istanbul ignore next */
@@ -861,6 +905,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Extract the continuation of a path, emit a call to a helper, passing the continuation in as an argument
 	function relocateTail(state: PluginState, awaitExpression: Expression, statementNode: Statement | undefined, target: NodePath<Statement>, additionalConstantNames: string[], temporary?: Identifier | Pattern, exitCheck?: Expression, directExpression?: Expression) {
 		checkPathValidity(target);
 		const tail = borrowTail(target);
@@ -899,6 +944,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Rewrite this expression visitor
 	const rewriteThisVisitor: Visitor<{ thisIdentifier?: Identifier }> = {
 		Function(path: NodePath<Function>) {
 			if (!path.isArrowFunctionExpression()) {
@@ -913,6 +959,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 	};
 
+	// Rewrite this into _this so that it can be used in continuations
 	function rewriteThisExpressions(rewritePath: NodePath, targetPath: NodePath) {
 		const state: { thisIdentifier?: Identifier } = {};
 		rewritePath.traverse(rewriteThisVisitor, state);
@@ -921,6 +968,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Rewrite this and arguments visitor
 	const rewriteThisArgumentsAndHoistVisitor: Visitor<{ targetPath: NodePath, thisIdentifier?: Identifier, argumentsIdentifier?: Identifier }> = {
 		Function(path) {
 			path.skip();
@@ -980,6 +1028,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 	};
 
+	// Rewrite this and arguments expressions so that they can be used in continuations
 	function rewriteThisArgumentsAndHoistFunctions(rewritePath: NodePath, targetPath: NodePath) {
 		const state: { targetPath: NodePath, thisIdentifier?: Identifier, argumentsIdentifier?: Identifier } = { targetPath };
 		rewritePath.traverse(rewriteThisArgumentsAndHoistVisitor, state);
@@ -991,6 +1040,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Convert an expression or statement into a callable function expression
 	function functionize(expression: Expression | Statement): FunctionExpression {
 		if (types.isExpression(expression)) {
 			expression = returnStatement(expression);
@@ -1001,6 +1051,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return types.functionExpression(undefined, [], expression);
 	}
 
+	// Create a block statement from a list of statements
 	function blockStatement(statementOrStatements: Statement[] | Statement): BlockStatement {
 		if ("length" in statementOrStatements) {
 			return types.blockStatement(statementOrStatements.filter(statement => !types.isEmptyStatement(statement)));
@@ -1011,6 +1062,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Unwrap function() { return ...(); } expressions 
 	function unwrapReturnCallWithEmptyArguments(node: Expression, scope: Scope, additionalConstantNames: string[]): Expression {
 		if (types.isFunctionExpression(node) && node.body.body.length === 1) {
 			const onlyStatement = node.body.body[0];
@@ -1058,6 +1110,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return node;
 	}
 
+	// Unwrap function(arg) { return something(arg); } expressions
 	function unwrapReturnCallWithPassthroughArgument(node: Expression, scope: Scope) {
 		if (types.isFunctionExpression(node) && node.params.length >= 1 && node.body.body.length >= 1) {
 			const firstStatement = node.body.body[0];
@@ -1078,6 +1131,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return node;
 	}
 
+	// Return true if an expression contains entirely literals, with a list of identifiers assumed to have literal values
 	function isExpressionOfLiterals(path: NodePath, literalNames: string[]): boolean {
 		if (path.isIdentifier()) {
 			if (path.node.name === "undefined") {
@@ -1133,6 +1187,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return false;
 	}
 
+	// Generate a new identifier named after the current node at a path
 	function generateIdentifierForPath(path: NodePath): Identifier {
 		const result = path.scope.generateUidIdentifierBasedOnNode(path.node, "temp");
 		if (path.isIdentifier() && path.node.name === result.name) {
@@ -1141,10 +1196,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return result;
 	}
 
+	// Emit a truthy literal, using 1/0 if minified
 	function booleanLiteral(value: boolean, minify?: boolean) {
 		return minify ? types.numericLiteral(value ? 1 : 0) : types.booleanLiteral(value);
 	}
 
+	// Emit an optimized conditional expression, simplifying if possible
 	function conditionalExpression(test: Expression, consequent: Expression, alternate: Expression) {
 		const looseValue = extractLooseBooleanValue(test);
 		if (typeof looseValue !== "undefined") {
@@ -1171,6 +1228,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return types.conditionalExpression(test, consequent, alternate);
 	}
 
+	// Extract the boolean value of an expression, reading through unary expressions if necessary
 	function extractBooleanValue(node: Expression): boolean | void {
 		if (types.isBooleanLiteral(node)) {
 			return node.value;
@@ -1185,6 +1243,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Extract the thruthy value of an expression, reading through literals and unary expressions if necessary
 	function extractLooseBooleanValue(node: Expression): boolean | void {
 		if (isValueLiteral(node)) {
 			return !!node.value;
@@ -1203,6 +1262,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return extractBooleanValue(node);
 	}
 
+	// Emit a logical or, optimizing based on the truthiness of both sides
 	function logicalOr(left: Expression, right: Expression): Expression {
 		if (extractLooseBooleanValue(left) === true) {
 			return left;
@@ -1213,6 +1273,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+
+	// Emit a logical or, optimizing based on the loose truthiness of both sides assuming that the consumer of the expression only cares about truthiness
 	function logicalOrLoose(left: Expression, right: Expression, minify?: boolean): Expression {
 		switch (extractLooseBooleanValue(left)) {
 			case false:
@@ -1231,6 +1293,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Emit a logical and, optimizing based on the value of the left expression
 	function logicalAnd(left: Expression, right: Expression, extract = extractBooleanValue): Expression {
 		switch (extract(left)) {
 			case true:
@@ -1242,6 +1305,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// EMit a logical not, optimizing where possible
 	function logicalNot(node: Expression, minify?: boolean): Expression {
 		const literalValue = extractLooseBooleanValue(node);
 		if (typeof literalValue !== "undefined") {
@@ -1253,6 +1317,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return types.unaryExpression("!", node);
 	}
 
+	// Unwrap the expression behind a spread element
 	function unwrapSpreadElement(path: NodePath<Expression | SpreadElement | null>): NodePath<Expression> {
 		if (path.isExpression()) {
 			return path;
@@ -1264,6 +1329,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		throw path.buildCodeFrameError(`Expected either an expression or a spread element, got a ${path.type}!`, TypeError);
 	}
 
+	// Find the path of a declaration statement to reuse
 	function findDeclarationToReuse(path: NodePath): NodePath<VariableDeclarator> | undefined {
 		for (;;) {
 			const parent = path.parentPath;
@@ -1298,7 +1364,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
-	function extractDeclarations(state: PluginState, originalAwaitPath: NodePath<AwaitExpression>, awaitExpression: Expression, additionalConstantNames: string[]): { declarationKind: "var" | "const" | "let", declarations: VariableDeclarator[], awaitExpression: Expression, directExpression: Expression, reusingExisting: NodePath<VariableDeclarator> | undefined, resultIdentifier?: Identifier | Pattern } {
+	// Extract prefixes of an await expression out into declarations so that they can be reused in the continuation
+	function extractDeclarations(state: PluginState, originalAwaitPath: NodePath<AwaitExpression>, awaitExpression: Expression, additionalConstantNames: string[]): ExtractedDeclarations {
 		let awaitPath: NodePath<Exclude<Node, Statement>> = originalAwaitPath;
 		const reusingExisting = findDeclarationToReuse(awaitPath);
 		const reusingExistingId = reusingExisting ? reusingExisting.get("id") : undefined;
@@ -1511,10 +1578,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Helper to skip a node
 	function skipNode(path: NodePath) {
 		path.skip();
 	}
 
+	// Visitor to find an await path
 	const awaitPathVisitor: Visitor<{ result?: NodePath }> = {
 		Function: skipNode,
 		AwaitExpression(path) {
@@ -1523,6 +1592,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 	};
 
+	// Finds the first chiild await path, skipping functions
 	function findAwaitPath(path: NodePath): NodePath<AwaitExpression> | void {
 		if (path.isAwaitExpression()) {
 			return path;
@@ -1535,6 +1605,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Build an expression that checks if a loop should be exited
 	function buildBreakExitCheck(state: PluginState, exitIdentifier: Identifier | undefined, breakIdentifiers: { identifier: Identifier }[]): Expression | undefined {
 		let expressions: Expression[] = (breakIdentifiers.map(identifier => identifier.identifier) || []).concat(exitIdentifier ? [exitIdentifier] : []);
 		if (expressions.length) {
@@ -1542,6 +1613,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Pushes missing values onto an array
 	function pushMissing<T>(destination: T[], source: T[]) {
 		for (var value of source) {
 			var index = destination.indexOf(value);
@@ -1551,14 +1623,17 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Assigns to a break identifier
 	function setBreakIdentifier(value: Expression, breakIdentifier: BreakContinueItem): Expression {
 		return types.assignmentExpression("=", breakIdentifier.identifier, value);
 	}
 
+	// Assigns to all break identifiers in a list
 	function setBreakIdentifiers(breakIdentifiers: ReadonlyArray<BreakContinueItem>, pluginState: PluginState) {
 		return breakIdentifiers.reduce(setBreakIdentifier, booleanLiteral(true, pluginState.opts.minify));
 	}
 
+	// Visitor that replaces all returns and breaks with updates to the appropriate break/exit bookkeeping variables
 	const replaceReturnsAndBreaksVisitor: Visitor<{ pluginState: PluginState, exitIdentifier?: Identifier, breakIdentifiers: BreakContinueItem[], usedIdentifiers: BreakContinueItem[] }> = {
 		Function: skipNode,
 		ReturnStatement(path) {
@@ -1610,6 +1685,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 	};
 
+	// Helper that replaces all returns and breaks with updates to the appropriate break/exit bookkeeping variables
 	function replaceReturnsAndBreaks(pluginState: PluginState, path: NodePath, exitIdentifier?: Identifier): BreakContinueItem[] {
 		const state = { pluginState, exitIdentifier, breakIdentifiers: breakContinueStackForPath(path), usedIdentifiers: [] as BreakContinueItem[] };
 		path.traverse(replaceReturnsAndBreaksVisitor, state);
@@ -1621,6 +1697,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return state.usedIdentifiers;
 	}
 
+	// Finds the break identifier associated with a path
 	function breakIdentifierForPath(path: NodePath): Identifier {
 		let result = path.node._breakIdentifier;
 		if (!result) {
@@ -1629,6 +1706,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return result;
 	}
 
+	// Visitor that searches for unlabeled break statements
 	const simpleBreakOrContinueReferencesVisitor: Visitor<{ references: NodePath[] }> = {
 		Function: skipNode,
 		Loop: skipNode,
@@ -1652,12 +1730,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	};
 
+	// Searches for unlabeled break statements
 	function simpleBreakOrContinueReferences(path: NodePath): NodePath[] {
 		const state = { references: [] };
 		path.traverse(simpleBreakOrContinueReferencesVisitor, state);
 		return state.references;
 	}
 
+	// Visitor that searches for named label breaks/continues
 	const namedLabelReferencesVisitor: Visitor<{ name: string, breaks: NodePath[], continues: NodePath[] }> = {
 		Function: skipNode,
 		BreakStatement(path) {
@@ -1679,12 +1759,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	};
 
+	// Searches for named label breaks/continues
 	function namedLabelReferences(labelPath: NodePath<LabeledStatement>, targetPath: NodePath): { name: string, breaks: NodePath[], continues: NodePath[] } {
 		const state = { name: labelPath.node.label.name, breaks: [], continues: [] };
 		targetPath.traverse(namedLabelReferencesVisitor, state);
 		return state;
 	}
 
+	// Build the break/continue stack for a path
 	function breakContinueStackForPath(path: NodePath) {
 		let current = path;
 		const result = [];
@@ -1725,10 +1807,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return result;
 	}
 
+	// Check if a path is a for-await statement (not supported on all Babel versions)
 	function isForAwaitStatement(path: NodePath): path is NodePath<ForOfStatement> {
 		return path.isForAwaitStatement ? path.isForAwaitStatement() : false;
 	}
 
+	// Find the most immediate statement parent of a path
 	function getStatementParent(path: NodePath<Statement | Expression>): NodePath<Statement> {
 		let parent: NodePath = path;
 		do {
@@ -1740,6 +1824,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		throw path.buildCodeFrameError(`Expected a statement parent!`, TypeError);
 	}
 
+	// Add constant names to a contant name array
 	function addConstantNames(additionalConstantNames: string[], node: LVal) {
 		if (types.isIdentifier(node)) {
 			if (additionalConstantNames.indexOf(node.name) === -1) {
@@ -1771,6 +1856,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		exitIdentifier?: Identifier;
 	}
 
+	// Rewrites an await or for-await expression
 	function rewriteAwaitPath(this: RewriteAwaitState, rewritePath: NodePath<AwaitExpression> | NodePath<ForOfStatement>) {
 		const state = this;
 		const pluginState = state.pluginState;
@@ -2089,6 +2175,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Main visitor that rewrites await and for-await expressions, skipping entering into child functions
 	const rewriteAsyncBlockVisitor: Visitor<RewriteAwaitState> & { ForAwaitStatement: any } = {
 		Function: skipNode,
 		AwaitExpression: rewriteAwaitPath,
@@ -2106,6 +2193,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 	};
 
+	// Visitor that unpromisifies return statements, skipping functions
 	const unpromisifyVisitor: Visitor<PluginState> = {
 		Function: skipNode,
 		ReturnStatement(path) {
@@ -2116,6 +2204,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 	};
 
+	// Unpromisifies a path
 	function unpromisify(path: NodePath<Expression>, pluginState: PluginState) {
 		if (path.isNumericLiteral()) {
 			return;
@@ -2191,6 +2280,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		path.replaceWith(logicalNot(logicalNot(path.node, pluginState.opts.minify), pluginState.opts.minify));
 	}
 
+	// Rewrites await and for-await expressions, skipping entering into child functions
 	function rewriteAsyncBlock(pluginState: PluginState, path: NodePath, additionalConstantNames: string[], exitIdentifier?: Identifier, unpromisify?: boolean) {
 		path.traverse(rewriteAsyncBlockVisitor, { pluginState, path, additionalConstantNames, exitIdentifier });
 		if (unpromisify) {
@@ -2199,6 +2289,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Visitor to extract dependencies from a helper function
 	const getHelperDependenciesVisitor: Visitor<{ dependencies: string[] }> = {
 		Identifier(path) {
 			if (identifierSearchesScope(path) && path.hub.file.scope.getBinding(path.node.name) && this.dependencies.indexOf(path.node.name) === -1) {
@@ -2207,12 +2298,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	};
 
+	// Extract dependencies from a helper function
 	function getHelperDependencies(path: NodePath) {
 		const state = { dependencies: [] };
 		path.traverse(getHelperDependenciesVisitor, state);
 		return state.dependencies;
 	}
 
+	// Visitor that checks if an identifier is used
 	const usesIdentifierVisitor: Visitor<{ name: string, found: boolean }> = {
 		Identifier(path) {
 			if (path.node.name === this.name) {
@@ -2222,12 +2315,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	};
 
+	// Check if an identifier is used by a path
 	function usesIdentifier(path: NodePath, name: string) {
 		const state = { name, found: false };
 		path.traverse(usesIdentifierVisitor, state);
 		return state.found;
 	}
 
+	// Emits a reference to a helper, inlining or importing it as necessary
 	function helperReference(state: PluginState, path: NodePath, name: string): Identifier {
 		const file = path.scope.hub.file;
 		let result = file.declarations[name];
@@ -2318,20 +2413,24 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return result;
 	}
 
+	// Emits a reference to an empty function, inlining or importing it as necessary
 	function emptyFunction(state: PluginState, path: NodePath): Identifier | FunctionExpression {
 		return state.opts.inlineHelpers ? types.functionExpression(undefined, [], blockStatement([])) : helperReference(state, path, "_empty");
 	}
 
+	// Emits a reference to Promise.resolve and tags it as an _await reference
 	function promiseResolve() {
 		const result = types.memberExpression(types.identifier("Promise"), types.identifier("resolve"));
 		result._helperName = "_await";
 		return result;
 	}
 
+	// Emits a call to a target's then method
 	function callThenMethod(target: Expression, then: Expression) {
 		return types.callExpression(types.memberExpression(target, types.identifier("then")), [then]);
 	}
 
+	// Checks if an expression is an async call expression
 	function isAsyncCallExpression(path: NodePath<CallExpression>): boolean {
 		if (types.isIdentifier(path.node.callee) || types.isMemberExpression(path.node.callee)) {
 			switch (path.node.callee._helperName) {
@@ -2343,6 +2442,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return false;
 	}
 
+	// Extracts the invoke type of a call expression
 	function invokeTypeOfExpression(path: NodePath<Node | null>): "_invoke" | "_invokeIgnored" | "_catch" | "_finally" | "_finallyRethrows" | void {
 		if (path.isCallExpression() && types.isIdentifier(path.node.callee)) {
 			const helperName = path.node.callee._helperName;
@@ -2357,6 +2457,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Checks to see if an expression is an async function
 	function isAsyncFunctionExpression(path: NodePath): boolean {
 		if (path.isFunction() && (path.node.async || path.node._async)) {
 			return true;
@@ -2367,6 +2468,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return false;
 	}
 
+	// Looks up if a bound function is an async function
 	function isAsyncFunctionIdentifier(path: NodePath): path is NodePath<Identifier> {
 		if (path.isIdentifier()) {
 			const binding = path.scope.getBinding(path.node.name);
@@ -2387,10 +2489,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return false;
 	}
 
+	// Check if an argument is arguments or eval
 	function isEvalOrArguments(path: NodePath): path is NodePath<Identifier> {
 		return path.isIdentifier() && (path.node.name === "arguments" || path.node.name === "eval");
 	}
 
+	// Check if an indentifier at a path searches its scope
 	function identifierSearchesScope(path: NodePath<Identifier>): boolean {
 		if (path.node.name === "undefined") {
 			return false;
@@ -2411,10 +2515,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return true;
 	}
 
+	// Visitor helper that sets the canThrow state
 	function canThrow(this: { canThrow: boolean }): void {
 		this.canThrow = true;
 	}
 
+	// Parse the promise call type of a call expression
 	function promiseCallExpressionType(expression: CallExpression): "all" | "race" | "reject" | "resolve" | "then" | "catch" | "finally" | undefined {
 		if (types.isMemberExpression(expression.callee)) {
 			if (types.isIdentifier(expression.callee.object) && expression.callee.object.name === "Promise" && types.isIdentifier(expression.callee.property)) {
@@ -2440,6 +2546,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return undefined;
 	}
 
+	// Visitor to simplify the top level of an async function and check if it needs to be wrapped in a try/catch
 	const checkForErrorsAndRewriteReturnsVisitor: Visitor<{ rewriteReturns: boolean, plugin: PluginState, canThrow: boolean }> = {
 		Function: skipNode,
 		ThrowStatement: canThrow,
@@ -2523,10 +2630,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 						const target = this.plugin.opts.inlineHelpers ? promiseResolve() : helperReference(this.plugin, path, "_await");
 						let arg = argument.node;
 						if (types.isConditionalExpression(arg) && types.isIdentifier(arg.test)) {
-							if (types.isCallExpression(arg.consequent) && promiseCallExpressionType(arg.consequent) === "resolve" && arg.consequent.arguments.length === 1 && nodesAreIdentical(arg.consequent.arguments[0])(arg.alternate)) {
+							if (types.isCallExpression(arg.consequent) && promiseCallExpressionType(arg.consequent) === "resolve" && arg.consequent.arguments.length === 1 && nodesAreEquivalent(arg.consequent.arguments[0])(arg.alternate)) {
 								// Simplify Promise.resolve(foo ? bar() : Promise.resolve(bar())) to Promise.resolve(bar())
 								arg = arg.alternate;
-							} else if (types.isCallExpression(arg.alternate) && promiseCallExpressionType(arg.alternate) === "resolve" && arg.alternate.arguments.length === 1 && nodesAreIdentical(arg.alternate.arguments[0])(arg.consequent)) {
+							} else if (types.isCallExpression(arg.alternate) && promiseCallExpressionType(arg.alternate) === "resolve" && arg.alternate.arguments.length === 1 && nodesAreEquivalent(arg.alternate.arguments[0])(arg.consequent)) {
 								// Simplify Promise.resolve(foo ? Promise.resolve(bar()) : bar()) to Promise.resolve(bar())
 								arg = arg.consequent;
 							}
@@ -2569,12 +2676,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 	};
 
+	// Simplify the top level of an async function and check if it needs to be wrapped in a try/catch
 	function checkForErrorsAndRewriteReturns(path: NodePath, plugin: PluginState, rewriteReturns: boolean = false): boolean {
 		const state = { rewriteReturns, plugin, canThrow: false };
 		path.traverse(checkForErrorsAndRewriteReturnsVisitor, state);
 		return state.canThrow;
 	}
 
+	// Visitor to rewrite the top level return expressions of an async function
 	const rewriteTopLevelReturnsVisitor: Visitor = {
 		Function: skipNode,
 		ReturnStatement(path) {
@@ -2610,6 +2719,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Shuffles a path to evaluate before its non-function declaration siblings
 	function reorderPathBeforeSiblingStatements(targetPath: NodePath) {
 		for (const sibling of targetPath.getAllPrevSiblings().reverse()) {
 			if (!sibling.isFunctionDeclaration()) {
@@ -2621,6 +2731,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Main babel plugin implementation and top level visitor
 	return {
 		manipulateOptions(options: any, parserOptions: { plugins: string[] }) {
 			parserOptions.plugins.push("asyncGenerators");

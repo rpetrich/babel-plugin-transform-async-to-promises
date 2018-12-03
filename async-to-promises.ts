@@ -2201,34 +2201,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	// Unpromisifies a path
 	function unpromisify(path: NodePath<Expression>, pluginState: PluginState) {
-		if (path.isNumericLiteral()) {
-			return;
-		}
-		if (path.isBooleanLiteral()) {
-			return;
-		}
-		if (path.isStringLiteral()) {
-			return;
-		}
-		if (path.isNullLiteral()) {
-			return;
-		}
-		if (path.isIdentifier() && path.node.name === "undefined") {
-			return;
-		}
-		if (path.isArrayExpression()) {
-			return;
-		}
-		if (path.isObjectExpression()) {
-			return;
-		}
-		if (path.isBinaryExpression()) {
-			return;
-		}
-		if (path.isUnaryExpression()) {
-			return;
-		}
-		if (path.isUpdateExpression()) {
+		if (path.isNumericLiteral() || path.isBooleanLiteral() || path.isStringLiteral() || path.isNullLiteral() || (path.isIdentifier() && path.node.name === "undefined") || path.isArrayExpression() || path.isObjectExpression() || path.isBinaryExpression() || path.isUnaryExpression() || path.isUpdateExpression()) {
 			return;
 		}
 		if (path.isCallExpression() && (types.isIdentifier(path.node.callee) || types.isMemberExpression(path.node.callee)) && path.node.callee._helperName) {
@@ -2249,9 +2222,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 					}
 					break;
 				}
-				case "_awaitIgnored":
-				case "_callIgnored":
-					break;
 			}
 			return;
 		}
@@ -2325,6 +2295,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			result = file.declarations[name] = usesIdentifier(file.path, name) ? file.path.scope.generateUidIdentifier(name) : types.identifier(name);
 			result._helperName = name;
 			if (state.opts.externalHelpers) {
+				/* istanbul ignore next */
 				file.path.unshiftContainer("body", types.importDeclaration([types.importSpecifier(result, types.identifier(name))], types.stringLiteral("babel-plugin-transform-async-to-promises/helpers")));
 			} else {
 				if (!helpers) {

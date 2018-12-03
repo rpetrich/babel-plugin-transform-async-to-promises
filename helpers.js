@@ -2,11 +2,11 @@
 export const _Pact = (function() {
 	function _Pact() {}
 	_Pact.prototype.then = function(onFulfilled, onRejected) {
+		const result = new _Pact();
 		const state = this.s;
 		if (state) {
 			const callback = state & 1 ? onFulfilled : onRejected;
 			if (callback) {
-				const result = new _Pact();
 				try {
 					_settle(result, 1, callback(this.v));
 				} catch (e) {
@@ -17,7 +17,6 @@ export const _Pact = (function() {
 				return this;
 			}
 		}
-		const result = new _Pact();
 		this.o = function(_this) {
 			try {
 				const value = _this.v;

@@ -135,7 +135,7 @@ for (const [babelName, babel] of environments) {
 	parse(babel, "let test;");
 }
 
-for (const name of fs.readdirSync("tests")) {
+for (const name of fs.readdirSync("tests").sort()) {
 	if (testsToRun.length && testsToRun.indexOf(name) === -1) {
 		continue;
 	}

@@ -598,6 +598,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 				expression: value
 			};
 		}
+		if (types.isCallExpression(value) && value.arguments.length === 0 && types.isFunctionExpression(value.callee) && value.callee.id === null && value.callee.params.length === 0) {
+			const newValue = expressionInSingleReturnStatement(value.callee.body.body);
+			if (newValue) {
+				value = newValue;
+			}
+		}
 		if (state.opts.inlineHelpers) {
 			if (directExpression) {
 				const resolvedValue = types.callExpression(promiseResolve(), [value]);
@@ -638,12 +644,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 				let expressions: Expression[] = [];
 				if (!types.isIdentifier(value)) {
 					const id = path.scope.generateUidIdentifier("temp");
-					if (types.isCallExpression(value) && value.arguments.length === 0 && types.isFunctionExpression(value.callee) && value.callee.id === null && value.callee.params.length === 0) {
-						const newValue = expressionInSingleReturnStatement(value.callee.body.body);
-						if (newValue) {
-							value = newValue;
-						}
-					}
 					declarators.push(types.variableDeclarator(id, value));
 					value = id;
 				}

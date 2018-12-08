@@ -1,4 +1,4 @@
-import { AwaitExpression, BlockStatement, CallExpression, LabeledStatement, Node, Expression, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal } from "babel-types";
+import { AwaitExpression, BlockStatement, CallExpression, LabeledStatement, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal } from "babel-types";
 import { NodePath, Scope, Visitor } from "babel-traverse";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -963,6 +963,51 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Extracts all the identifiers populated in an LVal
+	function identifiersInLVal(id: LVal, result: Identifier[] = []): Identifier[] {
+		switch (id.type) {
+			case "Identifier":
+				result.push(id);
+				break;
+			case "AssignmentPattern":
+				identifiersInLVal(id.left);
+				break;
+			case "ArrayPattern":
+				for (const element of id.elements) {
+					if (types.isLVal(element)) {
+						identifiersInLVal(element, result);
+					}
+				}
+				break;
+			case "RestElement":
+				identifiersInLVal(id.argument, result);
+				break;
+			case "ObjectPattern":
+				for (const property of id.properties) {
+					if (types.isRestProperty(property)) {
+						identifiersInLVal(property.argument, result);
+					} else {
+						identifiersInLVal(property.value, result);
+					}
+				}
+				break;
+			default:
+				throw new Error(`Unexpected node is not an LVal: ${id}`);
+		}
+		return result;
+	}
+
+	// Checks if any identifiers are referenced before a specific path
+	function anyIdentifiersRequireHoisting(identifiers: ReadonlyArray<Identifier>, path: NodePath) {
+		for (const id of identifiers) {
+			const binding = path.scope.getBinding(id.name);
+			if (!binding || (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// Rewrite this and arguments visitor
 	const rewriteThisArgumentsAndHoistVisitor: Visitor<{ targetPath: NodePath, thisIdentifier?: Identifier, argumentsIdentifier?: Identifier }> = {
 		Function(path) {
@@ -987,38 +1032,55 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 		},
 		VariableDeclaration(path) {
-			const scope = path.scope;
 			if (path.node.kind === "var") {
+				const scope = path.scope;
 				const declarations = path.get("declarations");
-				for (const declaration of declarations) {
-					const id = declaration.node.id;
-					if (types.isIdentifier(id)) {
-						const binding = scope.getBinding(id.name);
-						if (!binding || (binding.referencePaths.some(referencePath => referencePath.willIMaybeExecuteBefore(path)) || (binding.referencePaths.length && path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath))) {
+				if ((path.parentPath.isForInStatement() || path.parentPath.isForOfStatement()) && path.parentPath.get("left") === path && declarations.length === 1) {
+					const lval = declarations[0].node.id;
+					const identifiers = identifiersInLVal(lval);
+					if (anyIdentifiersRequireHoisting(identifiers, path)) {
+						for (const id of identifiers) {
 							this.targetPath.scope.push({ id });
-							if (declaration.node.init) {
-								path.insertBefore(types.expressionStatement(types.assignmentExpression("=", id, declaration.node.init)));
+						}
+						path.replaceWith(lval);
+					}
+				} else {
+					const mapped = declarations.map((declaration) => ({ declaration, identifiers: identifiersInLVal(declaration.node.id) }));
+					if (mapped.some(({ identifiers }) => anyIdentifiersRequireHoisting(identifiers, path))) {
+						const expressions: Expression[] = [];
+						for (const { declaration, identifiers } of mapped) {
+							for (const id of identifiers) {
+								this.targetPath.scope.push({ id });
 							}
-							if ((path.parentPath.isForInStatement() || path.parentPath.isForOfStatement()) && path.parentPath.get("left") === path) {
-								path.replaceWith(id);
-							} else {
-								declaration.remove();
+							if (declaration.node.init) {
+								expressions.push(types.assignmentExpression("=", declaration.node.id, declaration.node.init));
 							}
 						}
-					} else {
-						// TODO: Support destructured identifiers
+						if (expressions.length === 0) {
+							path.remove();
+						} else if (path.parentPath.isForStatement() && path.parentPath.get("init") === path) {
+							path.replaceWith(types.sequenceExpression(expressions));
+						} else {
+							path.replaceWithMultiple(expressions.map((expression) => types.expressionStatement(expression)));
+						}
 					}
 				}
 			}
 		},
 		FunctionDeclaration(path) {
-			const siblings = path.getAllPrevSiblings();
-			if (siblings.some(sibling => !sibling.isFunctionDeclaration())) {
-				const node = path.node;
-				const parentPath = path.parentPath;
-				path.remove();
-				const paths = siblings[0].insertBefore(node);
-				parentPath.scope.registerDeclaration(paths[0]);
+			let targetPath: NodePath<FunctionDeclaration | BlockStatement> = path;
+			while (targetPath.parentPath.isBlockStatement()) {
+				targetPath = targetPath.parentPath;
+			}
+			for (const sibling of path.getAllPrevSiblings()) {
+				if (!sibling.isFunctionDeclaration()) {
+					const node = path.node;
+					const parentPath = path.parentPath;
+					path.remove();
+					const paths = sibling.insertBefore(node as any);
+					parentPath.scope.registerDeclaration(paths[0]);
+					return;
+				}
 			}
 		},
 	};
@@ -2062,7 +2124,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							}
 							const init = parent.get("init");
 							if (init.node) {
-								parent.insertBefore(init.node);
+								parent.insertBefore(init.isExpression() ? types.expressionStatement(init.node) : init.node);
 							}
 						}
 						const forIdentifier = path.scope.generateUidIdentifier("for");

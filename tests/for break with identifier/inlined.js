@@ -1,1 +1,1 @@
-function(foo){try{let _loopInterrupt=false;loop:return Promise.resolve(_continueIgnored(_for(function(){return!_loopInterrupt;},void 0,function(){return Promise.resolve(foo()).then(function(){_loopInterrupt=true;});})));}catch(e){return Promise.reject(e);}}
+function(foo){try{let _loopInterrupt=false;const _temp=_for(function(){return!_loopInterrupt;},void 0,function(){return Promise.resolve(foo()).then(function(){_loopInterrupt=true;});});loop:return Promise.resolve(_temp&&_temp.then?_temp.then(function(){}):void 0);}catch(e){return Promise.reject(e);}}

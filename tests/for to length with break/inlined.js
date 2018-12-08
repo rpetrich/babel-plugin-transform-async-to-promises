@@ -1,1 +1,1 @@
-function(list){try{let _interrupt=false;return Promise.resolve(_continueIgnored(_forTo(list,function(i){return Promise.resolve(list[i]()).then(function(_list$i){if(_list$i){_interrupt=true;}});},function(){return _interrupt;})));}catch(e){return Promise.reject(e);}}
+function(list){try{let _interrupt=false;const _temp=_forTo(list,function(i){return Promise.resolve(list[i]()).then(function(_list$i){if(_list$i){_interrupt=true;}});},function(){return _interrupt;});return Promise.resolve(_temp&&_temp.then?_temp.then(function(){}):void 0);}catch(e){return Promise.reject(e);}}

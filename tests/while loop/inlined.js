@@ -1,1 +1,1 @@
-function(foo){try{let shouldContinue=true;return Promise.resolve(_continueIgnored(_for(function(){return!!shouldContinue;},void 0,function(){return Promise.resolve(foo()).then(function(_foo){shouldContinue=_foo;});})));}catch(e){return Promise.reject(e);}}
+function(foo){try{let shouldContinue=true;const _temp=_for(function(){return!!shouldContinue;},void 0,function(){return Promise.resolve(foo()).then(function(_foo){shouldContinue=_foo;});});return Promise.resolve(_temp&&_temp.then?_temp.then(function(){}):void 0);}catch(e){return Promise.reject(e);}}

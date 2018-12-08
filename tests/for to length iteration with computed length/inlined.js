@@ -1,1 +1,1 @@
-function(list){try{var result=0;return Promise.resolve(_continue(_forTo(list,function(i){return Promise.resolve(list[i]()).then(function(_list$i){result+=_list$i;});}),function(){return result;}));}catch(e){return Promise.reject(e);}}
+function(list){try{var result=0;const _temp=_forTo(list,function(i){return Promise.resolve(list[i]()).then(function(_list$i){result+=_list$i;});});return Promise.resolve(_temp&&_temp.then?_temp.then(function(){return result;}):result);}catch(e){return Promise.reject(e);}}

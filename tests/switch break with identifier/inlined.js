@@ -1,1 +1,1 @@
-function(foo){try{let _exitInterrupt=false;return Promise.resolve(_continueIgnored(_switch(0,[[void 0,function(){return Promise.resolve(foo()).then(function(){_exitInterrupt=true;});}]])));}catch(e){return Promise.reject(e);}}
+function(foo){try{let _exitInterrupt=false;const _temp=_switch(0,[[void 0,function(){return Promise.resolve(foo()).then(function(){_exitInterrupt=true;});}]]);return Promise.resolve(_temp&&_temp.then?_temp.then(function(){}):void 0);}catch(e){return Promise.reject(e);}}

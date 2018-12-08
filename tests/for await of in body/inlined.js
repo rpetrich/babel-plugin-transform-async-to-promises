@@ -1,1 +1,1 @@
-function(iter){try{let result=0;return Promise.resolve(_continue(_forAwaitOf(iter,function(value){result+=value;}),function(){return result;}));}catch(e){return Promise.reject(e);}}
+function(iter){try{let result=0;const _temp=_forAwaitOf(iter,function(value){result+=value;});return Promise.resolve(_temp&&_temp.then?_temp.then(function(){return result;}):result);}catch(e){return Promise.reject(e);}}

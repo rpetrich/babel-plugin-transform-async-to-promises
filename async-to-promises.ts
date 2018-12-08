@@ -310,10 +310,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (statements.length === 1) {
 			const firstStatement = statements[0];
 			if (types.isReturnStatement(firstStatement)) {
-				let argument = firstStatement.argument;
-				if (argument) {
-					return argument;
-				}
+				return firstStatement.argument || voidExpression();
 			}
 		}
 	}
@@ -537,8 +534,57 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return expression;
 	}
 
+	// Checks if an expression is an identifier or a literal
+	function isIdentifierOrLiteral(expression: Expression) {
+		return types.isIdentifier(expression) || types.isLiteral(expression)
+	}
+
+	// Extract a "simple" expression out of a continuation; this is to avoid emitting a function declaration for simple continuations that merely return a value
+	function simpleExpressionForContinuation(continuation: Expression, value?: Expression) {
+		if (types.isFunctionExpression(continuation)) {
+			let expression = expressionInSingleReturnStatement(continuation.body.body);
+			if (expression) {
+				switch (continuation.params.length) {
+					case 0:
+						if ((types.isConditionalExpression(expression) && isIdentifierOrLiteral(expression.test) && isIdentifierOrLiteral(expression.consequent) && isIdentifierOrLiteral(expression.alternate)) ||
+							((types.isLogicalExpression(expression) || types.isBinaryExpression(expression)) && isIdentifierOrLiteral(expression.left) && isIdentifierOrLiteral(expression.right)) ||
+							(types.isUnaryExpression(expression) && isIdentifierOrLiteral(expression.argument)) ||
+							(types.isCallExpression(expression) && isIdentifierOrLiteral(expression.callee) && expression.arguments.length === 0) ||
+							isIdentifierOrLiteral(expression)
+						) {
+							return expression;
+						}
+						break;
+					case 1: {
+						if (!value) {
+							return;
+						}
+						const firstParam = continuation.params[0];
+						const replace = (expr: Expression) => types.isIdentifier(firstParam) && types.isIdentifier(expr) && expr.name === firstParam.name ? value : expr;
+						if (isIdentifierOrLiteral(expression)) {
+							return replace(expression);
+						}
+						if (types.isConditionalExpression(expression) && isIdentifierOrLiteral(expression.test) && isIdentifierOrLiteral(expression.consequent) && isIdentifierOrLiteral(expression.alternate)) {
+							return types.conditionalExpression(replace(expression.test), replace(expression.consequent), replace(expression.alternate));
+						}
+						if (types.isLogicalExpression(expression) && isIdentifierOrLiteral(expression.left) && isIdentifierOrLiteral(expression.right)) {
+							return types.logicalExpression(expression.operator, replace(expression.left), replace(expression.right));
+						}
+						if (types.isBinaryExpression(expression) && isIdentifierOrLiteral(expression.left) && isIdentifierOrLiteral(expression.right)) {
+							return types.binaryExpression(expression.operator, replace(expression.left), replace(expression.right));
+						}
+						if (types.isCallExpression(expression) && isIdentifierOrLiteral(expression.callee) && expression.arguments.length === 0) {
+							return types.callExpression(replace(expression.callee), expression.arguments);
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Await an expression and resume control flow to the continuation, optionally calling directly
-	function awaitAndContinue(state: PluginState, path: NodePath, value: Expression, continuation?: Expression, directExpression?: Expression) {
+	function awaitAndContinue(state: PluginState, path: NodePath, value: Expression, continuation?: Expression, directExpression?: Expression): { declarators: VariableDeclarator[], expression: Expression } {
+		const declarators: VariableDeclarator[] = [];
 		if (continuation) {
 			if (isPassthroughContinuation(continuation)) {
 				continuation = undefined;
@@ -547,29 +593,85 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 		}
 		if (!continuation && directExpression && extractLooseBooleanValue(directExpression) === true) {
-			return value;
+			return {
+				declarators,
+				expression: value
+			};
 		}
-		const callTarget = types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee) ? value.callee : undefined;
-		if (state.opts.inlineHelpers && directExpression) {
-			const resolvedValue = types.callExpression(promiseResolve(), [value]);
-			const direct = extractLooseBooleanValue(directExpression);
-			if (typeof direct === "undefined") {
-				if (continuation) {
-					if (types.isFunctionExpression(continuation)) {
-						const id = path.scope.generateUidIdentifierBasedOnNode(continuation, "temp");
-						insertFunctionIntoScope(continuation, id, path.scope);
-						continuation = id;
+		if (state.opts.inlineHelpers) {
+			if (directExpression) {
+				const resolvedValue = types.callExpression(promiseResolve(), [value]);
+				const direct = extractLooseBooleanValue(directExpression);
+				if (typeof direct === "undefined") {
+					let expression;
+					if (continuation) {
+						let simpleExpression;
+						if (!types.isIdentifier(continuation) && !(simpleExpression = simpleExpressionForContinuation(continuation, isIdentifierOrLiteral(value) ? value : undefined))) {
+							const id = path.scope.generateUidIdentifier("temp");
+							if (types.isFunctionExpression(continuation)) {
+								insertFunctionIntoScope(continuation, id, path.parentPath.scope);
+							} else {
+								declarators.push(types.variableDeclarator(id, continuation));
+							}
+							continuation = id;
+						}
+						expression = conditionalExpression(directExpression, simpleExpression || types.callExpression(continuation, [value]), callThenMethod(resolvedValue, continuation));
+					} else {
+						expression = conditionalExpression(directExpression, value, resolvedValue);
 					}
-					return conditionalExpression(directExpression, types.callExpression(continuation, [value]), callThenMethod(resolvedValue, continuation));
+					return {
+						declarators,
+						expression,
+					};
+				} else if (direct) {
+					return {
+						declarators,
+						expression: continuation ? types.callExpression(continuation, [value]) : value,
+					};
 				} else {
-					return conditionalExpression(directExpression, value, resolvedValue);
+					return {
+						declarators,
+						expression: continuation ? callThenMethod(resolvedValue, continuation) : resolvedValue,
+					};
 				}
-			} else if (direct) {
-				return continuation ? types.callExpression(continuation, [value]) : value;
-			} else {
-				return continuation ? callThenMethod(resolvedValue, continuation) : resolvedValue;
+			} else if (continuation) {
+				let expressions: Expression[] = [];
+				if (!types.isIdentifier(value)) {
+					const id = path.scope.generateUidIdentifier("temp");
+					if (types.isCallExpression(value) && value.arguments.length === 0 && types.isFunctionExpression(value.callee) && value.callee.id === null && value.callee.params.length === 0) {
+						const newValue = expressionInSingleReturnStatement(value.callee.body.body);
+						if (newValue) {
+							value = newValue;
+						}
+					}
+					declarators.push(types.variableDeclarator(id, value));
+					value = id;
+				}
+				const isEmpty = isEmptyContinuation(continuation, path);
+				let simpleExpression;
+				if (!isEmpty && !types.isIdentifier(continuation) && !(simpleExpression = simpleExpressionForContinuation(continuation, value))) {
+					const id = path.scope.generateUidIdentifier("temp");
+					if (types.isFunctionExpression(continuation)) {
+						insertFunctionIntoScope(continuation, id, path.parentPath.scope);
+					} else {
+						declarators.push(types.variableDeclarator(id, continuation));
+					}
+					continuation = id;
+				}
+				return {
+					declarators,
+					expression: types.conditionalExpression(
+						types.logicalExpression("&&",
+							value,
+							types.memberExpression(value, types.identifier("then"))
+						),
+						callThenMethod(value, continuation),
+						simpleExpression ? simpleExpression : (isEmpty ? voidExpression() : types.callExpression(continuation, [value])),
+					)
+				};
 			}
 		}
+		const callTarget = types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee) ? value.callee : undefined;
 		const args: Expression[] = [callTarget || value];
 		const ignoreResult = continuation && isEmptyContinuation(continuation, path);
 		if (!ignoreResult && continuation) {
@@ -588,12 +690,21 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (args.length === 1) {
 			switch (helperName) {
 				case "_invoke":
-					return types.callExpression(args[0], []);
+					return {
+						declarators,
+						expression: types.callExpression(args[0], []),
+					};
 				case "_continue":
-					return args[0];
+					return {
+						declarators,
+						expression: args[0],
+					};
 			}
 		}
-		return types.callExpression(helperReference(state, path, helperName), args);
+		return {
+			declarators,
+			expression: types.callExpression(helperReference(state, path, helperName), args),
+		};
 	}
 
 	// Borrow the tail continuation of a statement
@@ -905,12 +1016,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 		checkPathValidity(target);
 		const tail = borrowTail(target);
 		checkPathValidity(target);
-		let expression;
 		let originalNode = target.node;
 		const rewrittenTail = statementNode || tail.length ? rewriteAsyncNode(state, target, blockStatement((statementNode ? [statementNode] : []).concat(tail)), additionalConstantNames).body : [];
 		checkPathValidity(target);
 		let blocks = removeUnnecessaryReturnStatements(rewrittenTail.filter(isNonEmptyStatement));
 		checkPathValidity(target);
+		let replacement;
 		if (blocks.length) {
 			if (exitCheck) {
 				if (temporary && !types.isIdentifier(temporary)) {
@@ -922,15 +1033,18 @@ export default function({ types, template, traverse, transformFromAst, version }
 				blocks = removeUnnecessaryReturnStatements([types.ifStatement(exitCheck, returnStatement(temporary)) as Statement].concat(blocks));
 			}
 			const fn = types.functionExpression(undefined, temporary ? [temporary] : [], blockStatement(blocks));
-			expression = awaitAndContinue(state, target, awaitExpression, fn, directExpression);
+			replacement = awaitAndContinue(state, target, awaitExpression, fn, directExpression);
 			originalNode = types.blockStatement([target.node].concat(tail));
 		} else if (pathsReturnOrThrow(target).any) {
-			expression = awaitAndContinue(state, target, awaitExpression, undefined, directExpression);
+			replacement = awaitAndContinue(state, target, awaitExpression, undefined, directExpression);
 		} else {
-			expression = awaitAndContinue(state, target, awaitExpression, emptyFunction(state, target), directExpression);
+			replacement = awaitAndContinue(state, target, awaitExpression, emptyFunction(state, target), directExpression);
 		}
 		checkPathValidity(target);
-		target.replaceWith(returnStatement(expression, originalNode));
+		if (replacement.declarators.length) {
+			target.insertBefore(types.variableDeclaration("const", replacement.declarators));
+		}
+		target.replaceWith(returnStatement(replacement.expression, originalNode));
 		if (state.opts.hoist && target.isReturnStatement()) {
 			const argument = target.get("argument");
 			if (argument.node) {
@@ -2454,8 +2568,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Emits a call to a target's then method
-	function callThenMethod(target: Expression, then: Expression) {
-		return types.callExpression(types.memberExpression(target, types.identifier("then")), [then]);
+	function callThenMethod(value: Expression, continuation: Expression) {
+		return types.callExpression(types.memberExpression(value, types.identifier("then")), [continuation]);
 	}
 
 	// Checks if an expression is an async call expression

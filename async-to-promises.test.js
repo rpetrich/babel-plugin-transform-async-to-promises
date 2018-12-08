@@ -69,7 +69,7 @@ function extractOnlyUserCode(babel, result) {
 
 function extractJustFunction(babel, result) {
 	const extracted = extractOnlyUserCode(babel, result);
-	const match = extracted.match(/(^return\s*)?(.*);$/);
+	const match = extracted.match(/(^return\s*)?([\s\S]*);\s*$/);
 	return match ? match[2] : extracted;
 }
 

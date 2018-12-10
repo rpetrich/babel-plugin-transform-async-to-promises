@@ -5,11 +5,29 @@ import { join } from "path";
 
 // Configuration types
 interface AsyncToPromisesConfiguration {
-	externalHelpers?: boolean;
-	hoist?: boolean;
-	inlineHelpers?: boolean;
-	minify?: boolean;
-	target?: "es5" | "es6";
+	externalHelpers: boolean;
+	hoist: boolean;
+	inlineHelpers: boolean;
+	minify: boolean;
+	target: "es5" | "es6";
+}
+
+const defaultConfigValues: AsyncToPromisesConfiguration = {
+	externalHelpers: false,
+	hoist: false,
+	inlineHelpers: false,
+	minify: false,
+	target: "es5",
+};
+
+function readConfigKey<K extends keyof AsyncToPromisesConfiguration>(config: Partial<AsyncToPromisesConfiguration>, key: K): AsyncToPromisesConfiguration[K] {
+	if (Object.hasOwnProperty.call(config, key)) {
+		const result = config[key];
+		if (typeof result !== "undefined") {
+			return result as AsyncToPromisesConfiguration[K];
+		}
+	}
+	return defaultConfigValues[key];
 }
 
 // Type extensions
@@ -53,7 +71,7 @@ declare module "babel-traverse" {
 }
 
 interface PluginState {
-	opts: AsyncToPromisesConfiguration;
+	opts: Partial<AsyncToPromisesConfiguration>;
 }
 
 interface HoistCallArgumentsInnerState {
@@ -630,7 +648,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 		}
 		// Emit all of the code necessary to call correctly instead of calling helpers
-		if (state.opts.inlineHelpers) {
+		if (readConfigKey(state.opts, "inlineHelpers")) {
 			if (directExpression) {
 				const resolvedValue = types.callExpression(promiseResolve(), [value]);
 				const direct = extractLooseBooleanValue(directExpression);
@@ -951,7 +969,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	function hoistFunctionExpressionHandler(this: HoistCallArgumentsState, path: NodePath<ArrowFunctionExpression | FunctionExpression>) {
 			path.skip();
 			const bodyPath = path.get("body");
-		if (bodyPath.isBlockStatement() && bodyPath.node.body.length === 0 && !this.state.opts.inlineHelpers) {
+		if (bodyPath.isBlockStatement() && bodyPath.node.body.length === 0 && !readConfigKey(this.state.opts, "inlineHelpers")) {
 				path.replaceWith(emptyFunction(this.state, path));
 				return;
 			}
@@ -1113,7 +1131,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		target.replaceWith(returnStatement(replacement.expression, originalNode));
 		}
 		// Hoist the call arguments if configured to do so
-		if (state.opts.hoist) {
+		if (readConfigKey(state.opts, "hoist")) {
 			if (target.isExpression()) {
 				hoistCallArguments(state, target as NodePath<Expression>, additionalConstantNames);
 			} else if (target.isReturnStatement()) {
@@ -1285,7 +1303,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	// Convert an expression or statement into a callable function expression
 	function functionize(state: PluginState, params: LVal[], expression: Expression | Statement, target: NodePath): FunctionExpression | ArrowFunctionExpression {
-		if (state.opts.target === "es6") {
+		if (readConfigKey(state.opts, "target") === "es6") {
 			let newExpression = expression;
 			if (types.isBlockStatement(newExpression) && newExpression.body.length === 1) {
 				newExpression = newExpression.body[0];
@@ -1641,7 +1659,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			originalAwaitPath.replaceWith(types.isIdentifier(newIdentifier) ? newIdentifier : types.numericLiteral(0));
 		}
 		let declarations: VariableDeclarator[] = [];
-		let directExpression: Expression = booleanLiteral(false, state.opts.minify);
+		let directExpression: Expression = booleanLiteral(false, readConfigKey(state.opts, "minify"));
 		for (;;) {
 			const parent = awaitPath.parentPath;
 			if (parent.isVariableDeclarator()) {
@@ -1675,7 +1693,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					}
 					const isOr = parent.node.operator === "||";
 					awaitExpression = (isOr ? logicalOr : logicalAnd)(left.node, awaitExpression);
-					directExpression = logicalOrLoose(isOr ? left.node : logicalNot(left.node), directExpression, state.opts.minify);
+					directExpression = logicalOrLoose(isOr ? left.node : logicalNot(left.node), directExpression, readConfigKey(state.opts, "minify"));
 					if (awaitPath === originalAwaitPath) {
 						if (!resultIdentifier) {
 							resultIdentifier = existingIdentifier || generateIdentifierForPath(originalAwaitPath.get("argument"));
@@ -1735,7 +1753,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						alternate.replaceWith(resultIdentifier);
 						parent.replaceWith(resultIdentifier);
 					} else {
-						directExpression = logicalOrLoose(consequent !== awaitPath ? testNode : logicalNot(testNode), directExpression, state.opts.minify);
+						directExpression = logicalOrLoose(consequent !== awaitPath ? testNode : logicalNot(testNode), directExpression, readConfigKey(state.opts, "minify"));
 						if (otherAwaitPath) {
 							awaitExpression = consequent !== awaitPath ? conditionalExpression(testNode, types.numericLiteral(0), awaitExpression) : conditionalExpression(testNode, awaitExpression, types.numericLiteral(0));
 						} else {
@@ -1872,7 +1890,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	function buildBreakExitCheck(state: PluginState, exitIdentifier: Identifier | undefined, breakIdentifiers: { identifier: Identifier }[]): Expression | undefined {
 		let expressions: Expression[] = (breakIdentifiers.map(identifier => identifier.identifier) || []).concat(exitIdentifier ? [exitIdentifier] : []);
 		if (expressions.length) {
-			return expressions.reduce((accumulator, identifier) => logicalOrLoose(accumulator, identifier, state.opts.minify));
+			return expressions.reduce((accumulator, identifier) => logicalOrLoose(accumulator, identifier, readConfigKey(state.opts, "minify")));
 		}
 	}
 
@@ -1893,7 +1911,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	// Assigns to all break identifiers in a list
 	function setBreakIdentifiers(breakIdentifiers: ReadonlyArray<BreakContinueItem>, pluginState: PluginState) {
-		return breakIdentifiers.reduce(setBreakIdentifier, booleanLiteral(true, pluginState.opts.minify));
+		return breakIdentifiers.reduce(setBreakIdentifier, booleanLiteral(true, readConfigKey(pluginState.opts, "minify")));
 	}
 
 	// Visitor that replaces all returns and breaks with updates to the appropriate break/exit bookkeeping variables
@@ -1901,7 +1919,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		Function: skipNode,
 		ReturnStatement(path) {
 			if (!path.node._skip && this.exitIdentifier) {
-				const minify = this.pluginState.opts.minify;
+				const minify = readConfigKey(this.pluginState.opts, "minify");
 				if (minify && path.node.argument && extractLooseBooleanValue(path.node.argument) === true) {
 					path.replaceWith(returnStatement(types.assignmentExpression("=", this.exitIdentifier, path.node.argument), path.node));
 				} else {
@@ -1954,7 +1972,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		path.traverse(replaceReturnsAndBreaksVisitor, state);
 		for (const identifier of state.usedIdentifiers) {
 			if (!identifier.path.parentPath.scope.getBinding(identifier.identifier.name)) {
-				identifier.path.parentPath.scope.push({ kind: "let", id: identifier.identifier, init: pluginState.opts.minify ? undefined : booleanLiteral(false, pluginState.opts.minify) });
+				identifier.path.parentPath.scope.push({ kind: "let", id: identifier.identifier, init: readConfigKey(pluginState.opts, "minify") ? undefined : booleanLiteral(false, readConfigKey(pluginState.opts, "minify")) });
 			}
 		}
 		return state.usedIdentifiers;
@@ -2189,7 +2207,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				targetPath = parent;
 			}
 			if (shouldPushExitIdentifier) {
-				path.scope.push({ kind: "let", id: state.exitIdentifier, init: state.pluginState.opts.minify ? undefined : booleanLiteral(false, state.pluginState.opts.minify) });
+				path.scope.push({ kind: "let", id: state.exitIdentifier, init: readConfigKey(state.pluginState.opts, "minify") ? undefined : booleanLiteral(false, readConfigKey(state.pluginState.opts, "minify")) });
 			}
 		}
 		for (const item of paths) {
@@ -2218,7 +2236,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		for (const { targetPath, explicitExits, breakIdentifiers, parent, exitIdentifier, cases, forToIdentifiers } of paths) {
 			if (parent.isExpressionStatement() && targetPath.isAwaitExpression() && processExpressions) {
 				processExpressions = false;
-				relocateTail(pluginState, targetPath.node.argument, undefined, parent, additionalConstantNames, undefined, undefined, booleanLiteral(false, this.pluginState.opts.minify));
+				relocateTail(pluginState, targetPath.node.argument, undefined, parent, additionalConstantNames, undefined, undefined, booleanLiteral(false, readConfigKey(this.pluginState.opts, "minify")));
 			} else if (parent.isIfStatement()) {
 				const test = parent.get("test");
 				if (targetPath !== test) {
@@ -2258,7 +2276,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						const wasThrownIdentifier = path.scope.generateUidIdentifier("wasThrown");
 						addConstantNames(additionalConstantNames, wasThrownIdentifier);
 						finallyArgs = [wasThrownIdentifier, resultIdentifier];
-						if (state.pluginState.opts.inlineHelpers) {
+						if (readConfigKey(state.pluginState.opts, "inlineHelpers")) {
 							finallyBody = finallyBody.concat([
 								types.ifStatement(wasThrownIdentifier, types.throwStatement(resultIdentifier)),
 								types.returnStatement(resultIdentifier),
@@ -2310,7 +2328,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					let testExpression = parent.node.test;
 					const breakExitCheck = buildBreakExitCheck(this.pluginState, exitIdentifier, breakIdentifiers || []);
 					if (breakExitCheck) {
-						const inverted = logicalNot(breakExitCheck, this.pluginState.opts.minify);
+						const inverted = logicalNot(breakExitCheck, readConfigKey(this.pluginState.opts, "minify"));
 						testExpression = testExpression && (!types.isBooleanLiteral(testExpression) || !testExpression.value) ? logicalAnd(inverted, testExpression, extractLooseBooleanValue) : inverted;
 					}
 					if (testExpression) {
@@ -2514,7 +2532,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 			return;
 		}
-		path.replaceWith(logicalNot(logicalNot(path.node, pluginState.opts.minify), pluginState.opts.minify));
+		const minify = readConfigKey(pluginState.opts, "minify");
+		path.replaceWith(logicalNot(logicalNot(path.node, minify), minify));
 	}
 
 	// Rewrites await and for-await expressions, skipping entering into child functions
@@ -2573,7 +2592,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (!result) {
 			result = file.declarations[name] = usesIdentifier(file.path, name) ? file.path.scope.generateUidIdentifier(name) : types.identifier(name);
 			result._helperName = name;
-			if (state.opts.externalHelpers) {
+			if (readConfigKey(state.opts, "externalHelpers")) {
 				/* istanbul ignore next */
 				file.path.unshiftContainer("body", types.importDeclaration([types.importSpecifier(result, types.identifier(name))], types.stringLiteral("babel-plugin-transform-async-to-promises/helpers")));
 			} else {
@@ -2660,7 +2679,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	// Emits a reference to an empty function, inlining or importing it as necessary
 	function emptyFunction(state: PluginState, path: NodePath): Identifier | FunctionExpression | ArrowFunctionExpression {
-		return state.opts.inlineHelpers ? functionize(state, [], blockStatement([]), path) : helperReference(state, path, "_empty");
+		return readConfigKey(state.opts, "inlineHelpers") ? functionize(state, [], blockStatement([]), path) : helperReference(state, path, "_empty");
 	}
 
 	// Emits a reference to Promise.resolve and tags it as an _await reference
@@ -2875,7 +2894,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				const argument = path.get("argument");
 				if (argument.node) {
 					if (!((argument.isCallExpression() && (isAsyncCallExpression(argument) || typeof promiseCallExpressionType(argument.node) !== "undefined")) || (argument.isCallExpression() && isAsyncFunctionIdentifier(argument.get("callee"))))) {
-						const target = this.plugin.opts.inlineHelpers ? promiseResolve() : helperReference(this.plugin, path, "_await");
+						const target = readConfigKey(this.plugin.opts, "inlineHelpers") ? promiseResolve() : helperReference(this.plugin, path, "_await");
 						let arg = argument.node;
 						if (types.isConditionalExpression(arg) && types.isIdentifier(arg.test)) {
 							if (types.isCallExpression(arg.consequent) && promiseCallExpressionType(arg.consequent) === "resolve" && arg.consequent.arguments.length === 1 && nodesAreEquivalent(arg.consequent.arguments[0])(arg.alternate)) {
@@ -2917,7 +2936,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						argument.replaceWith(types.callExpression(target, [arg]));
 					}
 				} else {
-					const target = this.plugin.opts.inlineHelpers ? promiseResolve() : helperReference(this.plugin, path, "_await");
+					const target = readConfigKey(this.plugin.opts, "inlineHelpers") ? promiseResolve() : helperReference(this.plugin, path, "_await");
 					argument.replaceWith(types.callExpression(target, []));
 				}
 			}
@@ -3033,7 +3052,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					}
 					rewriteThisArgumentsAndHoistFunctions(path, path);
 					rewriteAsyncBlock(this, path, []);
-					const inlineHelpers = this.opts.inlineHelpers;
+					const inlineHelpers = readConfigKey(this.opts, "inlineHelpers");
 					const bodyPath = path.get("body");
 					const canThrow = checkForErrorsAndRewriteReturns(bodyPath, this, inlineHelpers);
 					if (inlineHelpers && !pathsReturnOrThrowCurrentNodes(bodyPath).all) {

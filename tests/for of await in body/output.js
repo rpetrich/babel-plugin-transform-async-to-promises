@@ -1,1 +1,1 @@
-_async(function(iter){var result=0;return _continue(_forOf(iter,function(value){return _await(value,function(_value){result+=_value;});}),function(){return result;});})
+_async(iter=>{var result=0;return _continue(_forOf(iter,value=>{return _await(value,(_value)=>{result+=_value;});}),()=>result);})

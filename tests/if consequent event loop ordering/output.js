@@ -1,1 +1,1 @@
-_async(function(delay,callback){return _invoke(function(){if(delay)return _awaitIgnored(0);},function(){return callback();});})
+_async((delay,callback)=>_invoke(()=>{if(delay)return _awaitIgnored(0);},()=>callback()))

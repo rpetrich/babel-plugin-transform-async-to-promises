@@ -1,1 +1,1 @@
-_async(function(){throw true;})
+_async(()=>{throw true;})

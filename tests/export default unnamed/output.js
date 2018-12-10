@@ -1,1 +1,1 @@
-export default(function(){return _await(true);});
+export default(()=>_await(true));

@@ -1,1 +1,1 @@
-function(a,b,c){return _call(a,function(_a){return function(){if(_a){return _call(b,function(_b){return function(){if(_b){return _call(c,function(result){return result||result;});}}();});}else{return _call(c,function(result){return result||result;});}}();});}
+(a,b,c)=>_call(a,(_a)=>(()=>{if(_a){return _call(b,(_b)=>(()=>{if(_b){return _call(c,(result)=>result||result);}})());}else{return _call(c,(result)=>result||result);}})())

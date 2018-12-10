@@ -1,1 +1,1 @@
-function(){const _this=this;return function(){return _await(_this);};}
+function(){const _this=this;return()=>_await(_this);}

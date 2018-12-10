@@ -1,1 +1,1 @@
-output.js
+_async(function(foo,baz){foo=foo;const _foo=foo,_bar=_foo.bar;return _await(baz,function(_baz){return _bar.call(_foo,_baz);});})

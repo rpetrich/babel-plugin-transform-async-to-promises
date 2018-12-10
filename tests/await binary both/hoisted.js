@@ -1,1 +1,1 @@
-output.js
+function(left,right){return _call(left,function(_left){return _call(right,function(_right){return _left+_right;});});}

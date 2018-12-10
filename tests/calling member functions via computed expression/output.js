@@ -1,1 +1,1 @@
-_async(function(foo,bar,baz){const _baz=bar[baz];return _call(foo,function(_foo){return _baz.call(bar,_foo);});})
+_async((foo,bar,baz)=>{const _baz=bar[baz];return _call(foo,(_foo)=>_baz.call(bar,_foo));})

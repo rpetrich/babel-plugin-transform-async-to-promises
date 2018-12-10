@@ -1,1 +1,1 @@
-output.js
+function(foo){return _await(foo);}

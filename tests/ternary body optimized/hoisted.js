@@ -1,1 +1,1 @@
-output.js
+_async(function(foo,bar,baz){return foo()?bar():baz();})

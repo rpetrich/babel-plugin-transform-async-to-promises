@@ -1,1 +1,1 @@
-output.js
+_async(function(left,right,two){const _two=two(),_left=left();return _call(right,function(_right){return{zero:0,one:_left,[_two]:2,three:_right,four:4};});})

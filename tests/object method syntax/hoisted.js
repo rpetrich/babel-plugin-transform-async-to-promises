@@ -1,1 +1,1 @@
-output.js
+function(){return{foo:function(bar){return _call(bar);}};}

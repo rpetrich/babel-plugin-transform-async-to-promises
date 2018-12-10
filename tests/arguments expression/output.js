@@ -1,1 +1,1 @@
-_async(function(){const _arguments=arguments;var result=false;return _continue(_forTo(_arguments,function(i){return _await(_arguments[i](),function(_arguments$i){if(_arguments$i)result=true;});}),function(){return result;});})
+_async(function(){const _arguments=arguments;var result=false;return _continue(_forTo(_arguments,i=>{return _await(_arguments[i](),(_arguments$i)=>{if(_arguments$i)result=true;});}),()=>result);})

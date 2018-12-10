@@ -1,1 +1,1 @@
-_async(function(url){return _await(fetch(url),function(response){return _await(response.blob(),function(blob){return URL.createObjectURL(blob);});});})
+_async(url=>_await(fetch(url),(response)=>_await(response.blob(),(blob)=>URL.createObjectURL(blob))))

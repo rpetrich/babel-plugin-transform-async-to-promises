@@ -1,1 +1,1 @@
-_async(function(foo){let _exit=false;return _continue(_forIn(foo,function(key){return _await(foo[key](),function(_foo$key){if(_foo$key){_exit=true;return true;}});},function(){return _exit;}),function(_result){return _exit?_result:false;});})
+_async(foo=>{let _exit=false;return _continue(_forIn(foo,key=>{return _await(foo[key](),(_foo$key)=>{if(_foo$key){_exit=true;return true;}});},()=>_exit),_result=>_exit?_result:false);})

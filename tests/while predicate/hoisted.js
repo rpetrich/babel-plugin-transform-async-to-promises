@@ -1,1 +1,1 @@
-output.js
+_async(function(foo){var count=0;return _continue(_for(foo,void 0,function(){count++;}),function(){return count;});})

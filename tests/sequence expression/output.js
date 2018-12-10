@@ -1,1 +1,1 @@
-function(left,right){return _call(left,function(){return _call(right);});}
+(left,right)=>_call(left,()=>_call(right))

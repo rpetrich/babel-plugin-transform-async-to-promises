@@ -1,1 +1,1 @@
-_async(function(foo){var count=0;return _continue(_for(foo,void 0,function(){count++;}),function(){return count;});})
+_async(foo=>{var count=0;return _continue(_for(foo,void 0,()=>{count++;}),()=>count);})

@@ -1,1 +1,1 @@
-output.js
+function(foo){var result=0;return _call(foo,function(_foo){for(var value of _foo)result+=value;return result;});}

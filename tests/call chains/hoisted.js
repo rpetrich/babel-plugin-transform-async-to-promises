@@ -1,1 +1,1 @@
-output.js
+function(a,b,c){return _call(b,function(_b){return _call(c,function(_c){return _await(a(_b,_c));});});}

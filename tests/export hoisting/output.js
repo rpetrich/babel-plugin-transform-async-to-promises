@@ -1,1 +1,1 @@
-export const foo=_async(function(){return Promise.resolve(true);});foo();let dummy;
+export const foo=_async(()=>Promise.resolve(true));foo();let dummy;

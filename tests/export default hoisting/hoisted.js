@@ -1,1 +1,1 @@
-output.js
+const foo=_async(function(){return Promise.resolve(true);});export default foo;

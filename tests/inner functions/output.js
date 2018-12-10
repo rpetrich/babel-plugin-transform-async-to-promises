@@ -1,1 +1,1 @@
-function(value){return function(other){return _await(value+other);};}
+function(value){return other=>_await(value+other);}

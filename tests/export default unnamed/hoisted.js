@@ -1,1 +1,1 @@
-output.js
+export default(function(){return _await(true);});

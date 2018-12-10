@@ -1,1 +1,1 @@
-function(foo,bar){return _call(foo,function(_foo){return _switch(_foo,[[function(){return _call(bar);},function(){return true;}],[void 0,function(){return false;}]]);});}
+(foo,bar)=>_call(foo,(_foo)=>_switch(_foo,[[()=>_call(bar),()=>true],[void 0,()=>false]]))

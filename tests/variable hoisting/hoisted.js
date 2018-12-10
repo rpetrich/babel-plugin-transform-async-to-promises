@@ -1,1 +1,1 @@
-output.js
+function(foo){var bar;function baz(){return bar;}return _call(foo,function(_foo){bar=_foo;return baz();});}

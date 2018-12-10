@@ -1,1 +1,1 @@
-output.js
+_async(function(foo,bar){var a=0,b=foo();return _call(bar,function(c){var d=3;return a+b+c+d;});})

@@ -1,1 +1,1 @@
-function(){return _await(true);}
+()=>_await(true)

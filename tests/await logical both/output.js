@@ -1,1 +1,1 @@
-function(left,right){return _call(left,function(_left){return _await(_left&&right(),void 0,!_left);});}
+(left,right)=>_call(left,(_left)=>_await(_left&&right(),void 0,!_left))

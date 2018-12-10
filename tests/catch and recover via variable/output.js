@@ -1,1 +1,1 @@
-_async(function(value,log){var result;return _continue(_catch(function(){return _call(value,function(_value){result=_value;});},function(){result="an error";}),function(){log("result:",result);return result;});})
+_async((value,log)=>{var result;return _continue(_catch(()=>_call(value,(_value)=>{result=_value;}),()=>{result="an error";}),()=>{log("result:",result);return result;});})

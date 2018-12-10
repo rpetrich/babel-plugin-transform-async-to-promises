@@ -1,1 +1,1 @@
-function(foo){return _await(_catch(foo,function(){return"fallback";}));}
+foo=>_await(_catch(foo,()=>"fallback"))

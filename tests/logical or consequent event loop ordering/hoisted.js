@@ -1,1 +1,1 @@
-output.js
+_async(function(delay,callback){return _await(!delay||0,callback,!delay);})

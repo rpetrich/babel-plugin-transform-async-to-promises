@@ -1,1 +1,1 @@
-_async(function(foo,bar){var a=foo();return _call(bar,function(b){var c=3;return a+b+c;});})
+_async((foo,bar)=>{var a=foo();return _call(bar,(b)=>{var c=3;return a+b+c;});})

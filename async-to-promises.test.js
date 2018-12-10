@@ -158,7 +158,7 @@ for (const name of fs.readdirSync("tests").sort()) {
 						return;
 					}
 					const extractFunction = module ? extractOnlyUserCode : extractJustFunction;
-					const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, {}]], compact: true, ast: true });
+					const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { target: "es6" }]], compact: true, ast: true });
 					const strippedResult = extractFunction(babel, result);
 					const inlinedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { inlineHelpers: true }]], compact: true, ast: true });
 					const inlinedAndStrippedResult = extractFunction(babel, inlinedResult);

@@ -1,1 +1,1 @@
-_async(function(foo,bar){return _catch(foo,function(){return _callIgnored(bar);});})
+_async((foo,bar)=>_catch(foo,()=>{return _callIgnored(bar);}))

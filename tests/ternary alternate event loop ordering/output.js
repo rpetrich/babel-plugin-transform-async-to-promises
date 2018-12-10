@@ -1,1 +1,1 @@
-_async(function(delay,callback){return _await(0,callback,!delay);})
+_async((delay,callback)=>_await(0,callback,!delay))

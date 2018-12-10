@@ -1,1 +1,1 @@
-function(){let _exit=false;return _await(_catch(function(){return _continue(_switch(true,[[function(){return true;},function(){return _await(1,function(_){throw _;});}]]),function(_result){return _exit?_result:false;});},function(){return true;}));}
+()=>{let _exit=false;return _await(_catch(()=>_continue(_switch(true,[[()=>true,()=>_await(1,(_)=>{throw _;})]]),_result=>_exit?_result:false),()=>true));}

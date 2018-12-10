@@ -1,1 +1,1 @@
-output.js
+function(foo){var keys=[];return _call(foo,function(_foo){for(var key in _foo){keys.push(key);}return keys.sort();});}

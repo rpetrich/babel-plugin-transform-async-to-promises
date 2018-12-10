@@ -1,1 +1,1 @@
-function(){return{foo:function(bar){return _call(bar);}};}
+function(){return{foo:bar=>_call(bar)};}

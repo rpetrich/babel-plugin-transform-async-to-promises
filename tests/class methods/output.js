@@ -1,1 +1,1 @@
-function(){return class{foo(baz){return _call(function(){return _call(baz);});}static bar(baz){return _call(function(){return _call(baz);});}};}
+function(){return class{foo(baz){return _call(()=>_call(baz));}static bar(baz){return _call(()=>_call(baz));}};}

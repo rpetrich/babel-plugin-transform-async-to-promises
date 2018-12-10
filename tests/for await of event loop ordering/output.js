@@ -1,1 +1,1 @@
-_async(function(iter,callback){return _continue(_forAwaitOf(iter,_empty),function(){return callback();});})
+_async((iter,callback)=>_continue(_forAwaitOf(iter,_empty),()=>callback()))

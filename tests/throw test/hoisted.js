@@ -1,1 +1,1 @@
-output.js
+_async(function(){throw true;})

@@ -1,1 +1,1 @@
-_async(function(foo){let _exit=false,_outerInterrupt=false;return _continue(_continue(_call(foo,function(_foo){if(_foo){_outerInterrupt=true;}}),function(){if(_outerInterrupt)return;_exit=true;return false;}),function(_result){return _exit?_result:true;});})
+_async(foo=>{let _exit=false,_outerInterrupt=false;return _continue(_continue(_call(foo,(_foo)=>{if(_foo){_outerInterrupt=true;}}),()=>{if(_outerInterrupt)return;_exit=true;return false;}),_result=>_exit?_result:true);})

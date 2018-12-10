@@ -1,1 +1,1 @@
-function(foo){return _await(foo);}
+foo=>_await(foo)

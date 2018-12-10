@@ -1,1 +1,1 @@
-_async(function(list){let _exit=false;return _forTo(list,function(i){return _await(list[i](),function(_list$i){if(_list$i){_exit=true;}});},function(){return _exit;});})
+_async(list=>{let _exit=false;return _forTo(list,i=>{return _await(list[i](),(_list$i)=>{if(_list$i){_exit=true;}});},()=>_exit);})

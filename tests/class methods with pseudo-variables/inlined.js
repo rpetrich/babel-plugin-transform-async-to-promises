@@ -1,1 +1,1 @@
-output.js
+function(){return class{testThis(){try{const _this=this;return _this;}catch(e){return Promise.reject(e);}}testArguments(){try{const _arguments=arguments;return _arguments[0];}catch(e){return Promise.reject(e);}}};}

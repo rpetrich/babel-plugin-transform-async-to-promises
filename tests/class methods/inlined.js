@@ -1,1 +1,1 @@
-function(){return class{foo(baz){return _call(function(){return Promise.resolve(baz());});}static bar(baz){return _call(function(){return Promise.resolve(baz());});}};}
+function(){return class{foo(baz){try{return Promise.resolve(baz());}catch(e){return Promise.reject(e);}}static bar(baz){try{return Promise.resolve(baz());}catch(e){return Promise.reject(e);}}};}

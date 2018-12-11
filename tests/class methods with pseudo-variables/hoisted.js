@@ -1,1 +1,1 @@
-output.js
+function(){return class{testThis(){const _this=this;return _call(function(){return _this;});}testArguments(){const _arguments=arguments;return _call(function(){return _arguments[0];});}};}

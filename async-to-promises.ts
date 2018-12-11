@@ -1143,28 +1143,40 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 	}
 
+	// Hoist a common subexpression into a named constant
+	function rewriteToNamedConstant<T>(targetPath: NodePath, callback: (rewrite: (name: string, path: NodePath<Expression>) => void) => T): T {
+		const declarators: { [name: string]: { kind: "const", id: Identifier, init: Expression } } = Object.create(null);
+		const result = callback((name, path) => {
+			if (!Object.hasOwnProperty.call(declarators, name)) {
+				declarators[name] = {
+					kind: "const",
+					id: path.scope.generateUidIdentifier(name),
+					init: path.node,
+				};
+			}
+			path.replaceWith(declarators[name].id);
+		});
+		for (const key of Object.keys(declarators)) {
+			targetPath.scope.push(declarators[key]);
+		}
+		return result;
+	}
+
 	// Rewrite this expression visitor
-	const rewriteThisVisitor: Visitor<{ thisIdentifier?: Identifier }> = {
+	const rewriteThisVisitor: Visitor<{ rewrite: (name: string, path: NodePath<Expression>) => void }> = {
 		Function(path: NodePath<Function>) {
 			if (!path.isArrowFunctionExpression()) {
 				path.skip();
 			}
 		},
 		ThisExpression(path: NodePath<ThisExpression>) {
-			if (!this.thisIdentifier) {
-				this.thisIdentifier = path.scope.generateUidIdentifier("this");
-			}
-			path.replaceWith(this.thisIdentifier);
+			this.rewrite("this", path);
 		},
 	};
 
 	// Rewrite this into _this so that it can be used in continuations
 	function rewriteThisExpressions(rewritePath: NodePath, targetPath: NodePath) {
-		const state: { thisIdentifier?: Identifier } = {};
-		rewritePath.traverse(rewriteThisVisitor, state);
-		if (state.thisIdentifier) {
-			targetPath.scope.push({ kind: "const", id: state.thisIdentifier, init: types.thisExpression() });
-		}
+		rewriteToNamedConstant(targetPath, (rewrite) => rewritePath.traverse(rewriteThisVisitor, { rewrite }));
 	}
 
 	// Extracts all the identifiers populated in an LVal
@@ -1213,26 +1225,34 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Rewrite this and arguments visitor
-	const rewriteThisArgumentsAndHoistVisitor: Visitor<{ targetPath: NodePath, thisIdentifier?: Identifier, argumentsIdentifier?: Identifier }> = {
+	const rewriteThisArgumentsAndHoistVisitor: Visitor<{ targetPath: NodePath, rewrite: (name: string, path: NodePath<Expression>) => void, rewriteSuper: boolean }> = {
 		Function(path) {
 			path.skip();
 			if (path.isArrowFunctionExpression()) {
 				path.traverse(rewriteThisVisitor, this);
 			}
 		},
-		ThisExpression(path) {
-			if (!this.thisIdentifier) {
-				this.thisIdentifier = path.scope.generateUidIdentifier("this");
+		Super(path) {
+			if (this.rewriteSuper) {
+				const parent = path.parentPath;
+				if (parent.isMemberExpression() && parent.get("object") === path && !parent.node.computed) {
+					const property = parent.get("property");
+					const grandparent = parent.parentPath;
+					if (property.isIdentifier() && grandparent.isCallExpression() && grandparent.get("callee") === parent) {
+						this.rewrite("super$" + property.node.name, parent);
+						grandparent.replaceWith(types.callExpression(types.memberExpression(parent.node, types.identifier("call")), [types.thisExpression() as (SpreadElement | Expression)].concat(grandparent.node.arguments)));
+					}
+				}
 			}
-			path.replaceWith(this.thisIdentifier);
+		},
+		ThisExpression(path) {
+			// Rewrite this
+			this.rewrite("this", path);
 		},
 		Identifier(path) {
 			// Rewrite arguments
 			if (path.node.name === "arguments") {
-				if (!this.argumentsIdentifier) {
-					this.argumentsIdentifier = path.scope.generateUidIdentifier("arguments");
-				}
-				path.replaceWith(this.argumentsIdentifier);
+				this.rewrite("arguments", path);
 			}
 		},
 		VariableDeclaration(path) {
@@ -1290,15 +1310,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 	};
 
 	// Rewrite this and arguments expressions so that they can be used in continuations
-	function rewriteThisArgumentsAndHoistFunctions(rewritePath: NodePath, targetPath: NodePath) {
-		const state: { targetPath: NodePath, thisIdentifier?: Identifier, argumentsIdentifier?: Identifier } = { targetPath };
-		rewritePath.traverse(rewriteThisArgumentsAndHoistVisitor, state);
-		if (state.thisIdentifier) {
-			targetPath.scope.push({ kind: "const", id: state.thisIdentifier, init: types.thisExpression() });
-		}
-		if (state.argumentsIdentifier) {
-			targetPath.scope.push({ kind: "const", id: state.argumentsIdentifier, init: types.identifier("arguments") });
-		}
+	function rewriteThisArgumentsAndHoistFunctions(rewritePath: NodePath, targetPath: NodePath, rewriteSuper: boolean) {
+		rewriteToNamedConstant(targetPath, (rewrite) => rewritePath.traverse(rewriteThisArgumentsAndHoistVisitor, { targetPath, rewrite, rewriteSuper }));
 	}
 
 	// Convert an expression or statement into a callable function expression
@@ -1794,11 +1807,15 @@ export default function({ types, template, traverse, transformFromAst, version }
 								object.replaceWith(objectIdentifier);
 							}
 							const property = callee.get("property");
-							const calleeIdentifier = generateIdentifierForPath(property);
-							const calleeNode = callee.node;
-							const newArguments: (Expression | SpreadElement)[] = [object.node];
-							parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), newArguments.concat(parent.node.arguments)));
-							declarations.unshift(types.variableDeclarator(calleeIdentifier, calleeNode));
+							if (!callee.node.computed && property.isIdentifier() && property.node.name === "call") {
+								// parent.replaceWith(types.callExpression(types.memberExpression(object.node, types.identifier("call")), parent.node.arguments));
+							} else {
+								const calleeIdentifier = generateIdentifierForPath(property);
+								const calleeNode = callee.node;
+								const newArguments: (Expression | SpreadElement)[] = [object.node];
+								parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), newArguments.concat(parent.node.arguments)));
+								declarations.unshift(types.variableDeclarator(calleeIdentifier, calleeNode));
+							}
 							if (typeof objectDeclarator !== "undefined") {
 								declarations.unshift(objectDeclarator);
 							}
@@ -3050,7 +3067,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						reorderPathBeforeSiblingStatements(targetPath);
 						return;
 					}
-					rewriteThisArgumentsAndHoistFunctions(path, path);
+					rewriteThisArgumentsAndHoistFunctions(path, path, false);
 					rewriteAsyncBlock(this, path, []);
 					const inlineHelpers = readConfigKey(this.opts, "inlineHelpers");
 					const bodyPath = path.get("body");
@@ -3101,26 +3118,49 @@ export default function({ types, template, traverse, transformFromAst, version }
 			},
 			ClassMethod(path) {
 				if (path.node.async) {
+					const body = path.get("body");
+					let newBody: NodePath;
 					if (path.node.kind === "method") {
-						const body = path.get("body");
-						body.replaceWith(types.blockStatement([types.returnStatement(types.callExpression(helperReference(this, path, "_call"), [functionize(this, [], body.node, path)]))]));
-						const returnPath = body.get("body")[0];
-						if (returnPath.isReturnStatement()) {
-							const returnArgument = returnPath.get("argument");
-							if (returnArgument.isCallExpression()) {
-								const callArgument = returnArgument.get("arguments")[0]
-								rewriteThisArgumentsAndHoistFunctions(callArgument, path);
-								rewriteAsyncBlock(this, callArgument, []);
-								path.replaceWith(types.classMethod(path.node.kind, path.node.key, path.node.params, path.node.body, path.node.computed, path.node.static));
-							} else {
-								/* istanbul ignore next */
-								throw returnArgument.buildCodeFrameError("Expected a call expression!", TypeError);
-							}
+						body.replaceWith(types.blockStatement([
+							body.node
+						]));
+						const target = body.get("body")[0];
+						if (!target.isBlockStatement()) {
+							throw path.buildCodeFrameError(`Expected a BlockStatement, got a ${target.type}`, TypeError);
+						}
+						const inlineHelpers = readConfigKey(this.opts, "inlineHelpers");
+						rewriteThisArgumentsAndHoistFunctions(target, inlineHelpers ? target : body, true);
+						rewriteAsyncBlock(this, target, []);
+						if (inlineHelpers) {
+							target.replaceWith(
+								types.tryStatement(
+									target.node,
+									types.catchClause(
+										types.identifier("e"),
+										blockStatement([
+											types.returnStatement(
+												types.callExpression(
+													types.memberExpression(
+														types.identifier("Promise"),
+														types.identifier("reject")
+													),
+													[types.identifier("e")]
+												)
+											)
+										])
+									)
+								)
+							);
 						} else {
-							/* istanbul ignore next */
-							throw returnPath.buildCodeFrameError("Expected a return statement!", TypeError);
+							target.replaceWith(
+								types.returnStatement(types.callExpression(
+									helperReference(this, path, "_call"),
+									[functionize(this, [], target.node, path)]
+								))
+							);
 						}
 					}
+					path.replaceWith(types.classMethod(path.node.kind, path.node.key, path.node.params, path.node.body, path.node.computed, path.node.static));
 				}
 			},
 			ObjectMethod(path) {

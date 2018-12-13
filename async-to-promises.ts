@@ -1224,7 +1224,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return false;
 	}
 
-	// Rewrite this and arguments visitor
+	// Rewrite this, arguments and super visitor
 	const rewriteThisArgumentsAndHoistVisitor: Visitor<{ targetPath: NodePath, rewrite: (name: string, path: NodePath<Expression>) => void, rewriteSuper: boolean }> = {
 		Function(path) {
 			path.skip();
@@ -1235,8 +1235,13 @@ export default function({ types, template, traverse, transformFromAst, version }
 		Super(path) {
 			if (this.rewriteSuper) {
 				const parent = path.parentPath;
-				if (parent.isMemberExpression() && parent.get("object") === path && !parent.node.computed) {
+				if (parent.isMemberExpression() && parent.get("object") === path) {
 					const property = parent.get("property");
+					if (parent.node.computed) {
+						if (!property.isStringLiteral()) {
+							throw path.buildCodeFrameError(`Expected a staticly resolvable super expression, got a computed expression of type ${property.node.type}`, TypeError);
+						}
+					}
 					const grandparent = parent.parentPath;
 					if (property.isIdentifier() && grandparent.isCallExpression() && grandparent.get("callee") === parent) {
 						this.rewrite("super$" + property.node.name, parent);
@@ -1309,7 +1314,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 	};
 
-	// Rewrite this and arguments expressions so that they can be used in continuations
+	// Rewrite this, arguments and super expressions so that they can be used in continuations
 	function rewriteThisArgumentsAndHoistFunctions(rewritePath: NodePath, targetPath: NodePath, rewriteSuper: boolean) {
 		rewriteToNamedConstant(targetPath, (rewrite) => rewritePath.traverse(rewriteThisArgumentsAndHoistVisitor, { targetPath, rewrite, rewriteSuper }));
 	}

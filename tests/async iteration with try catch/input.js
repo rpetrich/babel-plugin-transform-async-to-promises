@@ -4,8 +4,7 @@ async function(count) {
 			for (let i = 0; i < until; i++) {
 				yield i;
 			}
-		} catch (e) {
-		}
+		} catch (e) {}
 	}
 
 	let result = 0;

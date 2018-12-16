@@ -1,1 +1,5 @@
-function () { return async () => function() { return this; }; }
+function() {
+	return async () => function() {
+		return this;
+	};
+}

@@ -1,4 +1,5 @@
 Promise.all([test('case1'), test('case2'), test('case3')]);
+
 function wait(messages) {
     messages.push('waitStart');
 

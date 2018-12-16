@@ -1,1 +1,3 @@
-async function() { return await true; }
+async function() {
+	return await true;
+}

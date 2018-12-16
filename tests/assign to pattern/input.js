@@ -1,1 +1,6 @@
-async function(foo) { const { result } = await foo(); return result + 1; }
+async function(foo) {
+	const {
+		result
+	} = await foo();
+	return result + 1;
+}

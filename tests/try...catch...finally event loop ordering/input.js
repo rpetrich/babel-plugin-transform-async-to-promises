@@ -1,30 +1,31 @@
 async function() {
-		let waitIndex = 0;
-		const messages = [];
-		messages.push('start');
-		function wait() {
-			let index = ++waitIndex;
+	let waitIndex = 0;
+	const messages = [];
+	messages.push('start');
 
-			messages.push("waitStart" + index);
+	function wait() {
+		let index = ++waitIndex;
 
-			return Promise.resolve()
-				.then(() => {
-					messages.push("waitStop" + index);
-				});
-		}
-		try {
-			messages.push('tryStart');
-			await wait();
-			messages.push('tryStop');
-		} catch (err) {
-			messages.push('catchStart');
-			await wait();
-			messages.push('catchStop');
-		} finally {
-			messages.push('finallyStart');
-			await wait();
-			messages.push('finallyStop');
-		}
-		messages.push('stop');
-		return messages;
+		messages.push("waitStart" + index);
+
+		return Promise.resolve()
+			.then(() => {
+				messages.push("waitStop" + index);
+			});
 	}
+	try {
+		messages.push('tryStart');
+		await wait();
+		messages.push('tryStop');
+	} catch (err) {
+		messages.push('catchStart');
+		await wait();
+		messages.push('catchStop');
+	} finally {
+		messages.push('finallyStart');
+		await wait();
+		messages.push('finallyStop');
+	}
+	messages.push('stop');
+	return messages;
+}

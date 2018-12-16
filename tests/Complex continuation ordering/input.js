@@ -1,37 +1,37 @@
 () => {
-		let index = 0;
-		let promise = null;
-		let messages = [];
+    let index = 0;
+    let promise = null;
+    let messages = [];
 
-		async function test() {
-		    let promiseResolve;
-		    let num = ++index;
+    async function test() {
+        let promiseResolve;
+        let num = ++index;
 
-		    messages.push("start " + num);
+        messages.push("start " + num);
 
-		    // place of interest
-		    while (promise) {
-		        messages.push("wait " + num);
+        // place of interest
+        while (promise) {
+            messages.push("wait " + num);
 
-		        await promise;
-		    }
+            await promise;
+        }
 
-		    promise = new Promise(r => {
-		        promiseResolve = r;
-		    });
+        promise = new Promise(r => {
+            promiseResolve = r;
+        });
 
-		    await wait();
+        await wait();
 
-		    promise = null;
+        promise = null;
 
-		    promiseResolve();
+        promiseResolve();
 
-		    messages.push("stop " + num);
-		}
+        messages.push("stop " + num);
+    }
 
-		function wait() {
-		    return Promise.resolve();
-		}
+    function wait() {
+        return Promise.resolve();
+    }
 
-		return Promise.all([test(), test(), test()]).then(() => messages);
-	}
+    return Promise.all([test(), test(), test()]).then(() => messages);
+}

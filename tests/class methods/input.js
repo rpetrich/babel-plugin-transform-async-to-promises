@@ -1,1 +1,10 @@
-function() { return class { async foo(baz) { return await baz(); } static async bar(baz) { return await baz(); } } }
+function() {
+    return class {
+        async foo(baz) {
+            return await baz();
+        }
+        static async bar(baz) {
+            return await baz();
+        }
+    };
+}

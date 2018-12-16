@@ -1,1 +1,3 @@
-async function(code) { return await eval(code); }
+async function(code) {
+    return await eval(code);
+}

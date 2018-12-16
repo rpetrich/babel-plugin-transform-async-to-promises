@@ -11,7 +11,9 @@ async function() {
       out.push(item);
     }
   } catch (e_1_1) {
-    e_1 = { error: e_1_1 };
+    e_1 = {
+      error: e_1_1
+    };
   } finally {
     try {
       if (_c && !_c.done && (_a = _b.return)) await _a.call(_b);

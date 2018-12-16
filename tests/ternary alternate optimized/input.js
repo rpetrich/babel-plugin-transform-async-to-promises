@@ -1,1 +1,3 @@
-async function(foo, bar, baz) { return foo() ? bar() : await baz(); }
+async function(foo, bar, baz) {
+	return foo() ? bar() : await baz();
+}

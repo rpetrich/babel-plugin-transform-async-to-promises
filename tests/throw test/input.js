@@ -1,1 +1,3 @@
-async function() { throw true; }
+async function() {
+	throw true;
+}

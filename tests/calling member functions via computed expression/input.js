@@ -1,1 +1,3 @@
-async function(foo, bar, baz) { return bar[baz](await foo()); }
+async function(foo, bar, baz) {
+	return bar[baz](await foo());
+}

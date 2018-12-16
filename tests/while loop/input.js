@@ -1,1 +1,6 @@
-async function(foo) { let shouldContinue = true; while (shouldContinue) { shouldContinue = await foo(); } }
+async function(foo) {
+	let shouldContinue = true;
+	while (shouldContinue) {
+		shouldContinue = await foo();
+	}
+}

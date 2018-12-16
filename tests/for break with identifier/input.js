@@ -1,1 +1,6 @@
-async function(foo) { loop: for (;;) { await foo(); break loop; } }
+async function(foo) {
+	loop: for (;;) {
+		await foo();
+		break loop;
+	}
+}

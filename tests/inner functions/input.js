@@ -1,1 +1,3 @@
-function (value) { return async other => value + other; }
+function(value) {
+	return async other => value + other;
+}

@@ -1,1 +1,3 @@
-async function(left, right) { return await left() + right(); }
+async function(left, right) {
+	return await left() + right();
+}

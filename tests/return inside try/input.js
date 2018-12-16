@@ -6,8 +6,7 @@ async function test(wait, messages) {
         messages.push('stop-try');
 
         return 'result-try';
-    }
-    catch (e) {
+    } catch (e) {
         messages.push('catch');
     }
     messages.push('after-try');

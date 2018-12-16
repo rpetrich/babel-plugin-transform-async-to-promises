@@ -1,1 +1,3 @@
-function () { return async () => this; }
+function() {
+	return async () => this;
+}

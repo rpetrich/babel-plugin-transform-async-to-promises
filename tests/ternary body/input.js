@@ -1,1 +1,4 @@
-async function(foo, bar, baz) { const result = foo() ? await bar() : await baz(); return result || result; }
+async function(foo, bar, baz) {
+	const result = foo() ? await bar() : await baz();
+	return result || result;
+}

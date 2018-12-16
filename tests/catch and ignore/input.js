@@ -1,1 +1,6 @@
-async function(foo) { try { return await foo(); } catch(e) { } }
+async function(foo) {
+	try {
+		return await foo();
+	} catch(e) {
+	}
+}

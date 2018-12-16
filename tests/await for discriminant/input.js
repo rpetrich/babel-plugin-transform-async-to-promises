@@ -4,6 +4,5 @@ async function(foo) {
 			return true;
 		default:
 			return false;
-		}
 	}
 }

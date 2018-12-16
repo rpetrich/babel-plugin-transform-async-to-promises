@@ -652,11 +652,11 @@ export const _AsyncGenerator = (function() {
 	};
 	_AsyncGenerator.prototype.next = function(value) {
 		// Advance the generator, starting it if it has yet to be started
-		var _this = this;
+		const _this = this;
 		return _this._promise = new Promise(function (resolve) {
-			var _pact = _this._pact;
+			const _pact = _this._pact;
 			if (_pact === null) {
-				var _entry = _this._entry;
+				const _entry = _this._entry;
 				if (_entry === null) {
 					// Generator is started, but not awaiting a yield expression
 					// Abandon the next call!
@@ -674,7 +674,7 @@ export const _AsyncGenerator = (function() {
 					if (error === _earlyReturn) {
 						returnValue(_this._return);
 					} else {
-						var pact = new _Pact();
+						const pact = new _Pact();
 						_this._resolve(pact);
 						_this._pact = null;
 						_this._resolve = null;
@@ -691,9 +691,9 @@ export const _AsyncGenerator = (function() {
 	};
 	_AsyncGenerator.prototype.return = function(value) {
 		// Early return from the generator if started, otherwise abandons the generator
-		var _this = this;
+		const _this = this;
 		return _this._promise = new Promise(function (resolve) {
-			var _pact = _this._pact;
+			const _pact = _this._pact;
 			if (_pact === null) {
 				if (_this._entry === null) {
 					// Generator is started, but not awaiting a yield expression
@@ -713,9 +713,9 @@ export const _AsyncGenerator = (function() {
 	};
 	_AsyncGenerator.prototype.throw = function(error) {
 		// Inject an exception into the pending yield expression
-		var _this = this;
+		const _this = this;
 		return _this._promise = new Promise(function (resolve, reject) {
-			var _pact = _this._pact;
+			const _pact = _this._pact;
 			if (_pact === null) {
 				if (_this._entry === null) {
 					// Generator is started, but not awaiting a yield expression

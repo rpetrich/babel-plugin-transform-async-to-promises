@@ -2187,6 +2187,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	function yieldOnExpression(state: GeneratorState, expression: Expression) {
 		const generatorIdentifier = state.generatorIdentifier;
 		if (typeof generatorIdentifier === "undefined") {
+			/* istanbul ignore next */
 			throw new Error("Encountered a yield expression outside a generator function!");
 		}
 		const callee = types.memberExpression(generatorIdentifier, types.identifier("_yield"));
@@ -2760,8 +2761,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 				case "_await":
 				case "_call":
 					return path.node.arguments.length < 3;
-				case "_yield":
-					return true;
 			}
 		}
 		return false;
@@ -3192,6 +3191,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						]));
 						const target = body.get("body")[0];
 						if (!target.isBlockStatement()) {
+							/* istanbul ignore next */
 							throw path.buildCodeFrameError(`Expected a BlockStatement, got a ${target.type}`, TypeError);
 						}
 						if (path.node.generator) {

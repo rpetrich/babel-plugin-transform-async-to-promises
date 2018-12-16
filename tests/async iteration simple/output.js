@@ -1,0 +1,1 @@
+()=>new _AsyncGenerator(_generator=>_generator._yield(0).then(()=>_generator._yield(1).then(()=>_generator._yield(2).then(_empty))))

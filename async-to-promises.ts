@@ -836,7 +836,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 				if (lastStatement.argument === null || lastStatement.argument === undefined) {
 					blocks = blocks.slice(0, blocks.length - 1);
 				} else {
-					if (blocks.length > 1) {
+					if (types.isConditionalExpression(lastStatement.argument) && types.isUnaryExpression(lastStatement.argument.alternate) && lastStatement.argument.alternate.operator === "void" && isValueLiteral(lastStatement.argument.alternate.argument)) {
+						blocks = blocks.slice(0, blocks.length - 1);
+						blocks.push(types.ifStatement(lastStatement.argument.test, types.returnStatement(lastStatement.argument.consequent)));
+					} else if (blocks.length > 1) {
 						const previousStatement = blocks[blocks.length - 2];
 						if (types.isIfStatement(previousStatement) && !previousStatement.alternate) {
 							let consequent = previousStatement.consequent;
@@ -1367,6 +1370,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (!types.isBlockStatement(expression)) {
 			expression = blockStatement([expression]);
 		}
+		expression.body = removeUnnecessaryReturnStatements(expression.body);
 		return types.functionExpression(undefined, params, expression);
 	}
 

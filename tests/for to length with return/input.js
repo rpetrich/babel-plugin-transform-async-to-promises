@@ -1,1 +1,7 @@
-async function(list) { for (var i = 0; i < list.length; i++) { if (await list[i]()) { return; } }}
+async function(list) {
+	for (var i = 0; i < list.length; i++) {
+		if (await list[i]()) {
+			return true;
+		}
+	}
+}

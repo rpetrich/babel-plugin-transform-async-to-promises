@@ -128,7 +128,7 @@ function readTest(name) {
 			}
 		}
 	}
-	const { error, checkSyntax = true, module = false, plugins = [] } = options || {};
+	const { error, checkSyntax = true, module = false, plugins = [], supportedBabels = Object.keys(environments) } = options || {};
 	return {
 		error,
 		checkSyntax,
@@ -139,6 +139,7 @@ function readTest(name) {
 		hoisted,
 		cases,
 		plugins,
+		supportedBabels,
 	};
 }
 

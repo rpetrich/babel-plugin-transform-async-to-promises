@@ -1,0 +1,1 @@
+const _this=this;return function(){return Promise.resolve(_this);}

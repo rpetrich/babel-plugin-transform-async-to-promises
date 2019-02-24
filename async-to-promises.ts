@@ -3096,7 +3096,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			ArrowFunctionExpression(path) {
 				const node = path.node;
 				if (node.async) {
-					rewriteThisExpressions(path, path.getFunctionParent());
+					rewriteThisExpressions(path, path.getFunctionParent() || path.scope.getProgramParent().path);
 					const body = types.isBlockStatement(path.node.body) ? path.node.body : blockStatement([types.returnStatement(path.node.body)]);
 					path.replaceWith(types.functionExpression(undefined, node.params, body, false, node.async));
 				}

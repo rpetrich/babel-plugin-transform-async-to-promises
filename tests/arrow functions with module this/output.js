@@ -1,0 +1,1 @@
+const _this=this;return()=>_await(_this)

@@ -1,6 +1,6 @@
 {
   "name": "babel-plugin-transform-async-to-promises",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "description": "Transform async/await to promise chains",
   "main": "async-to-promises.js",
   "scripts": {

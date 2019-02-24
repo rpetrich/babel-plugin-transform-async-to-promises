@@ -12,10 +12,24 @@ const checkOutputMatches = true;
 const testsToRun = [];
 const shouldWriteOutput = false;
 
-const environments = [
-	["babel 6", babel6, types6, asyncToPromises(babel6)],
-	["babel 7", babel7, types7, asyncToPromises(babel7)],
-];
+const environments = {
+	"babel 6": {
+		babel: babel6,
+		types: types6,
+		pluginUnderTest: asyncToPromises(babel6),
+		pluginMapping: {
+			"transform-modules-commonjs": "babel-plugin-transform-es2015-modules-commonjs",
+		},
+	},
+	"babel 7": {
+		babel: babel7,
+		types: types7,
+		pluginUnderTest: asyncToPromises(babel7),
+		pluginMapping: {
+			"transform-modules-commonjs": "@babel/plugin-transform-modules-commonjs",
+		},
+	},
+};
 
 const helperNames = ["_Pact", "_settle", "_isSettledPact", "_async", "_await", "_awaitIgnored", "_continue", "_continueIgnored", "_forTo", "_forValues", "_forIn", "_forOwn", "_forOf", "_forAwaitOf", "_for", "_do", "_switch", "_call", "_callIgnored", "_invoke", "_invokeIgnored", "_catch", "_finallyRethrows", "_finally", "_rethrow", "_empty", "_earlyReturn", "_catchInGenerator", "_wrapReturnedValue", "_wrapYieldedValue", "_AsyncGenerator"];
 
@@ -114,7 +128,7 @@ function readTest(name) {
 			}
 		}
 	}
-	const { error, checkSyntax = true, module = false } = options || {};
+	const { error, checkSyntax = true, module = false, plugins = [] } = options || {};
 	return {
 		error,
 		checkSyntax,
@@ -124,6 +138,7 @@ function readTest(name) {
 		inlined,
 		hoisted,
 		cases,
+		plugins,
 	};
 }
 
@@ -131,7 +146,7 @@ function parse(babel, input) {
 	return babel.parse ? babel.parse(input, { parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] }, sourceType: "module" }) : babylon.parse(input, { allowReturnOutsideFunction: true, sourceType: "module", plugins: ["asyncGenerators"] });
 }
 
-for (const [babelName, babel] of environments) {
+for (const { babel } of Object.values(environments)) {
 	parse(babel, "let test;");
 }
 
@@ -141,9 +156,11 @@ for (const name of fs.readdirSync("tests").sort()) {
 	}
 	if (fs.statSync(`tests/${name}`).isDirectory()) {
 		describe(name, () => {
-			const { input, output, inlined, hoisted, cases, error, checkSyntax, module } = readTest(name);
-			for (const [babelName, babel, types, pluginUnderTest] of environments) {
+			const { input, output, inlined, hoisted, cases, error, checkSyntax, module, plugins, supportedBabels } = readTest(name);
+			for (const babelName of supportedBabels) {
 				describe(babelName, () => {
+					const { babel, types, pluginUnderTest, pluginMapping } = environments[babelName];
+					const mappedPlugins = plugins.map((pluginName) => pluginMapping[pluginName]);
 					const parseInput = module ? input : "return " + input;
 					const ast = parse(babel, parseInput);
 					if (error) {
@@ -158,11 +175,11 @@ for (const name of fs.readdirSync("tests").sort()) {
 						return;
 					}
 					const extractFunction = module ? extractOnlyUserCode : extractJustFunction;
-					const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { target: "es6" }]], compact: true, ast: true });
+					const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { target: "es6" }]].concat(mappedPlugins), compact: true, ast: true });
 					const strippedResult = extractFunction(babel, result);
-					const inlinedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { inlineHelpers: true }]], compact: true, ast: true });
+					const inlinedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { inlineHelpers: true }]].concat(mappedPlugins), compact: true, ast: true });
 					const inlinedAndStrippedResult = extractFunction(babel, inlinedResult);
-					const hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { hoist: true, minify: true }]], compact: true, ast: true });
+					const hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { hoist: true, minify: true }]].concat(mappedPlugins), compact: true, ast: true });
 					const hoistedAndStrippedResult = extractFunction(babel, hoistedResult);
 					writeOutput(`tests/${name}/output.js`, strippedResult);
 					writeOutput(`tests/${name}/inlined.js`, inlinedAndStrippedResult, strippedResult);

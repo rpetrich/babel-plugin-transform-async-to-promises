@@ -1,0 +1,6 @@
+{
+	"checkSyntax": false,
+	"module": true,
+	"supportedBabels": ["babel 7"],
+	"plugins": ["transform-modules-commonjs"]
+}

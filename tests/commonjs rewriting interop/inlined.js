@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:true});exports.default=void 0;var _bar2=require("bar");var _default=function _default(){try{const _bar=_bar2.foo.bar;return Promise.resolve(true).then(function(_true){_bar.call(_bar2.foo,_true);});}catch(e){return Promise.reject(e);}};exports.default=_default;

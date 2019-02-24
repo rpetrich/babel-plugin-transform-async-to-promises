@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,"__esModule",{value:true});exports.default=void 0;var _bar2=require("bar");var _default=_async(function(){const _bar=_bar2.foo.bar;return _await(true,function(_true){_bar.call(_bar2.foo,_true);});});exports.default=_default;

@@ -27,12 +27,14 @@
   "homepage": "https://github.com/rpetrich/babel-plugin-transform-async-to-promises#readme",
   "devDependencies": {
     "@babel/core": "^7.3.3",
+    "@babel/plugin-transform-modules-commonjs": "^7.2.0",
     "@babel/traverse": "^7.2.3",
     "@types/babel-template": "^6.25.2",
     "@types/babel-traverse": "^6.25.5",
     "@types/babel-types": "^7.0.5",
     "@types/node": "^10.12.27",
     "babel-core": "^6.26.3",
+    "babel-plugin-transform-es2015-modules-commonjs": "^6.26.2",
     "babel-traverse": "^6.26.0",
     "jest": "^24.1.0",
     "typescript": "^3.3.3333"

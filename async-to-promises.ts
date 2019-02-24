@@ -1837,7 +1837,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							} else {
 								const calleeIdentifier = generateIdentifierForPath(property);
 								const calleeNode = callee.node;
-								const newArguments: (Expression | SpreadElement)[] = [object.node];
+								const newArguments: (Expression | SpreadElement)[] = [{ ...object.node }];
 								parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), newArguments.concat(parent.node.arguments)));
 								declarations.unshift(types.variableDeclarator(calleeIdentifier, calleeNode));
 							}

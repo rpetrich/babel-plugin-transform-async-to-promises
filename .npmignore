@@ -4,3 +4,4 @@ coverage
 .travis.yml
 *.ts
 tests/
+.DS_Store

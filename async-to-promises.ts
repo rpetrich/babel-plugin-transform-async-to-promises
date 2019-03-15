@@ -2317,7 +2317,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				const catchClause = parent.node.handler;
 				if (catchClause) {
 					const param = catchClause.param;
-					const paramIsUsed = parent.get("handler").scope.getBinding(param.name)!.referencePaths.length !== 0;
+					const paramIsUsed = param !== null && parent.get("handler").scope.getBinding(param.name)!.referencePaths.length !== 0;
 					const fn = catchClause.body.body.length ? rewriteAsyncNode(state.generatorState, parent, functionize(pluginState, paramIsUsed ? [param] : [], catchClause.body, targetPath), additionalConstantNames, exitIdentifier) : emptyFunction(pluginState, parent);
 					expression = types.callExpression(helperReference(pluginState, path, state.generatorState.generatorIdentifier ? "_catchInGenerator" : "_catch"), [unwrapReturnCallWithEmptyArguments(functionize(pluginState, [], expression, targetPath), path.scope, additionalConstantNames), fn]);
 				}

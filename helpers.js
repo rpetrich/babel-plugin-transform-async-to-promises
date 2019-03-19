@@ -1,5 +1,5 @@
 // A type of promise-like that resolves synchronously and supports only one observer
-export const _Pact = (function() {
+export const _Pact = /*#__PURE__*/(function() {
 	function _Pact() {}
 	_Pact.prototype.then = function(onFulfilled, onRejected) {
 		const result = new _Pact();
@@ -625,7 +625,7 @@ export function _catchInGenerator(body, recover) {
 }
 
 // Asynchronous generator class; accepts the entrypoint of the generator, to which it passes itself when the generator should start
-export const _AsyncGenerator = (function() {
+export const _AsyncGenerator = /*#__PURE__*/(function() {
 	function _AsyncGenerator(entry) {
 		this._entry = entry;
 		this._pact = null;

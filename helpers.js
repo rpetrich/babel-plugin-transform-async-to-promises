@@ -632,6 +632,9 @@ export const _AsyncGenerator = (function() {
 		this._resolve = null;
 		this._return = null;
 		this._promise = null;
+		this[Symbol.asyncIterator || (Symbol.asyncIterator = Symbol("Symbol.asyncIterator"))] = function() {
+			return this;
+		};
 	}
 
 	function _wrapReturnedValue(value) {
@@ -641,9 +644,6 @@ export const _AsyncGenerator = (function() {
 		return { value: value, done: false };
 	}
 
-	_AsyncGenerator.prototype[Symbol.asyncIterator || (Symbol.asyncIterator = Symbol("Symbol.asyncIterator"))] = function() {
-		return this;
-	};
 	_AsyncGenerator.prototype._yield = function(value) {
 		// Yield the value to the pending next call
 		this._resolve(value && value.then ? value.then(_wrapYieldedValue) : _wrapYieldedValue(value));

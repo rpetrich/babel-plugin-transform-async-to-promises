@@ -139,6 +139,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	const isNewBabel = !/^6\./.test(version);
 
+	function cloneNode<T extends Node>(node: T): T {
+		const result = (types as any).cloneDeep(node) as T;
+		if ((node.type == "Identifier" || node.type == "MemberExpression") && node.hasOwnProperty("_helperName")) {
+			(result as any as Identifier)._helperName = (node as any as Identifier)._helperName;
+		}
+		return result;
+	}
+
 	// Helper to wrap a node in a statement so it can be used by functions that require a statement
 	function wrapNodeInStatement(node: Node): Statement {
 		if (types.isStatement(node)) {
@@ -516,7 +524,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	// Check if an expression is a function that returns undefined and has no side effects or is a reference to the _empty helper
 	function isEmptyContinuation(continuation: Expression, path: NodePath): boolean {
 		if (types.isIdentifier(continuation)) {
-			return continuation === path.hub.file.declarations["_empty"];
+			return continuation._helperName === "_empty";
 		}
 		if (isContinuation(continuation)) {
 			const body = continuation.body;
@@ -2645,7 +2653,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 	function helperReference(state: PluginState, path: NodePath, name: string): Identifier {
 		const file = path.scope.hub.file;
 		let result = file.declarations[name];
-		if (!result) {
+		if (result) {
+			result = cloneNode(result);
+		} else {
 			result = file.declarations[name] = usesIdentifier(file.path, name) ? file.path.scope.generateUidIdentifier(name) : types.identifier(name);
 			result._helperName = name;
 			if (readConfigKey(state.opts, "externalHelpers")) {
@@ -2691,7 +2701,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				for (const dependency of helper.dependencies) {
 					helperReference(state, path, dependency);
 				}
-				const value = (types as any).cloneDeep(helper.value) as typeof helper.value;
+				const value = cloneNode(helper.value) as typeof helper.value;
 				let traversePath = file.path.get("body")[0];
 				if (types.isVariableDeclaration(value) && traversePath.isVariableDeclaration()) {
 					// TODO: Support variable declaration that references another variable declaration (this case doesn't exist yet in our helpers, but may in the future)

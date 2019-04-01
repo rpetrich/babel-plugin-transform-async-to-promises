@@ -1,1 +1,1 @@
-function(url){try{return Promise.resolve(fetch(url)).then(function(response){return Promise.resolve(response.blob()).then(function(blob){return URL.createObjectURL(blob);});});}catch(e){return Promise.reject(e);}}
+function(url){try{return Promise.resolve(fetch(url)).then(function(response){return Promise.resolve(response.blob()).then(URL.createObjectURL);});}catch(e){return Promise.reject(e);}}

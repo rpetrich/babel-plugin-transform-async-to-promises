@@ -30,6 +30,146 @@ function readConfigKey<K extends keyof AsyncToPromisesConfiguration>(config: Par
 	return defaultConfigValues[key];
 }
 
+const constantFunctionMethods: { readonly [name: string]: boolean } = {
+	"call": false,
+	"apply": false,
+	"bind": false,
+};
+
+const constantStaticMethods: { readonly [name: string]: { readonly [name: string]: boolean } } = {
+	"Object": {
+		"assign": true,
+		"create": true,
+		"defineProperty": true,
+		"defineProperties": true,
+		"entries": true,
+		"freeze": true,
+		"fromEntries": true,
+		"getOwnPropertyDescriptor": true,
+		"getOwnPropertyDescriptors": true,
+		"getOwnPropertyNames": true,
+		"getOwnPropertySymbols": true,
+		"getPrototypeOf": true,
+		"is": true,
+		"isExtensible": true,
+		"isFrozen": true,
+		"isSealed": true,
+		"keys": true,
+		"preventExtensions": true,
+		"seal": true,
+		"setPrototypeOf": true,
+		"values": true,
+		...constantFunctionMethods,
+	},
+	"Function": constantFunctionMethods,
+	"Boolean": constantFunctionMethods,
+	"Number": {
+		"isNaN": true,
+		"isFinite": true,
+		"isInteger": true,
+		"isSafeInteger": true,
+		"parseFloat": true,
+		"parseInteger": true,
+		...constantFunctionMethods,
+	},
+	"Array": {
+		"from": true,
+		"isArray": true,
+		"of": true,
+		...constantFunctionMethods,
+	},
+	"Date": {
+		"now": true,
+		"parse": true,
+		"UTC": true,
+		...constantFunctionMethods,
+	},
+	"RegExp": constantFunctionMethods,
+	"Error": constantFunctionMethods,
+	"TypeError": constantFunctionMethods,
+	"Map": constantFunctionMethods,
+	"Set": constantFunctionMethods,
+	"WeakMap": constantFunctionMethods,
+	"WeakSet": constantFunctionMethods,
+	"Promise": {
+		"all": true,
+		"race": true,
+		"resolve": true,
+		"reject": true,
+		...constantFunctionMethods,
+	},
+	"Math": {
+		"abs": true,
+		"acos": true,
+		"asin": true,
+		"atan": true,
+		"atan2": true,
+		"ceil": true,
+		"cos": true,
+		"exp": true,
+		"floor": true,
+		"log": true,
+		"max": true,
+		"min": true,
+		"pow": true,
+		"random": true,
+		"round": true,
+		"sin": true,
+		"sqrt": true,
+		"tan": true,
+	},
+	"JSON": {
+		"parse": true,
+		"stringify": true,
+	},
+	"URL": {
+		"createObjectURL": true,
+		"revokeObjectURL": true,
+		...constantFunctionMethods,
+	},
+	"console": {
+		"assert": true,
+		"clear": true,
+		"count": true,
+		"error": true,
+		"info": true,
+		"log": true,
+		"warn": true,
+	},
+	"document": {
+		"createComment": true,
+		"createElement": true,
+		"createTextNode": true,
+		"getElementsByClassName": true,
+		"getElementsByTagName": true,
+		"getElementsByName": true,
+		"getElementById": true,
+		"querySelector": true,
+		"querySelectorAll": true,
+		"write": true,
+		"writeln": true,
+	},
+	"XMLHttpRequest": constantFunctionMethods,
+	"WebSocket": constantFunctionMethods,
+	"Image": constantFunctionMethods,
+	"alert": constantFunctionMethods,
+	"confirm": constantFunctionMethods,
+	"open": constantFunctionMethods,
+	"prompt": constantFunctionMethods,
+	"eval": constantFunctionMethods,
+	"isFinite": constantFunctionMethods,
+	"isNaN": constantFunctionMethods,
+	"parseInt": constantFunctionMethods,
+	"parseFloat": constantFunctionMethods,
+	"decodeURI": constantFunctionMethods,
+	"decodeURIComponent": constantFunctionMethods,
+	"encodeURI": constantFunctionMethods,
+	"encodeURIComponent": constantFunctionMethods,
+	"escape": constantFunctionMethods,
+	"unescape": constantFunctionMethods,
+	"$": constantFunctionMethods,
+} as const;
+
 // Type extensions
 
 declare module "babel-types" {
@@ -125,7 +265,7 @@ interface Helper {
 };
 let helpers: { [name: string]: Helper } | undefined;
 
-const alwaysTruthy = ["Object", "Function", "Boolean", "Error", "String", "Number", "Math", "Date", "RegExp", "Array", "Promise"];
+const alwaysTruthy = Object.keys(constantStaticMethods);
 const numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
 // Main function, called by babel with module implementations for types, template, traverse, transformFromAST and its version information
@@ -1445,12 +1585,31 @@ export default function({ types, template, traverse, transformFromAst, version }
 			if (expression && types.isCallExpression(expression) && expression.arguments.length === 1) {
 				const firstArgument = expression.arguments[0];
 				const firstParam = node.params[0];
-				if (types.isIdentifier(firstArgument) && types.isIdentifier(firstParam) && firstArgument.name === firstParam.name && types.isIdentifier(expression.callee)) {
-					const binding = scope.getBinding(expression.callee.name);
-					if (binding && binding.constant) {
-						return expression.callee;
+				if (types.isIdentifier(firstArgument) && types.isIdentifier(firstParam) && firstArgument.name === firstParam.name) {
+					if (types.isIdentifier(expression.callee)) {
+						const binding = scope.getBinding(expression.callee.name);
+						if (binding && binding.constant) {
+							return expression.callee;
+						}
+						// Simplify calls to known static functions like encodeURIComponent
+						if (Object.hasOwnProperty.call(constantStaticMethods, expression.callee.name)) {
+							return expression.callee;
+						}
+					} else if (types.isMemberExpression(expression.callee)) {
+						// Simplify calls to known static methods like JSON.parse
+						const propertyName = propertyNameOfMemberExpression(expression.callee);
+						if (propertyName !== undefined) {
+							const object = expression.callee.object;
+							if (types.isIdentifier(object) && Object.hasOwnProperty.call(constantStaticMethods, object.name) && !scope.getBinding(object.name)) {
+								const staticMethods = constantStaticMethods[object.name];
+								if (Object.hasOwnProperty.call(staticMethods, propertyName) && staticMethods[propertyName]) {
+									return expression.callee;
+								}
+							}
+						}
 					}
 				}
+
 			}
 		}
 		return node;
@@ -1459,15 +1618,32 @@ export default function({ types, template, traverse, transformFromAst, version }
 	// Return true if an expression contains entirely literals, with a list of identifiers assumed to have literal values
 	function isExpressionOfLiterals(path: NodePath, literalNames: string[]): boolean {
 		if (path.isIdentifier()) {
-			if (path.node.name === "undefined") {
+			const name = path.node.name;
+			if (name === "undefined" && !path.scope.getBinding("undefined")) {
 				return true;
 			}
-			const binding = path.parentPath.scope.getBinding(path.node.name);
+			const binding = path.parentPath.scope.getBinding(name);
 			if (binding) {
 				return binding.constant;
 			}
-			if (literalNames.indexOf(path.node.name) !== -1) {
+			if (literalNames.indexOf(name) !== -1) {
 				return true;
+			}
+			if (Object.hasOwnProperty.call(constantStaticMethods, name) && !path.scope.getBinding(name)) {
+				return true;
+			}
+			return false;
+		}
+		if (path.isMemberExpression()) {
+			const object = path.get("object");
+			if (object.isIdentifier()) {
+				const propertyName = propertyNameOfMemberExpression(path.node);
+				if (propertyName !== undefined && Object.hasOwnProperty.call(constantStaticMethods, object.node.name) && !path.scope.getBinding(object.node.name)) {
+					const staticMethods = constantStaticMethods[object.node.name];
+					if (Object.hasOwnProperty.call(staticMethods, propertyName) && staticMethods[propertyName]) {
+						return true;
+					}
+				}
 			}
 			return false;
 		}
@@ -1833,14 +2009,22 @@ export default function({ types, template, traverse, transformFromAst, version }
 					if (!isExpressionOfLiterals(callee, additionalConstantNames) && typeof promiseCallExpressionType(parent.node) === "undefined") {
 						if (callee.isMemberExpression()) {
 							const object = callee.get("object");
+							const property = callee.get("property");
 							let objectDeclarator: VariableDeclarator | undefined;
-							if (!isExpressionOfLiterals(object, additionalConstantNames)) {
+							let staticMethods: { readonly [name: string]: boolean } = {};
+							let constantObject = false;
+							if (object.isIdentifier() && Object.hasOwnProperty.call(constantStaticMethods, object.node.name) && !callee.scope.getBinding(object.node.name)) {
+								constantObject = true;
+								staticMethods = constantStaticMethods[object.node.name];
+							} else if (isExpressionOfLiterals(object, additionalConstantNames)) {
+								constantObject = true;
+							}
+							if (!constantObject) {
 								const objectIdentifier = generateIdentifierForPath(object);
 								objectDeclarator = types.variableDeclarator(objectIdentifier, object.node);
 								object.replaceWith(objectIdentifier);
 							}
-							const property = callee.get("property");
-							if (!callee.node.computed && property.isIdentifier() && property.node.name === "call") {
+							if (!callee.node.computed && property.isIdentifier() && (property.node.name === "call" || Object.hasOwnProperty.call(staticMethods, property.node.name))) {
 								// parent.replaceWith(types.callExpression(types.memberExpression(object.node, types.identifier("call")), parent.node.arguments));
 							} else {
 								const calleeIdentifier = generateIdentifierForPath(property);
@@ -2953,6 +3137,13 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 		MemberExpression(path) {
 			if (path.node._helperName !== "_await" && !(path.parentPath.isCallExpression() && promiseCallExpressionType(path.parentPath.node) !== undefined && path.parentPath.get("callee") === path)) {
+				const propertyName = propertyNameOfMemberExpression(path.node);
+				if (propertyName !== undefined) {
+					const object = path.get("object");
+					if (object.isIdentifier() && Object.hasOwnProperty.call(constantStaticMethods, object.node.name) && Object.hasOwnProperty.call(constantStaticMethods[object.node.name], propertyName)) {
+						return;
+					}
+				}
 				this.canThrow = true;
 			}
 		},

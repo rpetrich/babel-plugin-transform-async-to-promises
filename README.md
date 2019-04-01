@@ -20,9 +20,7 @@ async function fetchAsObjectURL(url) {
 ```javascript
 const fetchAsObjectURL = _async(function(url) {
 	return _await(fetch(url), function(response) {
-		return _await(response.blob(), function(blob) {
-			return URL.createObjectURL(blob);
-		});
+		return _await(response.blob(), URL.createObjectURL);
 	});
 });
 ```
@@ -31,10 +29,7 @@ const fetchAsObjectURL = _async(function(url) {
 
 ```javascript
 function _response$blob(response) {
-	return _await(response.blob(), _URL$createObjectURL);
-}
-function _URL$createObjectURL = function(blob) {
-	return URL.createObjectURL(blob);
+	return _await(response.blob(), URL.createObjectURL);
 }
 const fetchAsObjectURL = _async(function(url) {
 	return _await(fetch(url), _response$blob);
@@ -47,9 +42,7 @@ const fetchAsObjectURL = _async(function(url) {
 const fetchAsObjectURL = function(url) {
 	try {
 		return Promise.resolve(fetch(url)).then(function(response) {
-			return Promise.resolve(response.blob()).then(function(blob){
-				return URL.createObjectURL(blob);
-			});
+			return Promise.resolve(response.blob()).then(URL.createObjectURL);
 		});
 	} catch(e) {
 		return Promise.reject(e);

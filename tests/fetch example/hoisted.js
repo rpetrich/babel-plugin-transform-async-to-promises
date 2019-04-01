@@ -1,1 +1,1 @@
-function _response$blob(response){return _await(response.blob(),_URL$createObjectURL);}function _URL$createObjectURL(blob){return URL.createObjectURL(blob);}return _async(function(url){return _await(fetch(url),_response$blob);})
+function _response$blob(response){return _await(response.blob(),URL.createObjectURL);}return _async(function(url){return _await(fetch(url),_response$blob);})

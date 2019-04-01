@@ -1,0 +1,1 @@
+promisedData=>_await(promisedData,JSON.parse)

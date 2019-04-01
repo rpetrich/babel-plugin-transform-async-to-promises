@@ -5,7 +5,8 @@
   "main": "async-to-promises.js",
   "scripts": {
     "prepare": "tsc --strict --lib es5,es6,es2016 --types node --module commonjs --sourceMap async-to-promises.ts",
-    "test": "jest"
+    "test": "jest",
+    "test:coverage": "jest --coverage"
   },
   "repository": {
     "type": "git",

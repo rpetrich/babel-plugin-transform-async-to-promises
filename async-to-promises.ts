@@ -2494,10 +2494,12 @@ export default function({ types, template, traverse, transformFromAst, version }
 					}
 					if (!explicitExits.all) {
 						const consequent = parent.get("consequent");
-						const consequentNode = rewriteAsyncNode(state.generatorState, parent, consequent.node, additionalConstantNames, exitIdentifier);
+						rewriteAsyncBlock(state.generatorState, consequent, additionalConstantNames, exitIdentifier);
 						const alternate = parent.get("alternate");
-						const alternateNode = alternate.node ? rewriteAsyncNode(state.generatorState, parent, alternate.node, additionalConstantNames, exitIdentifier) : undefined;
-						const fn = functionize(pluginState, [], blockStatement([types.ifStatement(test.node, consequentNode, alternateNode)]), targetPath);
+						if (alternate.isStatement()) {
+							rewriteAsyncBlock(state.generatorState, alternate, additionalConstantNames, exitIdentifier);
+						}
+						const fn = functionize(pluginState, [], blockStatement([parent.node]), targetPath);
 						relocateTail(state.generatorState, types.callExpression(fn, []), undefined, parent, additionalConstantNames, resultIdentifier, exitIdentifier);
 						processExpressions = false;
 					}

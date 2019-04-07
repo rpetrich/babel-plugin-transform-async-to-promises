@@ -1,6 +1,6 @@
 export async function retried(bail, currentAttempt) {
   let data;
-  let res = await fetch(url, { ...opts, headers, agent })
+  let res = await fetch(url)
   if (opts.throwOnHTTPError && (res.status < 200 || res.status >= 300)) {
     if (type === 'application/json') {
       data = await res.json()

@@ -144,7 +144,7 @@ function readTest(name) {
 }
 
 function parse(babel, input) {
-	return babel.parse ? babel.parse(input, { parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] }, sourceType: "module" }) : babylon.parse(input, { allowReturnOutsideFunction: true, sourceType: "module", plugins: ["asyncGenerators"] });
+	return babel.parse ? babel.parse(input, { parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] }, sourceType: "module" }) : babylon.parse(input, { allowReturnOutsideFunction: true, sourceType: "module", plugins: ["asyncGenerators", "objectRestSpread"] });
 }
 
 for (const { babel } of Object.values(environments)) {

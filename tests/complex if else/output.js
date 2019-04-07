@@ -1,0 +1,1 @@
+export default _async(()=>_invokeIgnored(()=>{if(true){return _awaitIgnored(1);}else return _invokeIgnored(()=>{if(false){}else{return _awaitIgnored(2);}});}));

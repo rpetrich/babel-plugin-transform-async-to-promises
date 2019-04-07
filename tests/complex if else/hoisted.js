@@ -1,0 +1,1 @@
+function _temp2(){if(true){return _awaitIgnored(1);}else return _invokeIgnored(_temp);}function _temp(){if(false){}else{return _awaitIgnored(2);}}export default(function(){return _await(_invokeIgnored(_temp2));});

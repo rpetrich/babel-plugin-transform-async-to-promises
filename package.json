@@ -27,17 +27,17 @@
   },
   "homepage": "https://github.com/rpetrich/babel-plugin-transform-async-to-promises#readme",
   "devDependencies": {
-    "@babel/core": "^7.4.0",
-    "@babel/plugin-transform-modules-commonjs": "^7.4.0",
-    "@babel/traverse": "^7.4.0",
+    "@babel/core": "^7.4.3",
+    "@babel/plugin-transform-modules-commonjs": "^7.4.3",
+    "@babel/traverse": "^7.4.3",
     "@types/babel-template": "^6.25.2",
     "@types/babel-traverse": "^6.25.5",
     "@types/babel-types": "^7.0.6",
-    "@types/node": "^11.12.2",
+    "@types/node": "^11.13.0",
     "babel-core": "^6.26.3",
     "babel-plugin-transform-es2015-modules-commonjs": "^6.26.2",
     "babel-traverse": "^6.26.0",
-    "jest": "^24.5.0",
-    "typescript": "^3.4.1"
+    "jest": "^24.7.1",
+    "typescript": "^3.4.2"
   }
 }

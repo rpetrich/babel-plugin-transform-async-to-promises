@@ -1280,10 +1280,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 			replacement = awaitAndContinue(generatorState.state, target, awaitExpression, emptyFunction(generatorState.state, target), directExpression);
 		}
 		checkPathValidity(target);
-		// Insert any new variable declarators the await call needed
-		if (replacement.declarators.length) {
-			target.insertBefore(types.variableDeclaration("const", replacement.declarators));
-		}
 		// Insert a call to return the awaited expression
 		if (target.isExpression() && target.parentPath.isArrowFunctionExpression()) {
 			target.replaceWith(replacement.expression);
@@ -1291,6 +1287,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 			target.replaceWith(types.blockStatement([returnStatement(replacement.expression, originalNode)]));
 		} else {
 			target.replaceWith(returnStatement(replacement.expression, originalNode));
+		}
+		// Insert any new variable declarators the await call needed
+		if (replacement.declarators.length) {
+			target.insertBefore(types.variableDeclaration("const", replacement.declarators));
 		}
 		// Hoist the call arguments if configured to do so
 		if (readConfigKey(generatorState.state.opts, "hoist")) {

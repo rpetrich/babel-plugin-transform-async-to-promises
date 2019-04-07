@@ -3254,7 +3254,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	// Shuffles a path to evaluate before its non-function declaration siblings
 	function reorderPathBeforeSiblingStatements(targetPath: NodePath) {
 		for (const sibling of targetPath.getAllPrevSiblings().reverse()) {
-			if (!sibling.isFunctionDeclaration()) {
+			if (!sibling.isFunctionDeclaration() && !sibling.isImportDeclaration()) {
 				const newNode = targetPath.node;
 				targetPath.remove();
 				sibling.insertBefore(newNode);

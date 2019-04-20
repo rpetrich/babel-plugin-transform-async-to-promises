@@ -1,0 +1,1 @@
+function(){const foo=function(result){try{if(result===undefined)result=Promise.resolve(true);return Promise.resolve(result);}catch(e){return Promise.reject(e);}};return class{foo(baz){try{const _this=this;if(baz===undefined)baz=_this.bar();return Promise.resolve(baz);}catch(e){return Promise.reject(e);}}bar(result=foo()){return result;}};}

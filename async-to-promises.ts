@@ -1,4 +1,4 @@
-import { ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, LabeledStatement, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, YieldExpression } from "babel-types";
+import { ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, LabeledStatement, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, YieldExpression } from "babel-types";
 import { NodePath, Scope, Visitor } from "babel-traverse";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -1659,6 +1659,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (path.isArrayExpression()) {
 			return path.get("elements").every(path => path === null || path.node === null ? true : isExpressionOfLiterals(path as NodePath, literalNames));
 		}
+		if (path.isNullLiteral()) {
+			return true;
+		}
 		if (path.isObjectExpression()) {
 			return path.get("properties").every(path => {
 				if (!path.isObjectProperty()) {
@@ -3263,6 +3266,32 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	// Rewrite function arguments with default values to be check statements inserted into the body
+	function rewriteDefaultArguments(targetPath: NodePath<FunctionExpression> | NodePath<ClassMethod>, pluginState: PluginState) {
+		const statements: Statement[] = [];
+		const params = targetPath.get("params");
+		const literals: string[] = [];
+		for (let i = 0; i < params.length; i++) {
+			const param = params[i];
+			if (param.isAssignmentPattern()) {
+				const init = param.get("right");
+				if (!isExpressionOfLiterals(init, literals)) {
+					const id = param.get("left").node;
+					const initNode = init.node;
+					param.replaceWith(id);
+					const isMissing = types.binaryExpression("===", id, types.identifier("undefined"));
+					const assignment = types.expressionStatement(types.assignmentExpression("=", id, initNode));
+					statements.push(types.ifStatement(isMissing, assignment));
+				}
+			} else if (param.isIdentifier()) {
+				literals.push(param.node.name);
+			}
+		}
+		if (statements.length) {
+			targetPath.node.body.body = statements.concat(targetPath.node.body.body);
+		}
+	}
+
 	// Main babel plugin implementation and top level visitor
 	return {
 		manipulateOptions(options: any, parserOptions: { plugins: string[] }) {
@@ -3315,6 +3344,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						reorderPathBeforeSiblingStatements(targetPath);
 						return;
 					}
+					rewriteDefaultArguments(path, this);
 					rewriteThisArgumentsAndHoistFunctions(path, path, false);
 					const bodyPath = path.get("body");
 					if (path.node.generator) {
@@ -3389,6 +3419,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					const body = path.get("body");
 					let newBody: NodePath;
 					if (path.node.kind === "method") {
+						rewriteDefaultArguments(path, this);
 						body.replaceWith(types.blockStatement([
 							body.node
 						]));

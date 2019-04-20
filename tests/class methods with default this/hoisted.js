@@ -1,0 +1,1 @@
+function(){const foo=_async(function(result){if(result===undefined)result=Promise.resolve(true);return result;});return class{foo(baz){const _this=this;return _call(function(){if(baz===undefined)baz=_this.bar();return _await(baz);});}bar(result=foo()){return result;}};}

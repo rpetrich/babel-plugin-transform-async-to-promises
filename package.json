@@ -33,11 +33,11 @@
     "@types/babel-template": "^6.25.2",
     "@types/babel-traverse": "^6.25.5",
     "@types/babel-types": "^7.0.6",
-    "@types/node": "^11.13.0",
+    "@types/node": "^11.13.6",
     "babel-core": "^6.26.3",
     "babel-plugin-transform-es2015-modules-commonjs": "^6.26.2",
     "babel-traverse": "^6.26.0",
     "jest": "^24.7.1",
-    "typescript": "^3.4.2"
+    "typescript": "^3.4.4"
   }
 }

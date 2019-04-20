@@ -1,7 +1,6 @@
 import { ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, LabeledStatement, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, YieldExpression } from "babel-types";
 import { NodePath, Scope, Visitor } from "babel-traverse";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { code as helperCode } from "./helpers-string";
 
 // Configuration types
 interface AsyncToPromisesConfiguration {
@@ -2854,7 +2853,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 				if (!helpers) {
 					// Read helpers from ./helpers.js
 					const newHelpers: { [name: string]: Helper } = {};
-					const helperCode = readFileSync(join(__dirname, "helpers.js")).toString();
 					const helperAst = require(isNewBabel ? "@babel/core" : "babylon").parse(helperCode, { sourceType: "module" });
 					transformFromAst(helperAst, helperCode, {
 						babelrc: false, plugins: [{

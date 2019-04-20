@@ -1,6 +1,7 @@
 *.test.js
 babel-plugin-transform-async-to-promises-*.tgz
 coverage
+generate-helpers-string.js
 .travis.yml
 *.ts
 tests/

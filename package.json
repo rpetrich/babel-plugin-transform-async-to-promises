@@ -4,7 +4,7 @@
   "description": "Transform async/await to promise chains",
   "main": "async-to-promises.js",
   "scripts": {
-    "prepare": "tsc --strict --lib es5,es6,es2016 --types node --module commonjs --sourceMap async-to-promises.ts",
+    "prepare": "tsc --strict --lib es5,es6,es2016 --types node --module commonjs --sourceMap async-to-promises.ts && node ./generate-helpers-string.js",
     "test": "jest",
     "test:coverage": "jest --coverage"
   },

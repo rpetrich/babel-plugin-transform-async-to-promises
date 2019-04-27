@@ -2436,6 +2436,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 			let shouldPushExitIdentifier = false;
 			while (targetPath !== path) {
 				const parent = targetPath.parentPath;
+				if (parent == null) {
+					break;
+				}
 				if (!parent.isSwitchCase() && !parent.isBlockStatement()) {
 					let exitIdentifier;
 					const explicitExits = pathsReturnOrThrow(parent);
@@ -2606,7 +2609,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							}
 						}
 						const forIdentifier = path.scope.generateUidIdentifier("for");
-						const bodyFunction = rewriteAsyncNode(state.generatorState, parent, functionize(pluginState, [], blockStatement(parent.node.body), targetPath), additionalConstantNames, exitIdentifier);
+						const bodyFunction = rewriteAsyncNode(state.generatorState, parent, functionize(pluginState, [], blockStatement(parent.node.body || []), targetPath), additionalConstantNames, exitIdentifier);
 						const testFunction = unwrapReturnCallWithEmptyArguments(testExpression || voidExpression(), path.scope, additionalConstantNames);
 						const updateFunction = unwrapReturnCallWithEmptyArguments(updateExpression || voidExpression(), path.scope, additionalConstantNames);
 						loopCall = isDoWhile ? types.callExpression(helperReference(pluginState, parent, "_do"), [bodyFunction, testFunction]) : types.callExpression(helperReference(pluginState, parent, "_for"), [testFunction, updateFunction, bodyFunction]);

@@ -19,6 +19,9 @@ const environments = {
 		pluginUnderTest: asyncToPromises(babel6),
 		pluginMapping: {
 			"transform-modules-commonjs": "babel-plugin-transform-es2015-modules-commonjs",
+			"transform-parameters": "babel-plugin-transform-es2015-parameters",
+			"transform-classes": "babel-plugin-transform-es2015-classes",
+			"external-helpers": "babel-plugin-external-helpers",
 		},
 	},
 	"babel 7": {
@@ -27,6 +30,9 @@ const environments = {
 		pluginUnderTest: asyncToPromises(babel7),
 		pluginMapping: {
 			"transform-modules-commonjs": "@babel/plugin-transform-modules-commonjs",
+			"transform-parameters": "@babel/plugin-transform-parameters",
+			"transform-classes": "@babel/plugin-transform-classes",
+			"external-helpers": "@babel/plugin-external-helpers",
 		},
 	},
 };
@@ -128,7 +134,7 @@ function readTest(name) {
 			}
 		}
 	}
-	const { error, checkSyntax = true, module = false, plugins = [], supportedBabels = Object.keys(environments) } = options || {};
+	const { error, checkSyntax = true, module = false, plugins = [], supportedBabels = Object.keys(environments), presets = [] } = options || {};
 	return {
 		error,
 		checkSyntax,
@@ -140,6 +146,7 @@ function readTest(name) {
 		cases,
 		plugins,
 		supportedBabels,
+		presets,
 	};
 }
 
@@ -157,7 +164,7 @@ for (const name of fs.readdirSync("tests").sort()) {
 	}
 	if (fs.statSync(`tests/${name}`).isDirectory()) {
 		describe(name, () => {
-			const { input, output, inlined, hoisted, cases, error, checkSyntax, module, plugins, supportedBabels } = readTest(name);
+			const { input, output, inlined, hoisted, cases, error, checkSyntax, module, plugins, presets, supportedBabels } = readTest(name);
 			for (const babelName of supportedBabels) {
 				describe(babelName, () => {
 					const { babel, types, pluginUnderTest, pluginMapping } = environments[babelName];
@@ -167,7 +174,7 @@ for (const name of fs.readdirSync("tests").sort()) {
 					if (error) {
 						test("error", () => {
 							try {
-								babel.transformFromAst(ast, parseInput, { plugins: [[pluginUnderTest, {}]], compact: true })
+								babel.transformFromAst(ast, parseInput, { presets, plugins: [[pluginUnderTest, {}]], compact: true })
 								throw new Error("Expected error: " + error.toString());
 							} catch (e) {
 								expect(e.toString()).toEqual(expect.stringContaining(error));
@@ -176,11 +183,11 @@ for (const name of fs.readdirSync("tests").sort()) {
 						return;
 					}
 					const extractFunction = module ? extractOnlyUserCode : extractJustFunction;
-					const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { target: "es6" }]].concat(mappedPlugins), compact: true, ast: true });
+					const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, { presets, plugins: mappedPlugins.concat([[pluginUnderTest, { target: "es6" }]]), compact: true, ast: true });
 					const strippedResult = extractFunction(babel, result);
-					const inlinedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { inlineHelpers: true }]].concat(mappedPlugins), compact: true, ast: true });
+					const inlinedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { presets, plugins: mappedPlugins.concat([[pluginUnderTest, { inlineHelpers: true }]]), compact: true, ast: true });
 					const inlinedAndStrippedResult = extractFunction(babel, inlinedResult);
-					const hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { plugins: [[pluginUnderTest, { hoist: true, minify: true }]].concat(mappedPlugins), compact: true, ast: true });
+					const hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { presets, plugins: mappedPlugins.concat([[pluginUnderTest, { hoist: true, minify: true }]]), compact: true, ast: true });
 					const hoistedAndStrippedResult = extractFunction(babel, hoistedResult);
 					writeOutput(`tests/${name}/output.js`, strippedResult);
 					writeOutput(`tests/${name}/inlined.js`, inlinedAndStrippedResult, strippedResult);

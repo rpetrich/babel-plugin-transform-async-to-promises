@@ -37,7 +37,7 @@ const environments = {
 	},
 };
 
-const helperNames = ["_Pact", "_settle", "_isSettledPact", "_async", "_await", "_awaitIgnored", "_continue", "_continueIgnored", "_forTo", "_forValues", "_forIn", "_forOwn", "_forOf", "_forAwaitOf", "_for", "_do", "_switch", "_call", "_callIgnored", "_invoke", "_invokeIgnored", "_catch", "_finallyRethrows", "_finally", "_rethrow", "_empty", "_earlyReturn", "_catchInGenerator", "_wrapReturnedValue", "_wrapYieldedValue", "_AsyncGenerator"];
+const helperNames = ["_Pact", "_settle", "_isSettledPact", "_async", "_await", "_awaitIgnored", "_continue", "_continueIgnored", "_forTo", "_forValues", "_forIn", "_forOwn", "_forOf", "_forAwaitOf", "_for", "_do", "_switch", "_call", "_callIgnored", "_invoke", "_invokeIgnored", "_catch", "_finallyRethrows", "_finally", "_rethrow", "_empty", "_earlyReturn", "_catchInGenerator", "_wrapReturnedValue", "_wrapYieldedValue", "_AsyncGenerator", "_asyncIteratorSymbol"];
 
 const stripHelpersVisitor = {
 	FunctionDeclaration(path) {

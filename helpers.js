@@ -214,7 +214,7 @@ export function _forOf(target, body, check) {
 	}
 	// No support for Symbol.iterator
 	if (!("length" in target)) {
-		throw new TypeError("value is not iterable");
+		throw new TypeError("Object is not iterable");
 	}
 	// Handle live collections properly
 	var values = [];
@@ -224,31 +224,30 @@ export function _forOf(target, body, check) {
 	return _forTo(values, function(i) { return body(values[i]); }, check);
 }
 
+export const _asyncIteratorSymbol = typeof Symbol !== "undefined" ? (Symbol.asyncIterator || (Symbol.asyncIterator = Symbol("Symbol.asyncIterator"))) : "Symbol.asyncIterator";
+
 // Asynchronously iterate on a value using it's async iterator if present, or its synchronous iterator if missing
 export function _forAwaitOf(target, body, check) {
-	if (typeof Symbol !== "undefined") {
-		var asyncIteratorSymbol = Symbol.asyncIterator;
-		if (asyncIteratorSymbol && (asyncIteratorSymbol in target)) {
-			var pact = new _Pact();
-			var iterator = target[asyncIteratorSymbol]();
+	if (typeof target[_asyncIteratorSymbol] === "function") {
+		var pact = new _Pact();
+		var iterator = target[asyncIteratorSymbol]();
+		iterator.next().then(_resumeAfterNext).then(void 0, _reject);
+		return pact;
+		function _resumeAfterBody(result) {
+			if (check && !check()) {
+				return _settle(pact, 1, iterator.return ? iterator.return().then(function() { return result; }) : result);
+			}
 			iterator.next().then(_resumeAfterNext).then(void 0, _reject);
-			return pact;
-			function _resumeAfterBody(result) {
-				if (check && !check()) {
-					return _settle(pact, 1, iterator.return ? iterator.return().then(function() { return result; }) : result);
-				}
-				iterator.next().then(_resumeAfterNext).then(void 0, _reject);
+		}
+		function _resumeAfterNext(step) {
+			if (step.done) {
+				_settle(pact, 1);
+			} else {
+				Promise.resolve(body(step.value)).then(_resumeAfterBody).then(void 0, _reject);
 			}
-			function _resumeAfterNext(step) {
-				if (step.done) {
-					_settle(pact, 1);
-				} else {
-					Promise.resolve(body(step.value)).then(_resumeAfterBody).then(void 0, _reject);
-				}
-			}
-			function _reject(error) {
-				_settle(pact, 2, iterator.return ? iterator.return().then(function() { return error; }) : error);
-			}
+		}
+		function _reject(error) {
+			_settle(pact, 2, iterator.return ? iterator.return().then(function() { return error; }) : error);
 		}
 	}
 	return Promise.resolve(_forOf(target, function(value) { return Promise.resolve(value).then(body); }, check));
@@ -632,9 +631,6 @@ export const _AsyncGenerator = /*#__PURE__*/(function() {
 		this._resolve = null;
 		this._return = null;
 		this._promise = null;
-		this[Symbol.asyncIterator || (Symbol.asyncIterator = Symbol("Symbol.asyncIterator"))] = function() {
-			return this;
-		};
 	}
 
 	function _wrapReturnedValue(value) {
@@ -731,6 +727,10 @@ export const _AsyncGenerator = /*#__PURE__*/(function() {
 			_this._pact = null;
 			_settle(_pact, 2, error);
 		});
+	};
+
+	_AsyncGenerator.prototype[_asyncIteratorSymbol] = function() {
+		return this;
 	};
 	
 	return _AsyncGenerator;

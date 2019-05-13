@@ -1,4 +1,4 @@
-import { ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, LabeledStatement, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, YieldExpression } from "babel-types";
+import { ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, File, LabeledStatement, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, YieldExpression } from "babel-types";
 import { NodePath, Scope, Visitor } from "babel-traverse";
 import { code as helperCode } from "./helpers-string";
 
@@ -176,6 +176,7 @@ declare module "babel-types" {
 		_originalNode?: Node;
 		_skip?: true;
 		_breakIdentifier?: Identifier;
+		_isHelperDefinition?: true;
 	}
 	interface Identifier {
 		_helperName?: string;
@@ -2840,6 +2841,54 @@ export default function({ types, template, traverse, transformFromAst, version }
 		return state.found;
 	}
 
+	function insertHelper(programPath: NodePath<File>, value: Node): NodePath {
+		const destinationPath = programPath.get("body").find((path: NodePath) => !path.node._isHelperDefinition)!;
+		if (destinationPath.isVariableDeclaration()) {
+			const before = destinationPath.get("declarations").filter((path: NodePath) => path.node._isHelperDefinition);
+			const after = destinationPath.get("declarations").filter((path: NodePath) => !path.node._isHelperDefinition);
+			if (types.isVariableDeclaration(value)) {
+				const declaration = value.declarations[0];
+				declaration._isHelperDefinition = true;
+				if (before.length === 0) {
+					const target = after[0];
+					target.insertBefore(declaration);
+					return getPreviousSibling(target)!;
+				} else {
+					const target = before[before.length-1];
+					target.insertAfter(declaration);
+					return getNextSibling(target)!;
+				}
+			} else {
+				value._isHelperDefinition = true;
+				if (before.length === 0) {
+					destinationPath.node._isHelperDefinition = true;
+					destinationPath.insertBefore(value);
+					return getPreviousSibling(destinationPath)!;
+				} else if (after.length === 0) {
+					destinationPath.node._isHelperDefinition = true;
+					destinationPath.insertAfter(value);
+					return getNextSibling(destinationPath)!;
+				} else {
+					const beforeNode = types.variableDeclaration(destinationPath.node.kind, before.map((path: NodePath) => path.node as VariableDeclarator));
+					beforeNode._isHelperDefinition = true;
+					const afterNode = types.variableDeclaration(destinationPath.node.kind, after.map((path: NodePath) => path.node as VariableDeclarator));
+					destinationPath.replaceWith(afterNode);
+					destinationPath.insertBefore(beforeNode);
+					destinationPath.insertBefore(value);
+					return getPreviousSibling(destinationPath)!;
+				}
+			}
+		} else {
+			if (types.isVariableDeclaration(value)) {
+				value.declarations[0]._isHelperDefinition = true;
+			} else {
+				value._isHelperDefinition = true;
+			}
+			destinationPath.insertBefore(value);
+			return getPreviousSibling(destinationPath)!;
+		}
+	}
+
 	// Emits a reference to a helper, inlining or importing it as necessary
 	function helperReference(state: PluginState, path: NodePath, name: string): Identifier {
 		const file = path.scope.hub.file;
@@ -2888,21 +2937,16 @@ export default function({ types, template, traverse, transformFromAst, version }
 					helpers = newHelpers;
 				}
 				const helper = helpers[name];
+				// Insert helper dependencies first
 				for (const dependency of helper.dependencies) {
 					helperReference(state, path, dependency);
 				}
+				// Insert the new node
 				const value = cloneNode(helper.value) as typeof helper.value;
-				let traversePath = file.path.get("body")[0];
-				if (types.isVariableDeclaration(value) && traversePath.isVariableDeclaration()) {
-					// TODO: Support variable declaration that references another variable declaration (this case doesn't exist yet in our helpers, but may in the future)
-					traversePath.unshiftContainer("declarations", value.declarations[0]);
-					traversePath = file.path.get("body")[0].get("declarations")[0];
-				} else {
-					file.path.unshiftContainer("body", value);
-					traversePath = file.path.get("body")[0];
-				}
+				const destinationPath = file.path.get("body").find((path: NodePath) => !path.node._isHelperDefinition)!;
+				const newPath = insertHelper(destinationPath, value);
 				// Rename references to other helpers due to name conflicts
-				traversePath.traverse({
+				newPath.traverse({
 					Identifier(path) {
 						const name = path.node.name;
 						if (Object.hasOwnProperty.call(helpers, name)) {
@@ -2910,28 +2954,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 						}
 					}
 				} as Visitor);
-				// Rewrite IIFE to a series of statements that assign
-				if (traversePath.isVariableDeclaration()) {
-					const init = traversePath.get("declarations")[0].get("init");
-					if (init.isCallExpression() && init.get("arguments").length === 0) {
-						const callee = init.get("callee");
-						if (callee.isFunctionExpression() && callee.node.params.length === 0) {
-							const body = callee.get("body").get("body");
-							const last = body[body.length - 1];
-							if (last.isReturnStatement() && last.node.argument !== null) {
-								for (const bodyPath of body.slice(0, body.length - 1)) {
-									traversePath.insertBefore(bodyPath.node);
-								}
-								const argument = last.get("argument");
-								if (argument.isIdentifier() && argument.node._helperName === name) {
-									traversePath.remove();
-								} else {
-									init.replaceWith(argument.node);
-								}
-							}
-						}
-					}
-				}
 			}
 		}
 		return result;
@@ -3265,6 +3287,18 @@ export default function({ types, template, traverse, transformFromAst, version }
 				return;
 			}
 		}
+	}
+
+	// Get previous sibling
+	function getPreviousSibling(targetPath: NodePath): NodePath | undefined {
+		const siblings = targetPath.getAllPrevSiblings();
+		return siblings.length !== 0 ? siblings[siblings.length-1] : undefined;
+	}
+
+	// Get next sibling
+	function getNextSibling(targetPath: NodePath): NodePath | undefined {
+		const siblings = targetPath.getAllNextSiblings();
+		return siblings.length !== 0 ? siblings[0] : undefined;
 	}
 
 	// Rewrite function arguments with default values to be check statements inserted into the body

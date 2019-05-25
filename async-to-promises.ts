@@ -3417,7 +3417,11 @@ export default function({ types, template, traverse, transformFromAst, version }
 						const inlineHelpers = readConfigKey(this.opts, "inlineHelpers");
 						const canThrow = checkForErrorsAndRewriteReturns(bodyPath, this, inlineHelpers);
 						if (inlineHelpers && !pathsReturnOrThrowCurrentNodes(bodyPath).all) {
-							path.node.body.body.push(types.returnStatement());
+							if (inlineHelpers) {
+								path.node.body.body.push(types.returnStatement(types.callExpression(promiseResolve(), [])));
+							} else {
+								path.node.body.body.push(types.returnStatement());
+							}
 						}
 						if (canThrow) {
 							if (inlineHelpers) {

@@ -2842,7 +2842,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function insertHelper(programPath: NodePath<File>, value: Node): NodePath {
-		const destinationPath = programPath.get("body").find((path: NodePath) => !path.node._isHelperDefinition)!;
+		const destinationPath = programPath.get("body").find((path: NodePath) => !path.node._isHelperDefinition && !path.isImportDeclaration())!;
 		if (destinationPath.isVariableDeclaration()) {
 			const before = destinationPath.get("declarations").filter((path: NodePath) => path.node._isHelperDefinition);
 			const after = destinationPath.get("declarations").filter((path: NodePath) => !path.node._isHelperDefinition);
@@ -2884,8 +2884,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 			} else {
 				value._isHelperDefinition = true;
 			}
-			destinationPath.insertBefore(value);
-			return getPreviousSibling(destinationPath)!;
+			const oldNode = destinationPath.node;
+			destinationPath.replaceWith(value);
+			destinationPath.insertAfter(oldNode);
+			return destinationPath;
 		}
 	}
 
@@ -2943,8 +2945,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				}
 				// Insert the new node
 				const value = cloneNode(helper.value) as typeof helper.value;
-				const destinationPath = file.path.get("body").find((path: NodePath) => !path.node._isHelperDefinition)!;
-				const newPath = insertHelper(destinationPath, value);
+				const newPath = insertHelper(file.path, value);
 				// Rename references to other helpers due to name conflicts
 				newPath.traverse({
 					Identifier(path) {

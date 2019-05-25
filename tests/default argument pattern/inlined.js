@@ -1,0 +1,1 @@
+const f=function(_arg){try{if(_arg===undefined)_arg=(x++,{});let{y=(z++,{})}=_arg;return;}catch(e){return Promise.reject(e);}};let x=0,z=0;

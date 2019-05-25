@@ -1,4 +1,4 @@
-import { ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, File, LabeledStatement, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, YieldExpression } from "babel-types";
+import { ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, File, LabeledStatement, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, ObjectPattern, YieldExpression } from "babel-types";
 import { NodePath, Scope, Visitor } from "babel-traverse";
 import { code as helperCode } from "./helpers-string";
 
@@ -3312,12 +3312,23 @@ export default function({ types, template, traverse, transformFromAst, version }
 			if (param.isAssignmentPattern()) {
 				const init = param.get("right");
 				if (!isExpressionOfLiterals(init, literals)) {
-					const id = param.get("left").node;
+					const left = param.get("left") as NodePath<Identifier | ObjectPattern>;
+					let id: Identifier;
+					let after: Statement | undefined;
+					if (left.isIdentifier()) {
+						id = left.node;
+					} else {
+						id = left.scope.generateUidIdentifier(`arg${i}`);
+						after = types.variableDeclaration("let", [types.variableDeclarator(left.node, id)]);
+					}
 					const initNode = init.node;
 					param.replaceWith(id);
 					const isMissing = types.binaryExpression("===", id, types.identifier("undefined"));
 					const assignment = types.expressionStatement(types.assignmentExpression("=", id, initNode));
 					statements.push(types.ifStatement(isMissing, assignment));
+					if (after) {
+						statements.push(after);
+					}
 				}
 			} else if (param.isIdentifier()) {
 				literals.push(param.node.name);

@@ -474,6 +474,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Helpers to trace return, throw and break behaviours
+	const pathsReturn = pathsReachNodeTypes(["ReturnStatement"], true);
 	const pathsReturnOrThrow = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement"], true);
 	const pathsReturnOrThrowCurrentNodes = pathsReachNodeTypes(["ReturnStatement", "ThrowStatement"], false);
 	const pathsBreak = pathsReachNodeTypes(["BreakStatement"], true);
@@ -3416,25 +3417,21 @@ export default function({ types, template, traverse, transformFromAst, version }
 						rewriteAsyncBlock({ state: this }, path, []);
 						const inlineHelpers = readConfigKey(this.opts, "inlineHelpers");
 						const canThrow = checkForErrorsAndRewriteReturns(bodyPath, this, inlineHelpers);
-						if (inlineHelpers && !pathsReturnOrThrowCurrentNodes(bodyPath).all) {
-							if (inlineHelpers) {
-								path.node.body.body.push(types.returnStatement(types.callExpression(promiseResolve(), [])));
-							} else {
-								path.node.body.body.push(types.returnStatement());
-							}
+						const parentPath = path.parentPath;
+						const skipReturn = parentPath.isCallExpression() && parentPath.node.callee === path.node && parentPath.parentPath.isExpressionStatement();
+						if (inlineHelpers && !pathsReturnOrThrowCurrentNodes(bodyPath).all && !skipReturn) {
+							path.node.body.body.push(types.returnStatement(types.callExpression(promiseResolve(), [])));
 						}
 						if (canThrow) {
 							if (inlineHelpers) {
-								path.replaceWith(functionize(
-									this,
-									path.node.params,
-									blockStatement(
+								if (skipReturn && parentPath.isCallExpression() && parentPath.node.arguments.length === 0 && !pathsReturn(bodyPath).any) {
+									parentPath.parentPath.replaceWith(
 										types.tryStatement(
 											bodyPath.node,
 											types.catchClause(
 												types.identifier("e"),
 												blockStatement([
-													types.returnStatement(
+													types.expressionStatement(
 														types.callExpression(
 															types.memberExpression(
 																types.identifier("Promise"),
@@ -3446,9 +3443,33 @@ export default function({ types, template, traverse, transformFromAst, version }
 												])
 											)
 										)
-									),
-									path,
-								));
+									);
+								} else {
+									path.replaceWith(functionize(
+										this,
+										path.node.params,
+										blockStatement(
+											types.tryStatement(
+												bodyPath.node,
+												types.catchClause(
+													types.identifier("e"),
+													blockStatement([
+														(skipReturn ? types.expressionStatement : types.returnStatement)(
+															types.callExpression(
+																types.memberExpression(
+																	types.identifier("Promise"),
+																	types.identifier("reject")
+																),
+																[types.identifier("e")]
+															)
+														)
+													])
+												)
+											)
+										),
+										path,
+									));
+								}
 							} else {
 								bodyPath.traverse(rewriteTopLevelReturnsVisitor);
 								path.replaceWith(types.callExpression(helperReference(this, path, "_async"), [

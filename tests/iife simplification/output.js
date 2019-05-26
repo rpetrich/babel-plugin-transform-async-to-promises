@@ -1,0 +1,1 @@
+_async(()=>{console.log('foo');})();

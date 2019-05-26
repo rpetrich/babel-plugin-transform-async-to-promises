@@ -162,55 +162,54 @@ export function _forOwn(target, body, check) {
 	return _forTo(keys, function(i) { return body(keys[i]); }, check);
 }
 
+export const _iteratorSymbol = typeof Symbol !== "undefined" ? (Symbol.iterator || (Symbol.iterator = Symbol("Symbol.iterator"))) : "@@iterator";
+
 // Asynchronously iterate through an object's values
 // Uses for...of if the runtime supports it, otherwise iterates until length on a copy
 export function _forOf(target, body, check) {
-	if (typeof Symbol !== "undefined") {
-		var iteratorSymbol = Symbol.iterator;
-		if (iteratorSymbol && (iteratorSymbol in target)) {
-			var iterator = target[iteratorSymbol](), step, pact, reject;
-			function _cycle(result) {
-				try {
-					while (!(step = iterator.next()).done && (!check || !check())) {
-						result = body(step.value);
-						if (result && result.then) {
-							if (_isSettledPact(result)) {
-								result = result.v;
-							} else {
-								result.then(_cycle, reject || (reject = _settle.bind(null, pact = new _Pact(), 2)));
-								return;
-							}
+	if (typeof target[_iteratorSymbol] === "function") {
+		var iterator = target[_iteratorSymbol](), step, pact, reject;
+		function _cycle(result) {
+			try {
+				while (!(step = iterator.next()).done && (!check || !check())) {
+					result = body(step.value);
+					if (result && result.then) {
+						if (_isSettledPact(result)) {
+							result = result.v;
+						} else {
+							result.then(_cycle, reject || (reject = _settle.bind(null, pact = new _Pact(), 2)));
+							return;
 						}
 					}
-					if (pact) {
-						_settle(pact, 1, result);
-					} else {
-						pact = result;
-					}
-				} catch (e) {
-					_settle(pact || (pact = new Pact()), 2, e);
 				}
+				if (pact) {
+					_settle(pact, 1, result);
+				} else {
+					pact = result;
+				}
+			} catch (e) {
+				_settle(pact || (pact = new Pact()), 2, e);
 			}
-			_cycle();
-			if (iterator.return) {
-				var _fixup = function(value) {
-					try {
-						if (!step.done) {
-							iterator.return();
-						}
-					} catch(e) {
-					}
-					return value;
-				}
-				if (pact && pact.then) {
-					return pact.then(_fixup, function(e) {
-						throw _fixup(e);
-					});
-				}
-				_fixup();
-			}
-			return pact;
 		}
+		_cycle();
+		if (iterator.return) {
+			var _fixup = function(value) {
+				try {
+					if (!step.done) {
+						iterator.return();
+					}
+				} catch(e) {
+				}
+				return value;
+			}
+			if (pact && pact.then) {
+				return pact.then(_fixup, function(e) {
+					throw _fixup(e);
+				});
+			}
+			_fixup();
+		}
+		return pact;
 	}
 	// No support for Symbol.iterator
 	if (!("length" in target)) {
@@ -224,7 +223,7 @@ export function _forOf(target, body, check) {
 	return _forTo(values, function(i) { return body(values[i]); }, check);
 }
 
-export const _asyncIteratorSymbol = typeof Symbol !== "undefined" ? (Symbol.asyncIterator || (Symbol.asyncIterator = Symbol("Symbol.asyncIterator"))) : "Symbol.asyncIterator";
+export const _asyncIteratorSymbol = typeof Symbol !== "undefined" ? (Symbol.asyncIterator || (Symbol.asyncIterator = Symbol("Symbol.asyncIterator"))) : "@@asyncIterator";
 
 // Asynchronously iterate on a value using it's async iterator if present, or its synchronous iterator if missing
 export function _forAwaitOf(target, body, check) {

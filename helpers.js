@@ -162,7 +162,7 @@ export function _forOwn(target, body, check) {
 	return _forTo(keys, function(i) { return body(keys[i]); }, check);
 }
 
-export const _iteratorSymbol = typeof Symbol !== "undefined" ? (Symbol.iterator || (Symbol.iterator = Symbol("Symbol.iterator"))) : "@@iterator";
+export const _iteratorSymbol = /*#__PURE__*/ typeof Symbol !== "undefined" ? (Symbol.iterator || (Symbol.iterator = Symbol("Symbol.iterator"))) : "@@iterator";
 
 // Asynchronously iterate through an object's values
 // Uses for...of if the runtime supports it, otherwise iterates until length on a copy
@@ -223,7 +223,7 @@ export function _forOf(target, body, check) {
 	return _forTo(values, function(i) { return body(values[i]); }, check);
 }
 
-export const _asyncIteratorSymbol = typeof Symbol !== "undefined" ? (Symbol.asyncIterator || (Symbol.asyncIterator = Symbol("Symbol.asyncIterator"))) : "@@asyncIterator";
+export const _asyncIteratorSymbol = /*#__PURE__*/ typeof Symbol !== "undefined" ? (Symbol.asyncIterator || (Symbol.asyncIterator = Symbol("Symbol.asyncIterator"))) : "@@asyncIterator";
 
 // Asynchronously iterate on a value using it's async iterator if present, or its synchronous iterator if missing
 export function _forAwaitOf(target, body, check) {
@@ -610,7 +610,7 @@ export function _empty() {
 }
 
 // Sentinel value for early returns in generators 
-export const _earlyReturn = {};
+export const _earlyReturn = /*#__PURE__*/ {};
 
 // Asynchronously call a function and send errors to recovery continuation, skipping early returns
 export function _catchInGenerator(body, recover) {

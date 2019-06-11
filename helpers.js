@@ -133,7 +133,7 @@ export function _forTo(array, body, check) {
 				pact = result;
 			}
 		} catch (e) {
-			_settle(pact || (pact = new Pact()), 2, e);
+			_settle(pact || (pact = new _Pact()), 2, e);
 		}
 	}
 	_cycle();
@@ -188,7 +188,7 @@ export function _forOf(target, body, check) {
 					pact = result;
 				}
 			} catch (e) {
-				_settle(pact || (pact = new Pact()), 2, e);
+				_settle(pact || (pact = new _Pact()), 2, e);
 			}
 		}
 		_cycle();

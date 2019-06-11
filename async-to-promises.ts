@@ -3340,6 +3340,31 @@ export default function({ types, template, traverse, transformFromAst, version }
 		}
 	}
 
+	const unwrapReturnPromiseVisitor: Visitor = {
+		ReturnStatement(path) {
+			const argument = path.get("argument");
+			if (argument.isCallExpression()) {
+				switch (promiseCallExpressionType(argument.node)) {
+					case "all":
+					case "race":
+					case "resolve":
+						switch (argument.node.arguments.length) {
+							case 0:
+								path.replaceWith(types.returnStatement());
+								break;
+							case 1:
+								const arg0 = argument.node.arguments[0];
+								if (types.isExpression(arg0)) {
+									path.replaceWith(types.returnStatement(arg0));
+								}
+								break;
+						}
+						break;
+				}
+			}
+		}
+	};
+
 	// Main babel plugin implementation and top level visitor
 	return {
 		manipulateOptions(options: any, parserOptions: { plugins: string[] }) {
@@ -3421,6 +3446,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 						const skipReturn = parentPath.isCallExpression() && parentPath.node.callee === path.node && parentPath.parentPath.isExpressionStatement();
 						if (inlineHelpers && !pathsReturnOrThrowCurrentNodes(bodyPath).all && !skipReturn) {
 							path.node.body.body.push(types.returnStatement(types.callExpression(promiseResolve(), [])));
+						}
+						if (skipReturn) {
+							path.traverse(unwrapReturnPromiseVisitor);
 						}
 						if (canThrow) {
 							if (inlineHelpers) {

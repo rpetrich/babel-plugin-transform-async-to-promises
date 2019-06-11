@@ -1,0 +1,1 @@
+(function(){try{console.log('foo');if(foo){return console.log(foo);}}catch(e){Promise.reject(e);}})();

@@ -1,4 +1,4 @@
-import { ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, File, LabeledStatement, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, ObjectPattern, YieldExpression } from "babel-types";
+import { ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, File, LabeledStatement, ObjectMethod, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, ObjectPattern, YieldExpression } from "babel-types";
 import { NodePath, Scope, Visitor } from "babel-traverse";
 import { code as helperCode } from "./helpers-string";
 
@@ -169,37 +169,14 @@ const constantStaticMethods: { readonly [name: string]: { readonly [name: string
 	"$": constantFunctionMethods,
 } as const;
 
-// Type extensions
+// Weakly stored information on nodes
 
-declare module "babel-types" {
-	interface Node {
-		_originalNode?: Node;
-		_skip?: true;
-		_breakIdentifier?: Identifier;
-		_isHelperDefinition?: true;
-	}
-	interface Identifier {
-		_helperName?: string;
-	}
-	interface MemberExpression {
-		_helperName?: string;
-	}
-	interface ArrowFunctionExpression {
-		_async?: true;
-	}
-	interface FunctionExpression {
-		_async?: true;
-	}
-	interface FunctionDeclaration {
-		_async?: true;
-	}
-	interface ClassMethod {
-		_async?: true;
-	}
-	interface ObjectMethod {
-		_async?: true;
-	}
-}
+const originalNodeMap = new WeakMap<Node, Node>();
+const skipNodeMap = new WeakMap<Node, true>();
+const breakIdentifierMap = new WeakMap<Node, Identifier>();
+const isHelperDefinitionMap = new WeakMap<Node, true>();
+const helperNameMap = new WeakMap<Identifier | MemberExpression, string>();
+const nodeIsAsyncMap = new WeakMap<ArrowFunctionExpression | FunctionExpression | FunctionDeclaration | ClassMethod | ObjectMethod, true>();
 
 declare module "babel-traverse" {
 	interface TraversalContext {
@@ -281,8 +258,11 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	function cloneNode<T extends Node>(node: T): T {
 		const result = (types as any).cloneDeep(node) as T;
-		if ((node.type == "Identifier" || node.type == "MemberExpression") && node.hasOwnProperty("_helperName")) {
-			(result as any as Identifier)._helperName = (node as any as Identifier)._helperName;
+		if (types.isIdentifier(node) || types.isMemberExpression(node)) {
+			const helperName = helperNameMap.get(node);
+			if (helperName !== undefined) {
+				helperNameMap.set(result as any as (Identifier | MemberExpression), helperName);
+			}
 		}
 		return result;
 	}
@@ -316,7 +296,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	function pathsPassTest(matchingNodeTest: (path: NodePath<Node | null>) => boolean, referenceOriginalNodes?: boolean): (path: NodePath<Node | null>) => TraversalTestResult {
 		function visit(path: NodePath, result: TraversalTestResult, state: { breakingLabels: string[], unnamedBreak: boolean }) {
 			if (referenceOriginalNodes) {
-				const originalNode = path.node._originalNode;
+				const originalNode = originalNodeMap.get(path.node);
 				if (originalNode) {
 					traverse(wrapNodeInStatement(originalNode), visitor, path.scope, { match: result, state }, path);
 					return false;
@@ -665,7 +645,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	// Check if an expression is a function that returns undefined and has no side effects or is a reference to the _empty helper
 	function isEmptyContinuation(continuation: Expression, path: NodePath): boolean {
 		if (types.isIdentifier(continuation)) {
-			return continuation._helperName === "_empty";
+			return helperNameMap.get(continuation) === "_empty";
 		}
 		if (isContinuation(continuation)) {
 			const body = continuation.body;
@@ -803,7 +783,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 		}
 		// Directly call .then if the result of a yield statement and there is a continuation to call
-		if (continuation && !directExpression && types.isCallExpression(value) && types.isMemberExpression(value.callee) && value.callee._helperName === "_yield") {
+		if (continuation && !directExpression && types.isCallExpression(value) && types.isMemberExpression(value.callee) && helperNameMap.get(value.callee) === "_yield") {
 			return {
 				declarators,
 				expression: callThenMethod(value, continuation),
@@ -972,8 +952,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 	// Emits a return statement, optionally referencing an original node
 	function returnStatement(argument: Expression | undefined, originalNode?: Node): ReturnStatement {
 		const result: ReturnStatement = types.returnStatement(argument);
-		result._skip = true;
-		result._originalNode = originalNode;
+		skipNodeMap.set(result, true);
+		if (originalNode !== undefined) {
+			originalNodeMap.set(result, originalNode);
+		}
 		return result;
 	}
 
@@ -1196,7 +1178,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 			if (types.isCallExpression(nameNode)) {
 				const callee = nameNode.callee;
-				if (types.isIdentifier(callee) && callee._helperName) {
+				if (types.isIdentifier(callee) && helperNameMap.has(callee)) {
 					nameNode = nameNode.arguments[0];
 				}
 			}
@@ -1222,7 +1204,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				functionParent.traverse(reregisterVariableVisitor, { originalScope: path.scope });
 			}
 			const callee = path.node.callee;
-			if ((types.isIdentifier(callee) || types.isMemberExpression(callee)) && callee._helperName) {
+			if ((types.isIdentifier(callee) || types.isMemberExpression(callee)) && helperNameMap.has(callee)) {
 				path.traverse(hoistCallArgumentsVisitor, { state, additionalConstantNames });
 			}
 		}
@@ -1549,11 +1531,11 @@ export default function({ types, template, traverse, transformFromAst, version }
 						const callee = expression.callee;
 						const onlyArgument = expression.arguments[0];
 						// Match function() { return _call(...); }
-						if (types.isIdentifier(callee) && callee._helperName === "_call") {
+						if (types.isIdentifier(callee) && helperNameMap.get(callee) === "_call") {
 							callTarget = onlyArgument;
 						}
 						// Match function() { return _await(...()); } or function() { return Promise.resolve(...()); }
-						if ((types.isIdentifier(callee) || types.isMemberExpression(callee)) && callee._helperName === "_await") {
+						if ((types.isIdentifier(callee) || types.isMemberExpression(callee)) && helperNameMap.get(callee) === "_await") {
 							if (types.isCallExpression(onlyArgument) && onlyArgument.arguments.length === 0) {
 								callTarget = onlyArgument.callee;
 							}
@@ -2040,7 +2022,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							if (typeof objectDeclarator !== "undefined") {
 								declarations.unshift(objectDeclarator);
 							}
-						} else if (!callee.isIdentifier() || !(callee.node._helperName || (awaitPath.scope.getBinding(callee.node.name) || { constant: false }).constant)) {
+						} else if (!callee.isIdentifier() || !(helperNameMap.has(callee.node) || (awaitPath.scope.getBinding(callee.node.name) || { constant: false }).constant)) {
 							const calleeIdentifier = generateIdentifierForPath(callee);
 							const calleeNode = callee.node;
 							callee.replaceWith(calleeIdentifier);
@@ -2157,7 +2139,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	const replaceReturnsAndBreaksVisitor: Visitor<{ pluginState: PluginState, exitIdentifier?: Identifier, breakIdentifiers: BreakContinueItem[], usedIdentifiers: BreakContinueItem[] }> = {
 		Function: skipNode,
 		ReturnStatement(path) {
-			if (!path.node._skip && this.exitIdentifier) {
+			if (!skipNodeMap.get(path.node) && this.exitIdentifier) {
 				const minify = readConfigKey(this.pluginState.opts, "minify");
 				if (minify && path.node.argument && extractLooseBooleanValue(path.node.argument) === true) {
 					path.replaceWith(returnStatement(types.assignmentExpression("=", this.exitIdentifier, path.node.argument), path.node));
@@ -2219,9 +2201,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	// Finds the break identifier associated with a path
 	function breakIdentifierForPath(path: NodePath): Identifier {
-		let result = path.node._breakIdentifier;
+		let result = breakIdentifierMap.get(path.node);
 		if (!result) {
-			result = path.node._breakIdentifier = path.scope.generateUidIdentifier(path.parentPath.isLabeledStatement() ? path.parentPath.node.label.name + "Interrupt" : "interrupt");
+			result = path.scope.generateUidIdentifier(path.parentPath.isLabeledStatement() ? path.parentPath.node.label.name + "Interrupt" : "interrupt");
+			breakIdentifierMap.set(path.node, result);
 		}
 		return result;
 	}
@@ -2242,7 +2225,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		// 	}
 		// },
 		ReturnStatement(path) {
-			const originalNode = path.node._originalNode;
+			const originalNode = originalNodeMap.get(path.node);
 			if (originalNode) {
 				traverse(wrapNodeInStatement(originalNode), simpleBreakOrContinueReferencesVisitor, path.scope, this, path);
 				path.skip();
@@ -2271,7 +2254,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 		},
 		ReturnStatement(path) {
-			const originalNode = path.node._originalNode;
+			const originalNode = originalNodeMap.get(path.node);
 			if (originalNode) {
 				traverse(wrapNodeInStatement(originalNode), namedLabelReferencesVisitor, path.scope, this, path);
 				path.skip();
@@ -2387,7 +2370,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			throw new Error("Encountered a yield expression outside a generator function!");
 		}
 		const callee = types.memberExpression(generatorIdentifier, types.identifier("_yield"));
-		callee._helperName = "_yield";
+		helperNameMap.set(callee, "_yield");
 		return types.callExpression(callee, [expression]);
 	}
 
@@ -2751,8 +2734,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (path.isNumericLiteral() || path.isBooleanLiteral() || path.isStringLiteral() || path.isNullLiteral() || (path.isIdentifier() && path.node.name === "undefined") || path.isArrayExpression() || path.isObjectExpression() || path.isBinaryExpression() || path.isUnaryExpression() || path.isUpdateExpression()) {
 			return;
 		}
-		if (path.isCallExpression() && (types.isIdentifier(path.node.callee) || types.isMemberExpression(path.node.callee)) && path.node.callee._helperName) {
-			switch (path.node.callee._helperName) {
+		if (path.isCallExpression() && (types.isIdentifier(path.node.callee) || types.isMemberExpression(path.node.callee)) && helperNameMap.has(path.node.callee)) {
+			switch (helperNameMap.get(path.node.callee)) {
 				case "_await":
 				case "_call": {
 					const args = path.get("arguments");
@@ -2843,13 +2826,13 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function insertHelper(programPath: NodePath<File>, value: Node): NodePath {
-		const destinationPath = programPath.get("body").find((path: NodePath) => !path.node._isHelperDefinition && !path.isImportDeclaration())!;
+		const destinationPath = programPath.get("body").find((path: NodePath) => !isHelperDefinitionMap.get(path.node) && !path.isImportDeclaration())!;
 		if (destinationPath.isVariableDeclaration()) {
-			const before = destinationPath.get("declarations").filter((path: NodePath) => path.node._isHelperDefinition);
-			const after = destinationPath.get("declarations").filter((path: NodePath) => !path.node._isHelperDefinition);
+			const before = destinationPath.get("declarations").filter((path: NodePath) => isHelperDefinitionMap.get(path.node));
+			const after = destinationPath.get("declarations").filter((path: NodePath) => !isHelperDefinitionMap.get(path.node));
 			if (types.isVariableDeclaration(value)) {
 				const declaration = value.declarations[0];
-				declaration._isHelperDefinition = true;
+				isHelperDefinitionMap.set(declaration, true);
 				if (before.length === 0) {
 					const target = after[0];
 					target.insertBefore(declaration);
@@ -2860,18 +2843,18 @@ export default function({ types, template, traverse, transformFromAst, version }
 					return getNextSibling(target)!;
 				}
 			} else {
-				value._isHelperDefinition = true;
+				isHelperDefinitionMap.set(value, true);
 				if (before.length === 0) {
-					destinationPath.node._isHelperDefinition = true;
+					isHelperDefinitionMap.set(destinationPath.node, true);
 					destinationPath.insertBefore(value);
 					return getPreviousSibling(destinationPath)!;
 				} else if (after.length === 0) {
-					destinationPath.node._isHelperDefinition = true;
+					isHelperDefinitionMap.set(destinationPath.node, true);
 					destinationPath.insertAfter(value);
 					return getNextSibling(destinationPath)!;
 				} else {
 					const beforeNode = types.variableDeclaration(destinationPath.node.kind, before.map((path: NodePath) => path.node as VariableDeclarator));
-					beforeNode._isHelperDefinition = true;
+					isHelperDefinitionMap.set(beforeNode, true);
 					const afterNode = types.variableDeclaration(destinationPath.node.kind, after.map((path: NodePath) => path.node as VariableDeclarator));
 					destinationPath.replaceWith(afterNode);
 					destinationPath.insertBefore(beforeNode);
@@ -2881,9 +2864,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 		} else {
 			if (types.isVariableDeclaration(value)) {
-				value.declarations[0]._isHelperDefinition = true;
+				isHelperDefinitionMap.set(value.declarations[0], true);
 			} else {
-				value._isHelperDefinition = true;
+				isHelperDefinitionMap.set(value, true);
 			}
 			const oldNode = destinationPath.node;
 			destinationPath.replaceWith(value);
@@ -2900,7 +2883,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			result = cloneNode(result);
 		} else {
 			result = file.declarations[name] = usesIdentifier(file.path, name) ? file.path.scope.generateUidIdentifier(name) : types.identifier(name);
-			result._helperName = name;
+			helperNameMap.set(result, name);
 			if (readConfigKey(state.opts, "externalHelpers")) {
 				/* istanbul ignore next */
 				file.path.unshiftContainer("body", types.importDeclaration([types.importSpecifier(result, types.identifier(name))], types.stringLiteral("babel-plugin-transform-async-to-promises/helpers")));
@@ -2969,7 +2952,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	// Emits a reference to Promise.resolve and tags it as an _await reference
 	function promiseResolve() {
 		const result = types.memberExpression(types.identifier("Promise"), types.identifier("resolve"));
-		result._helperName = "_await";
+		helperNameMap.set(result, "_await");
 		return result;
 	}
 
@@ -2981,7 +2964,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	// Checks if an expression is an async call expression
 	function isAsyncCallExpression(path: NodePath<CallExpression>): boolean {
 		if (types.isIdentifier(path.node.callee) || types.isMemberExpression(path.node.callee)) {
-			switch (path.node.callee._helperName) {
+			switch (helperNameMap.get(path.node.callee)) {
 				case "_await":
 				case "_call":
 					return path.node.arguments.length < 3;
@@ -2993,7 +2976,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	// Extracts the invoke type of a call expression
 	function invokeTypeOfExpression(path: NodePath<Node | null>): "_invoke" | "_invokeIgnored" | "_catch" | "_catchInGenerator" | "_finally" | "_finallyRethrows" | void {
 		if (path.isCallExpression() && types.isIdentifier(path.node.callee)) {
-			const helperName = path.node.callee._helperName;
+			const helperName = helperNameMap.get(path.node.callee);
 			switch (helperName) {
 				case "_invoke":
 				case "_invokeIgnored":
@@ -3008,10 +2991,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	// Checks to see if an expression is an async function
 	function isAsyncFunctionExpression(path: NodePath): boolean {
-		if (path.isFunction() && (path.node.async || path.node._async)) {
+		if (path.isFunction() && (path.node.async || nodeIsAsyncMap.has(path.node))) {
 			return true;
 		}
-		if (path.isCallExpression() && types.isIdentifier(path.node.callee) && path.node.callee._helperName === "_async") {
+		if (path.isCallExpression() && types.isIdentifier(path.node.callee) && helperNameMap.get(path.node.callee) === "_async") {
 			return true;
 		}
 		return false;
@@ -3048,7 +3031,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		if (path.node.name === "undefined") {
 			return false;
 		}
-		if (path.node._helperName) {
+		if (helperNameMap.has(path.node)) {
 			return false;
 		}
 		const parent = path.parentPath;
@@ -3166,7 +3149,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 		},
 		MemberExpression(path) {
-			if (path.node._helperName !== "_await" && !(path.parentPath.isCallExpression() && promiseCallExpressionType(path.parentPath.node) !== undefined && path.parentPath.get("callee") === path)) {
+			if (helperNameMap.get(path.node) !== "_await" && !(path.parentPath.isCallExpression() && promiseCallExpressionType(path.parentPath.node) !== undefined && path.parentPath.get("callee") === path)) {
 				const propertyName = propertyNameOfMemberExpression(path.node);
 				if (propertyName !== undefined) {
 					const object = path.get("object");
@@ -3263,7 +3246,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						if (types.isIdentifier(argument.node.callee) || types.isMemberExpression(argument.node.callee)) {
 							const firstArgument = callArgs[0];
 							if (types.isExpression(firstArgument)) {
-								switch (argument.node.callee._helperName) {
+								switch (helperNameMap.get(argument.node.callee)) {
 									case "_await":
 										argument.replaceWith(firstArgument);
 										break;
@@ -3511,7 +3494,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							path.replaceWith(functionize(this, path.node.params, bodyPath.node, path));
 						}
 					}
-					path.node._async = true;
+					nodeIsAsyncMap.set(path.node, true);
 				}
 			},
 			ClassMethod(path) {

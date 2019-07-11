@@ -229,7 +229,7 @@ export const _asyncIteratorSymbol = /*#__PURE__*/ typeof Symbol !== "undefined" 
 export function _forAwaitOf(target, body, check) {
 	if (typeof target[_asyncIteratorSymbol] === "function") {
 		var pact = new _Pact();
-		var iterator = target[asyncIteratorSymbol]();
+		var iterator = target[_asyncIteratorSymbol]();
 		iterator.next().then(_resumeAfterNext).then(void 0, _reject);
 		return pact;
 		function _resumeAfterBody(result) {

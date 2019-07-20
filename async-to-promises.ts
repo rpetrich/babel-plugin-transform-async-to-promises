@@ -2891,35 +2891,51 @@ export default function({ types, template, traverse, transformFromAst, version }
 				if (!helpers) {
 					// Read helpers from ./helpers.js
 					const newHelpers: { [name: string]: Helper } = {};
-					const helperAst = require(isNewBabel ? "@babel/core" : "babylon").parse(helperCode, { sourceType: "module" });
-					transformFromAst(helperAst, helperCode, {
-						babelrc: false, configFile: false, plugins: [{
-							visitor: {
-								ExportNamedDeclaration(path) {
-									const declaration = path.get("declaration");
-									if (declaration.isFunctionDeclaration()) {
-										newHelpers[declaration.node.id.name] = {
+					const plugins = [{
+						visitor: {
+							ExportNamedDeclaration(path) {
+								const declaration = path.get("declaration");
+								if (declaration.isFunctionDeclaration()) {
+									newHelpers[declaration.node.id.name] = {
+										value: declaration.node,
+										dependencies: getHelperDependencies(declaration),
+									};
+									return;
+								}
+								if (declaration.isVariableDeclaration() && declaration.node.declarations.length === 1) {
+									const declaratorId = declaration.node.declarations[0].id;
+									if (types.isIdentifier(declaratorId)) {
+										newHelpers[declaratorId.name] = {
 											value: declaration.node,
 											dependencies: getHelperDependencies(declaration),
 										};
 										return;
 									}
-									if (declaration.isVariableDeclaration() && declaration.node.declarations.length === 1) {
-										const declaratorId = declaration.node.declarations[0].id;
-										if (types.isIdentifier(declaratorId)) {
-											newHelpers[declaratorId.name] = {
-												value: declaration.node,
-												dependencies: getHelperDependencies(declaration),
-											};
-											return;
-										}
-									}
-									/* istanbul ignore next */
-									throw path.buildCodeFrameError("Expected a named export from built-in helper!", TypeError);
 								}
-							} as Visitor
-						}]
-					});
+								/* istanbul ignore next */
+								throw path.buildCodeFrameError("Expected a named export from built-in helper!", TypeError);
+							}
+						} as Visitor
+					}];
+					if (isNewBabel) {
+						const helperAst = require("@babel/core").parse(helperCode, {
+							sourceType: "module"
+						});
+						transformFromAst(helperAst, helperCode, {
+							babelrc: false,
+							configFile: false,
+							plugins,
+						});
+					} else {
+						const helperAst = require("babylon").parse(helperCode, {
+							sourceType: "module",
+							sourceFilename: "helpers.js"
+						});
+						transformFromAst(helperAst, helperCode, {
+							babelrc: false,
+							plugins,
+						});
+					}
 					helpers = newHelpers;
 				}
 				const helper = helpers[name];

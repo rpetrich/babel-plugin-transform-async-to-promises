@@ -2917,20 +2917,17 @@ export default function({ types, template, traverse, transformFromAst, version }
 							}
 						} as Visitor
 					}];
+					const helperAst = require(isNewBabel ? "@babel/core" : "babylon").parse(helperCode, {
+						sourceType: "module",
+						filename: "helpers.js",
+					});
 					if (isNewBabel) {
-						const helperAst = require("@babel/core").parse(helperCode, {
-							sourceType: "module"
-						});
 						transformFromAst(helperAst, helperCode, {
 							babelrc: false,
 							configFile: false,
 							plugins,
 						});
 					} else {
-						const helperAst = require("babylon").parse(helperCode, {
-							sourceType: "module",
-							sourceFilename: "helpers.js"
-						});
 						transformFromAst(helperAst, helperCode, {
 							babelrc: false,
 							plugins,

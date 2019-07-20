@@ -2893,7 +2893,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					const newHelpers: { [name: string]: Helper } = {};
 					const helperAst = require(isNewBabel ? "@babel/core" : "babylon").parse(helperCode, { sourceType: "module" });
 					transformFromAst(helperAst, helperCode, {
-						babelrc: false, plugins: [{
+						babelrc: false, configFile: false, plugins: [{
 							visitor: {
 								ExportNamedDeclaration(path) {
 									const declaration = path.get("declaration");

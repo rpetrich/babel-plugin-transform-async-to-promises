@@ -3443,8 +3443,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 						const canThrow = checkForErrorsAndRewriteReturns(bodyPath, this, inlineHelpers);
 						const parentPath = path.parentPath;
 						const skipReturn = parentPath.isCallExpression() && parentPath.node.callee === path.node && parentPath.parentPath.isExpressionStatement();
-						if (inlineHelpers && !pathsReturnOrThrowCurrentNodes(bodyPath).all && !skipReturn) {
-							path.node.body.body.push(types.returnStatement(types.callExpression(promiseResolve(), [])));
+						if (!skipReturn && !pathsReturnOrThrowCurrentNodes(bodyPath).all) {
+							const awaitHelper = inlineHelpers ? promiseResolve() : helperReference(this, path, "_await");
+							path.node.body.body.push(types.returnStatement(types.callExpression(awaitHelper, [])));
 						}
 						if (skipReturn) {
 							path.traverse(unwrapReturnPromiseVisitor);

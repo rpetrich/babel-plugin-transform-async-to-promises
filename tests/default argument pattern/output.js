@@ -1,1 +1,1 @@
-const f=_async((_arg)=>{if(_arg===undefined)_arg=(x++,{});let{y=(z++,{})}=_arg;});let x=0,z=0;
+const f=_async((_arg)=>{if(_arg===undefined)_arg=(x++,{});let{y=(z++,{})}=_arg;return _await();});let x=0,z=0;

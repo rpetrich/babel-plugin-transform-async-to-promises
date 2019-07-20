@@ -1,0 +1,1 @@
+function(){const unused=1;return Promise.resolve();}

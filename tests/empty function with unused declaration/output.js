@@ -1,0 +1,1 @@
+()=>{const unused=1;return _await();}

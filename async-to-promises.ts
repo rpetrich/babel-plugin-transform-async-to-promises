@@ -172,11 +172,11 @@ const constantStaticMethods: { readonly [name: string]: { readonly [name: string
 // Weakly stored information on nodes
 
 const originalNodeMap = new WeakMap<Node, Node>();
-const skipNodeMap = new WeakMap<Node, true>();
+const skipNodeSet = new WeakSet<Node>();
 const breakIdentifierMap = new WeakMap<Node, Identifier>();
-const isHelperDefinitionMap = new WeakMap<Node, true>();
+const isHelperDefinitionSet = new WeakSet<Node>();
 const helperNameMap = new WeakMap<Identifier | MemberExpression, string>();
-const nodeIsAsyncMap = new WeakMap<Node, true>();
+const nodeIsAsyncSet = new WeakSet<Node>();
 
 interface ForAwaitStatement {
     type: "ForAwaitStatement";
@@ -961,7 +961,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	// Emits a return statement, optionally referencing an original node
 	function returnStatement(argument: Expression | undefined, originalNode?: Node): ReturnStatement {
 		const result: ReturnStatement = types.returnStatement(argument);
-		skipNodeMap.set(result, true);
+		skipNodeSet.add(result);
 		if (originalNode !== undefined) {
 			originalNodeMap.set(result, originalNode);
 		}
@@ -2171,7 +2171,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	const replaceReturnsAndBreaksVisitor: Visitor<{ pluginState: PluginState, exitIdentifier?: Identifier, breakIdentifiers: BreakContinueItem[], usedIdentifiers: BreakContinueItem[] }> = {
 		Function: skipNode,
 		ReturnStatement(path) {
-			if (!skipNodeMap.get(path.node) && this.exitIdentifier) {
+			if (!skipNodeSet.has(path.node) && this.exitIdentifier) {
 				const minify = readConfigKey(this.pluginState.opts, "minify");
 				if (minify && path.node.argument && extractLooseBooleanValue(path.node.argument) === true) {
 					path.replaceWith(returnStatement(types.assignmentExpression("=", this.exitIdentifier, path.node.argument), path.node));
@@ -2883,13 +2883,13 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	function insertHelper(programPath: NodePath<File>, value: Node): NodePath {
-		const destinationPath = programPath.get("body").find((path: NodePath) => !isHelperDefinitionMap.get(path.node) && !path.isImportDeclaration())!;
+		const destinationPath = programPath.get("body").find((path: NodePath) => !isHelperDefinitionSet.has(path.node) && !path.isImportDeclaration())!;
 		if (destinationPath.isVariableDeclaration()) {
-			const before = destinationPath.get("declarations").filter((path: NodePath) => isHelperDefinitionMap.get(path.node));
-			const after = destinationPath.get("declarations").filter((path: NodePath) => !isHelperDefinitionMap.get(path.node));
+			const before = destinationPath.get("declarations").filter((path: NodePath) => isHelperDefinitionSet.has(path.node));
+			const after = destinationPath.get("declarations").filter((path: NodePath) => !isHelperDefinitionSet.has(path.node));
 			if (types.isVariableDeclaration(value)) {
 				const declaration = value.declarations[0];
-				isHelperDefinitionMap.set(declaration, true);
+				isHelperDefinitionSet.add(declaration);
 				if (before.length === 0) {
 					const target = after[0];
 					target.insertBefore(declaration);
@@ -2900,18 +2900,18 @@ export default function({ types, template, traverse, transformFromAst, version }
 					return getNextSibling(target)!;
 				}
 			} else {
-				isHelperDefinitionMap.set(value, true);
+				isHelperDefinitionSet.add(value);
 				if (before.length === 0) {
-					isHelperDefinitionMap.set(destinationPath.node, true);
+					isHelperDefinitionSet.add(destinationPath.node);
 					destinationPath.insertBefore(value);
 					return getPreviousSibling(destinationPath)!;
 				} else if (after.length === 0) {
-					isHelperDefinitionMap.set(destinationPath.node, true);
+					isHelperDefinitionSet.add(destinationPath.node);
 					destinationPath.insertAfter(value);
 					return getNextSibling(destinationPath)!;
 				} else {
 					const beforeNode = types.variableDeclaration(destinationPath.node.kind, before.map((path: NodePath) => path.node as VariableDeclarator));
-					isHelperDefinitionMap.set(beforeNode, true);
+					isHelperDefinitionSet.add(beforeNode);
 					const afterNode = types.variableDeclaration(destinationPath.node.kind, after.map((path: NodePath) => path.node as VariableDeclarator));
 					destinationPath.replaceWith(afterNode);
 					destinationPath.insertBefore(beforeNode);
@@ -2921,9 +2921,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 		} else {
 			if (types.isVariableDeclaration(value)) {
-				isHelperDefinitionMap.set(value.declarations[0], true);
+				isHelperDefinitionSet.add(value.declarations[0]);
 			} else {
-				isHelperDefinitionMap.set(value, true);
+				isHelperDefinitionSet.add(value);
 			}
 			const oldNode = destinationPath.node;
 			destinationPath.replaceWith(value);
@@ -3065,7 +3065,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	// Checks to see if an expression is an async function
 	function isAsyncFunctionExpression(path: NodePath): boolean {
-		if (path.isFunction() && (path.node.async || nodeIsAsyncMap.has(path.node))) {
+		if (path.isFunction() && (path.node.async || nodeIsAsyncSet.has(path.node))) {
 			return true;
 		}
 		if (path.isCallExpression() && types.isIdentifier(path.node.callee) && helperNameMap.get(path.node.callee) === "_async") {
@@ -3571,7 +3571,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							path.replaceWith(functionize(this, path.node.params, bodyPath.node, path, id));
 						}
 					}
-					nodeIsAsyncMap.set(path.node, true);
+					nodeIsAsyncSet.add(path.node);
 				}
 			},
 			ClassMethod(path) {

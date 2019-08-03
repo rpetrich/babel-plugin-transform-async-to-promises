@@ -1,0 +1,1 @@
+function(...fns){return value=>new Promise((resolve,reject)=>{(function run([f,...fns],value){try{return _continueIgnored(_catch(()=>_invokeIgnored(()=>{if(f===undefined)resolve(value);else return _await(f(value),(_f)=>{run(fns,_f);});}),e=>{reject(e);}));}catch(e){Promise.reject(e);}})(fns,value);});}

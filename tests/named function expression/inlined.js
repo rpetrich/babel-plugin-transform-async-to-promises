@@ -1,0 +1,1 @@
+function(...fns){return value=>new Promise((resolve,reject)=>{(function run([f,...fns],value){try{return _catch(function(){const _temp=function(){if(f===undefined)resolve(value);else return Promise.resolve(f(value)).then(function(_f){run(fns,_f);});}();if(_temp&&_temp.then)return _temp.then(function(){});},function(e){reject(e);});}catch(e){Promise.reject(e);}})(fns,value);});}

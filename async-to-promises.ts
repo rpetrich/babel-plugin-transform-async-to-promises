@@ -1465,8 +1465,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Convert an expression or statement into a callable function expression
-	function functionize(state: PluginState, params: LVal[], expression: Expression | Statement, target: NodePath): FunctionExpression | ArrowFunctionExpression {
-		if (readConfigKey(state.opts, "target") === "es6") {
+	function functionize(state: PluginState, params: LVal[], expression: Expression | Statement, target: NodePath, id?: Identifier): FunctionExpression | ArrowFunctionExpression {
+		if (!id && readConfigKey(state.opts, "target") === "es6") {
 			let newExpression = expression;
 			if (types.isBlockStatement(newExpression) && newExpression.body.length === 1) {
 				newExpression = newExpression.body[0];
@@ -1502,7 +1502,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			expression = blockStatement([expression]);
 		}
 		expression.body = removeUnnecessaryReturnStatements(expression.body);
-		return types.functionExpression(undefined, params, expression);
+		return types.functionExpression(id, params, expression);
 	}
 
 	// Create a block statement from a list of statements
@@ -3432,7 +3432,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 							types.newExpression(helperReference(this, path, "_AsyncGenerator"), [
 								functionize(this, [generatorIdentifier], bodyPath.node, path)
 							]),
-							path
+							path,
+							id
 						));
 					} else {
 						rewriteAsyncBlock({ state: this }, path, []);
@@ -3448,8 +3449,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 							path.traverse(unwrapReturnPromiseVisitor);
 						}
 						if (canThrow) {
-							if (inlineHelpers) {
-								if (skipReturn && parentPath.isCallExpression() && parentPath.node.arguments.length === 0 && !pathsReturn(bodyPath).any) {
+							if (inlineHelpers || id) {
+								if (!id && skipReturn && parentPath.isCallExpression() && parentPath.node.arguments.length === 0 && !pathsReturn(bodyPath).any) {
 									parentPath.parentPath.replaceWith(
 										types.tryStatement(
 											bodyPath.node,
@@ -3493,6 +3494,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 											)
 										),
 										path,
+										id
 									));
 								}
 							} else {
@@ -3505,7 +3507,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 							if (!inlineHelpers) {
 								checkForErrorsAndRewriteReturns(bodyPath, this, true)
 							}
-							path.replaceWith(functionize(this, path.node.params, bodyPath.node, path));
+							path.replaceWith(functionize(this, path.node.params, bodyPath.node, path, id));
 						}
 					}
 					nodeIsAsyncMap.set(path.node, true);

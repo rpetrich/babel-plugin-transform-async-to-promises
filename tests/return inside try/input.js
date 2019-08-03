@@ -1,4 +1,4 @@
-async function test(wait, messages) {
+async function(wait, messages) {
     messages.push('before-try');
     try {
         messages.push('start-try');

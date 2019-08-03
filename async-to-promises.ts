@@ -3408,7 +3408,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					if (path.parentPath.isExportDefaultDeclaration() && id !== null) {
 						// export default function... is a function expression in babel 6
 						const targetPath = path.parentPath;
-						targetPath.replaceWith(types.variableDeclaration("const", [types.variableDeclarator(path.node.id, types.functionExpression(path.node.id, path.node.params, path.node.body, path.node.generator, path.node.async))]));
+						targetPath.replaceWith(types.variableDeclaration("const", [types.variableDeclarator(path.node.id || id, types.functionExpression(undefined, path.node.params, path.node.body, path.node.generator, path.node.async))]));
 						targetPath.insertAfter(types.exportDefaultDeclaration(id));
 						reorderPathBeforeSiblingStatements(targetPath);
 						return;

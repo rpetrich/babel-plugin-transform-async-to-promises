@@ -1,5 +1,5 @@
-import { ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, File, LabeledStatement, ObjectMethod, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, ObjectPattern, YieldExpression } from "babel-types";
-import { NodePath, Scope, Visitor } from "babel-traverse";
+import { JSXNamespacedName, ObjectProperty, ArgumentPlaceholder, ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, File, LabeledStatement, ObjectMethod, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, ObjectPattern, RestElement, TSParameterProperty, YieldExpression, PatternLike } from "@babel/types";
+import { NodePath, Scope, Visitor } from "@babel/traverse";
 import { code as helperCode } from "./helpers-string";
 
 // Configuration types
@@ -176,14 +176,21 @@ const skipNodeMap = new WeakMap<Node, true>();
 const breakIdentifierMap = new WeakMap<Node, Identifier>();
 const isHelperDefinitionMap = new WeakMap<Node, true>();
 const helperNameMap = new WeakMap<Identifier | MemberExpression, string>();
-const nodeIsAsyncMap = new WeakMap<ArrowFunctionExpression | FunctionExpression | FunctionDeclaration | ClassMethod | ObjectMethod, true>();
+const nodeIsAsyncMap = new WeakMap<Node, true>();
 
-declare module "babel-traverse" {
+interface ForAwaitStatement {
+    type: "ForAwaitStatement";
+    left: VariableDeclaration | LVal;
+    right: Expression;
+    body: Statement;
+}
+
+declare module "@babel/traverse" {
 	interface TraversalContext {
 		create<T extends Node>(node: Node, obj: T[], key: string | number, listKey: string): NodePath<T>;
 	}
 	interface NodePath {
-		isForAwaitStatement?(): this is NodePath<ForOfStatement>;
+		isForAwaitStatement?(): this is NodePath<ForAwaitStatement>;
 	}
 }
 
@@ -245,11 +252,13 @@ let helpers: { [name: string]: Helper } | undefined;
 const alwaysTruthy = Object.keys(constantStaticMethods);
 const numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
+type CompatibleSubset<New, Old> = Partial<New> & Pick<New, keyof New & keyof Old>;
+
 // Main function, called by babel with module implementations for types, template, traverse, transformFromAST and its version information
 export default function({ types, template, traverse, transformFromAst, version }: {
-	types: typeof import("babel-types"),
-	template: typeof import("babel-template"),
-	traverse: typeof import("babel-traverse").default,
+	types: CompatibleSubset<typeof import("@babel/types"), typeof import("babel-types")>,
+	template: CompatibleSubset<typeof import("@babel/template"), typeof import("babel-template")>,
+	traverse: typeof import("@babel/traverse").default,
 	transformFromAst: (ast: Program, code?: string, options?: any) => { code: string, map: any, ast: Program };
 	version: string,
 }) {
@@ -670,7 +679,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				case "reject":
 				case "resolve": {
 					const firstArgument = expression.arguments[0];
-					if (typeof firstArgument !== "undefined" && !types.isSpreadElement(firstArgument)) {
+					if (types.isExpression(firstArgument)) {
 						const simplified = simplifyWithIdentifier(firstArgument, identifier, truthy);
 						return simplified === expression.arguments[0] ? expression : types.callExpression(expression.callee, [simplified]);
 					}
@@ -682,7 +691,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						const object = callee.object;
 						if (types.isCallExpression(object)) {
 							const valueArgument = object.arguments[0];
-							if (typeof valueArgument !== "undefined" && !types.isSpreadElement(valueArgument) && typeof thenArgument !== "undefined" && !types.isSpreadElement(thenArgument)) {
+							if (types.isExpression(valueArgument) && types.isExpression(thenArgument)) {
 								const simplified = simplifyWithIdentifier(valueArgument, identifier, truthy);
 								return simplified === valueArgument ? expression : callThenMethod(types.callExpression(object.callee, [simplified]), thenArgument);
 							}
@@ -1158,7 +1167,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					}
 				} else if (bindingPath.isVariableDeclarator()) {
 					const init = bindingPath.get("init");
-					if (isContinuation(init.node)) {
+					if (init.node && isContinuation(init.node)) {
 						if (filter([...init.node.params, init.node.body])) {
 							path.replaceWith(binding.identifier);
 							return;
@@ -1345,9 +1354,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 				break;
 			case "ObjectPattern":
 				for (const property of id.properties) {
-					if (types.isRestProperty(property)) {
+					if (types.isRestElement(property)) {
 						identifiersInLVal(property.argument, result);
-					} else {
+					} else if (types.isPattern(property.value) || types.isIdentifier(property.value)) {
 						identifiersInLVal(property.value, result);
 					}
 				}
@@ -1381,7 +1390,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			if (this.rewriteSuper) {
 				const parent = path.parentPath;
 				if (parent.isMemberExpression() && parent.get("object") === path) {
-					const property = parent.get("property");
+					const property = parent.get("property") as NodePath<any>;
 					if (parent.node.computed) {
 						if (!property.isStringLiteral()) {
 							throw path.buildCodeFrameError(`Expected a staticly resolvable super expression, got a computed expression of type ${property.node.type}`, TypeError);
@@ -1390,7 +1399,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 					const grandparent = parent.parentPath;
 					if (property.isIdentifier() && grandparent.isCallExpression() && grandparent.get("callee") === parent) {
 						this.rewrite("super$" + property.node.name, parent);
-						grandparent.replaceWith(types.callExpression(types.memberExpression(parent.node, types.identifier("call")), [types.thisExpression() as (SpreadElement | Expression)].concat(grandparent.node.arguments)));
+						const args = grandparent.node.arguments.slice(0);
+						args.unshift(types.thisExpression());
+						grandparent.replaceWith(types.callExpression(types.memberExpression(parent.node, types.identifier("call")), args));
 					}
 				}
 			}
@@ -1465,7 +1476,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Convert an expression or statement into a callable function expression
-	function functionize(state: PluginState, params: LVal[], expression: Expression | Statement, target: NodePath, id?: Identifier): FunctionExpression | ArrowFunctionExpression {
+	function functionize(state: PluginState, params: Array<Identifier | Pattern | RestElement | TSParameterProperty>, expression: Expression | Statement, target: NodePath, id?: Identifier | null): FunctionExpression | ArrowFunctionExpression {
 		if (!id && readConfigKey(state.opts, "target") === "es6") {
 			let newExpression = expression;
 			if (types.isBlockStatement(newExpression) && newExpression.body.length === 1) {
@@ -1599,7 +1610,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Return true if an expression contains entirely literals, with a list of identifiers assumed to have literal values
-	function isExpressionOfLiterals(path: NodePath, literalNames: string[]): boolean {
+	function isExpressionOfLiterals(path: NodePath<Node | null>, literalNames: string[]): boolean {
+		if (path.node == null) {
+			return true;
+		}
 		if (path.isIdentifier()) {
 			const name = path.node.name;
 			if (name === "undefined" && !path.scope.getBinding("undefined")) {
@@ -1640,20 +1654,20 @@ export default function({ types, template, traverse, transformFromAst, version }
 			return true;
 		}
 		if (path.isArrayExpression()) {
-			return path.get("elements").every(path => path === null || path.node === null ? true : isExpressionOfLiterals(path as NodePath, literalNames));
+			return path.get("elements").every(element => element === null || element.node === null ? true : isExpressionOfLiterals(element as NodePath, literalNames));
 		}
 		if (path.isNullLiteral()) {
 			return true;
 		}
 		if (path.isObjectExpression()) {
-			return path.get("properties").every(path => {
-				if (!path.isObjectProperty()) {
+			return path.get("properties").every(property => {
+				if (property.isObjectProperty()) {
+					if (!property.node.computed || isExpressionOfLiterals(property.get("key") as NodePath, literalNames)) {
+						return isExpressionOfLiterals(property.get("value"), literalNames);
+					}
+				} else {
 					return true;
 				}
-				if (isExpressionOfLiterals(path.get("value"), literalNames) && (!path.node.computed || isExpressionOfLiterals(path.get("key"), literalNames))) {
-					return true;
-				}
-				return false;
 			});
 		}
 		if (path.isUnaryExpression()) {
@@ -1672,12 +1686,15 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Generate a new identifier named after the current node at a path
-	function generateIdentifierForPath(path: NodePath): Identifier {
-		const result = path.scope.generateUidIdentifierBasedOnNode(path.node, "temp");
-		if (path.isIdentifier() && path.node.name === result.name) {
-			return path.scope.generateUidIdentifier("temp");
+	function generateIdentifierForPath(path: NodePath<Node | null>): Identifier {
+		const node = path.node;
+		if (node) {
+			const result = path.scope.generateUidIdentifierBasedOnNode(node, "temp");
+			if (!path.isIdentifier() || path.node.name !== result.name) {
+				return result;
+			}
 		}
-		return result;
+		return path.scope.generateUidIdentifier("temp");
 	}
 
 	// Emit a truthy literal, using 1/0 if minified
@@ -1802,12 +1819,26 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Unwrap the expression behind a spread element
-	function unwrapSpreadElement(path: NodePath<Expression | SpreadElement | null>): NodePath<Expression> {
+	function unwrapSpreadElement(path: NodePath<Expression | SpreadElement>): NodePath<Expression>;
+	function unwrapSpreadElement(path: NodePath<ArgumentPlaceholder>): NodePath<ArgumentPlaceholder>;
+	function unwrapSpreadElement(path: NodePath<JSXNamespacedName>): NodePath<JSXNamespacedName>;
+	function unwrapSpreadElement(path: NodePath<null>): NodePath<null>;
+	function unwrapSpreadElement(path: NodePath<Expression | SpreadElement | ArgumentPlaceholder | JSXNamespacedName | null>): NodePath<Expression | ArgumentPlaceholder | JSXNamespacedName | null>;
+	function unwrapSpreadElement(path: NodePath<any>): NodePath<Expression | ArgumentPlaceholder | JSXNamespacedName | null> {
+		if (path.node === null) {
+			return path as NodePath<null>;
+		}
+		if (path.node.type === "JSXNamespacedName") {
+			return path as NodePath<JSXNamespacedName>;
+		}
 		if (path.isExpression()) {
 			return path;
 		}
 		if (path.isSpreadElement()) {
 			return path.get("argument");
+		}
+		if (isArgumentPlaceholder(path as NodePath<Node>)) {
+			return path as NodePath<ArgumentPlaceholder>;
 		}
 		/* istanbul ignore next */
 		throw path.buildCodeFrameError(`Expected either an expression or a spread element, got a ${path.type}!`, TypeError);
@@ -1850,22 +1881,23 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	// Extract prefixes of an await expression out into declarations so that they can be reused in the continuation
 	function extractDeclarations(state: PluginState, originalAwaitPath: NodePath<AwaitExpression> | NodePath<YieldExpression>, awaitExpression: Expression, additionalConstantNames: string[]): ExtractedDeclarations {
-		let awaitPath: NodePath<Exclude<Node, Statement>> = originalAwaitPath;
+		let awaitPath: NodePath<Expression> = originalAwaitPath;
 		const reusingExisting = findDeclarationToReuse(awaitPath);
 		const reusingExistingId = reusingExisting ? reusingExisting.get("id") : undefined;
 		const existingIdentifier = reusingExistingId && (reusingExistingId.isIdentifier() || reusingExistingId.isPattern()) ? reusingExistingId.node : undefined;
 		let resultIdentifier: Identifier | Pattern | undefined;
-		if (awaitPath.parentPath.isSequenceExpression() && (awaitPath.key < (awaitPath.container as NodePath[]).length - 1)) {
-			originalAwaitPath.replaceWith(types.numericLiteral(0));
-		} else {
-			const newIdentifier = resultIdentifier = existingIdentifier || generateIdentifierForPath(originalAwaitPath.get("argument"));
-			originalAwaitPath.replaceWith(types.isIdentifier(newIdentifier) ? newIdentifier : types.numericLiteral(0));
+		if (!awaitPath.parentPath.isSequenceExpression() || !(awaitPath.key < (awaitPath.container as NodePath[]).length - 1)) {
+			const argument = originalAwaitPath.get("argument");
+			if (argument.isExpression()) {
+				resultIdentifier = existingIdentifier || generateIdentifierForPath(argument);
+			}
 		}
+		originalAwaitPath.replaceWith(types.isIdentifier(resultIdentifier) ? resultIdentifier : types.numericLiteral(0));
 		let declarations: VariableDeclarator[] = [];
 		const isYield = originalAwaitPath.isYieldExpression();
 		let directExpression: Expression = booleanLiteral(false, readConfigKey(state.opts, "minify"));
 		for (;;) {
-			const parent = awaitPath.parentPath;
+			const parent: NodePath = awaitPath.parentPath;
 			if (parent.isVariableDeclarator()) {
 				const beforeDeclarations: VariableDeclarator[] = [];
 				let skipLiterals = true;
@@ -1952,7 +1984,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						testNode = testIdentifier;
 					}
 					if (isBoth && otherAwaitPath) {
-						awaitExpression = conditionalExpression(testNode, awaitExpression, otherAwaitPath.node.argument);
+						awaitExpression = conditionalExpression(testNode, awaitExpression, otherAwaitPath.node.argument || types.identifier("undefined"));
 						if (!resultIdentifier) {
 							resultIdentifier = existingIdentifier || generateIdentifierForPath(originalAwaitPath.get("argument"));
 						}
@@ -1986,7 +2018,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						if (spreadArg === awaitPath || arg === awaitPath) {
 							break;
 						}
-						if (!isExpressionOfLiterals(spreadArg, additionalConstantNames)) {
+						if (spreadArg.isExpression() && !isExpressionOfLiterals(spreadArg, additionalConstantNames)) {
 							const argIdentifier = generateIdentifierForPath(spreadArg);
 							declarations.unshift(types.variableDeclarator(argIdentifier, spreadArg.node));
 							spreadArg.replaceWith(argIdentifier);
@@ -1995,7 +2027,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					if (!isExpressionOfLiterals(callee, additionalConstantNames) && typeof promiseCallExpressionType(parent.node) === "undefined") {
 						if (callee.isMemberExpression()) {
 							const object = callee.get("object");
-							const property = callee.get("property");
+							const property = callee.get("property") as NodePath<Expression>;
 							let objectDeclarator: VariableDeclarator | undefined;
 							let staticMethods: { readonly [name: string]: boolean } = {};
 							let constantObject = false;
@@ -2015,8 +2047,9 @@ export default function({ types, template, traverse, transformFromAst, version }
 							} else {
 								const calleeIdentifier = generateIdentifierForPath(property);
 								const calleeNode = callee.node;
-								const newArguments: (Expression | SpreadElement)[] = [{ ...object.node }];
-								parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), newArguments.concat(parent.node.arguments)));
+								const newArguments = parent.node.arguments.slice();
+								newArguments.unshift({ ...object.node });
+								parent.replaceWith(types.callExpression(types.memberExpression(calleeIdentifier, types.identifier("call")), newArguments));
 								declarations.unshift(types.variableDeclarator(calleeIdentifier, calleeNode));
 							}
 							if (typeof objectDeclarator !== "undefined") {
@@ -2036,7 +2069,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					if (element === awaitPath || spreadElement === awaitPath) {
 						break;
 					}
-					if (!isExpressionOfLiterals(spreadElement, additionalConstantNames)) {
+					if (spreadElement.isExpression() && !isExpressionOfLiterals(spreadElement, additionalConstantNames)) {
 						const elementIdentifier = generateIdentifierForPath(spreadElement);
 						declarations.unshift(types.variableDeclarator(elementIdentifier, spreadElement.node));
 						spreadElement.replaceWith(elementIdentifier);
@@ -2044,26 +2077,26 @@ export default function({ types, template, traverse, transformFromAst, version }
 				}
 			} else if (parent.isObjectExpression()) {
 				for (const prop of parent.get("properties")) {
-					if (prop === awaitPath) {
+					if (prop as unknown === awaitPath) {
 						break;
 					}
 					if (prop.isObjectProperty()) {
 						if (prop.node.computed) {
-							const propKey = prop.get("key");
+							const propKey = prop.get("key") as NodePath;
 							if (propKey === awaitPath) {
 								break;
 							}
-							if (!isExpressionOfLiterals(propKey, additionalConstantNames)) {
+							if (propKey.isExpression() && !isExpressionOfLiterals(propKey, additionalConstantNames)) {
 								const keyIdentifier = generateIdentifierForPath(propKey);
 								declarations.unshift(types.variableDeclarator(keyIdentifier, propKey.node));
 								propKey.replaceWith(keyIdentifier);
 							}
 						}
-						const propValue = prop.get("value");
+						const propValue: NodePath<Expression | PatternLike> = prop.get("value");
 						if (propValue === awaitPath) {
 							break;
 						}
-						if (!isExpressionOfLiterals(propValue, additionalConstantNames)) {
+						if (propValue.isExpression() && !isExpressionOfLiterals(propValue, additionalConstantNames)) {
 							const propIdentifier = generateIdentifierForPath(propValue);
 							declarations.unshift(types.variableDeclarator(propIdentifier, propValue.node));
 							propValue.replaceWith(propIdentifier);
@@ -2073,9 +2106,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 			}
 			if (parent.isStatement()) {
 				return { declarationKind: reusingExisting ? (reusingExisting.parent as VariableDeclaration).kind : "const", declarations, awaitExpression, directExpression, reusingExisting, resultIdentifier };
-			} else {
-				awaitPath = parent;
 			}
+			awaitPath = parent as NodePath<Expression>;
 		}
 	}
 
@@ -2146,7 +2178,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				} else {
 					path.replaceWithMultiple([
 						types.expressionStatement(types.assignmentExpression("=", this.exitIdentifier, booleanLiteral(true, minify))),
-						returnStatement(path.node.argument, path.node),
+						returnStatement(path.node.argument || undefined, path.node),
 					]);
 				}
 			}
@@ -2311,8 +2343,13 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Check if a path is a for-await statement (not supported on all Babel versions)
-	function isForAwaitStatement(path: NodePath): path is NodePath<ForOfStatement> {
+	function isForAwaitStatement(path: NodePath<any>): path is NodePath<ForAwaitStatement> {
 		return path.isForAwaitStatement ? path.isForAwaitStatement() : false;
+	}
+
+	// Check if a path is an ArgumentPlaceholder statement (not supported on all Babel versions)
+	function isArgumentPlaceholder(path: NodePath<Node>): path is NodePath<ArgumentPlaceholder> {
+		return path.node.type === "ArgumentPlaceholder";
 	}
 
 	// Find the most immediate statement parent of a path
@@ -2346,7 +2383,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			for (const property of node.properties) {
 				if (types.isObjectProperty(property)) {
 					addConstantNames(additionalConstantNames, property.key as any as LVal);
-				} else if (types.isRestProperty(property)) {
+				} else if (types.isRestElement(property)) {
 					addConstantNames(additionalConstantNames, property.argument);
 				}
 			}
@@ -2443,7 +2480,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				}
 				targetPath = parent;
 			}
-			if (shouldPushExitIdentifier) {
+			if (shouldPushExitIdentifier && state.exitIdentifier) {
 				path.scope.push({ kind: "let", id: state.exitIdentifier, init: readConfigKey(pluginState.opts, "minify") ? undefined : booleanLiteral(false, readConfigKey(pluginState.opts, "minify")) });
 			}
 		}
@@ -2473,7 +2510,16 @@ export default function({ types, template, traverse, transformFromAst, version }
 		for (const { targetPath, explicitExits, breakIdentifiers, parent, exitIdentifier, cases, forToIdentifiers } of paths) {
 			if (parent.isExpressionStatement() && (targetPath.isAwaitExpression() || targetPath.isYieldExpression()) && processExpressions) {
 				processExpressions = false;
-				relocateTail(state.generatorState, targetPath.isYieldExpression() ? yieldOnExpression(state.generatorState, targetPath.node.argument) : targetPath.node.argument, undefined, parent, additionalConstantNames, undefined, undefined, targetPath.isYieldExpression() ? undefined : booleanLiteral(false, readConfigKey(pluginState.opts, "minify")));
+				relocateTail(
+					state.generatorState,
+					targetPath.isYieldExpression() ? yieldOnExpression(state.generatorState, targetPath.node.argument || types.identifier("undefined")) : targetPath.node.argument,
+					undefined,
+					parent,
+					additionalConstantNames,
+					undefined,
+					undefined,
+					targetPath.isYieldExpression() ? undefined : booleanLiteral(false, readConfigKey(pluginState.opts, "minify"))
+				);
 			} else if (parent.isIfStatement()) {
 				const test = parent.get("test");
 				if (targetPath !== test) {
@@ -2502,7 +2548,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 				if (catchClause) {
 					const param = catchClause.param;
 					const paramIsUsed = param !== null && parent.get("handler").scope.getBinding(param.name)!.referencePaths.length !== 0;
-					const fn = catchClause.body.body.length ? rewriteAsyncNode(state.generatorState, parent, functionize(pluginState, paramIsUsed ? [param] : [], catchClause.body, targetPath), additionalConstantNames, exitIdentifier) : emptyFunction(pluginState, parent);
+					const fn = catchClause.body.body.length ? rewriteAsyncNode(state.generatorState, parent, functionize(pluginState, paramIsUsed && param != null ? [param] : [], catchClause.body, targetPath), additionalConstantNames, exitIdentifier) : emptyFunction(pluginState, parent);
 					expression = types.callExpression(helperReference(pluginState, path, state.generatorState.generatorIdentifier ? "_catchInGenerator" : "_catch"), [unwrapReturnCallWithEmptyArguments(functionize(pluginState, [], expression, targetPath), path.scope, additionalConstantNames), fn]);
 				}
 				if (parent.node.finalizer) {
@@ -2556,7 +2602,15 @@ export default function({ types, template, traverse, transformFromAst, version }
 								resultIdentifier = path.scope.generateUidIdentifier("result");
 								addConstantNames(additionalConstantNames, resultIdentifier);
 							}
-							relocateTail(state.generatorState, loopCall, undefined, label && parent.parentPath.isStatement() ? parent.parentPath : parent, additionalConstantNames, resultIdentifier, exitIdentifier);
+							relocateTail(
+								state.generatorState,
+								loopCall,
+								undefined,
+								label && parent.parentPath.isStatement() ? parent.parentPath : parent as NodePath<Statement>,
+								additionalConstantNames,
+								resultIdentifier,
+								exitIdentifier
+							);
 							processExpressions = false;
 						} else {
 							/* istanbul ignore next */
@@ -2589,8 +2643,11 @@ export default function({ types, template, traverse, transformFromAst, version }
 								updateExpression = rewriteAsyncNode(state.generatorState, parent, functionize(pluginState, [], updateExpression, targetPath), additionalConstantNames, exitIdentifier, true);
 							}
 							const init = parent.get("init");
-							if (init.node) {
-								parent.insertBefore(init.isExpression() ? types.expressionStatement(init.node) : init.node);
+							if (init) {
+								const initNode = init.node;
+								if (initNode !== null) {
+									parent.insertBefore(types.isExpression(initNode) ? types.expressionStatement(initNode) : initNode);
+								}
 							}
 						}
 						const forIdentifier = path.scope.generateUidIdentifier("for");
@@ -2669,7 +2726,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 			if (awaitPath.isAwaitExpression() || awaitPath.isYieldExpression()) {
 				const originalArgument = awaitPath.node.argument;
 				let parent = getStatementOrArrowBodyParent(awaitPath);
-				const { declarationKind, declarations, awaitExpression, directExpression, reusingExisting, resultIdentifier } = extractDeclarations(pluginState, awaitPath, originalArgument, additionalConstantNames);
+				const { declarationKind, declarations, awaitExpression, directExpression, reusingExisting, resultIdentifier } = extractDeclarations(pluginState, awaitPath, originalArgument || types.identifier("undefined"), additionalConstantNames);
 				if (resultIdentifier) {
 					addConstantNames(additionalConstantNames, resultIdentifier);
 				}
@@ -2896,7 +2953,11 @@ export default function({ types, template, traverse, transformFromAst, version }
 							ExportNamedDeclaration(path) {
 								const declaration = path.get("declaration");
 								if (declaration.isFunctionDeclaration()) {
-									newHelpers[declaration.node.id.name] = {
+									const id = declaration.node.id;
+									if (!types.isIdentifier(id)) {
+										throw declaration.buildCodeFrameError(`Expected a named declaration!`, TypeError);
+									}
+									newHelpers[id.name] = {
 										value: declaration.node,
 										dependencies: getHelperDependencies(declaration),
 									};
@@ -3181,10 +3242,10 @@ export default function({ types, template, traverse, transformFromAst, version }
 		ReturnStatement(path) {
 			if (this.rewriteReturns) {
 				const argument = path.get("argument");
-				if (argument.node) {
+				if (argument && argument.node) {
+					let arg = argument.node;
 					if (!((argument.isCallExpression() && (isAsyncCallExpression(argument) || typeof promiseCallExpressionType(argument.node) !== "undefined")) || (argument.isCallExpression() && isAsyncFunctionIdentifier(argument.get("callee"))))) {
 						const target = readConfigKey(this.plugin.opts, "inlineHelpers") ? promiseResolve() : helperReference(this.plugin, path, "_await");
-						let arg = argument.node;
 						if (types.isConditionalExpression(arg) && types.isIdentifier(arg.test)) {
 							if (types.isCallExpression(arg.consequent) && promiseCallExpressionType(arg.consequent) === "resolve" && arg.consequent.arguments.length === 1 && nodesAreEquivalent(arg.consequent.arguments[0])(arg.alternate)) {
 								// Simplify Promise.resolve(foo ? bar() : Promise.resolve(bar())) to Promise.resolve(bar())
@@ -3197,14 +3258,14 @@ export default function({ types, template, traverse, transformFromAst, version }
 						if (types.isConditionalExpression(arg) && types.isCallExpression(arg.consequent) && promiseCallExpressionType(arg.consequent) === "resolve") {
 							// Simplify Promise.resolve(foo ? bar : Promise.resolve(baz)) to Promise.resolve(foo ? bar : baz)
 							const consequent = arg.consequent.arguments[0];
-							if (consequent && !types.isSpreadElement(consequent)) {
+							if (consequent && types.isExpression(consequent)) {
 								arg = conditionalExpression(arg.test, consequent, arg.alternate);
 							}
 						}
 						if (types.isConditionalExpression(arg) && types.isCallExpression(arg.alternate) && promiseCallExpressionType(arg.alternate) === "resolve") {
 							// Simplify Promise.resolve(foo ? Promise.resolve(bar) : baz) to Promise.resolve(foo ? bar : baz)
 							const alternate = arg.alternate.arguments[0];
-							if (alternate && !types.isSpreadElement(alternate)) {
+							if (alternate && types.isExpression(alternate)) {
 								arg = conditionalExpression(arg.test, arg.consequent, alternate);
 							}
 						}

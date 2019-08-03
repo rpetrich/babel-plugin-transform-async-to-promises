@@ -34,6 +34,7 @@
     "@babel/plugin-transform-parameters": "^7.4.4",
     "@babel/preset-env": "^7.5.5",
     "@babel/traverse": "^7.5.5",
+    "@babel/types": "^7.5.5",
     "@types/babel-template": "^6.25.2",
     "@types/babel-traverse": "^6.25.5",
     "@types/babel-types": "^7.0.7",

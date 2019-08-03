@@ -1,0 +1,13 @@
+{
+	"compilerOptions": {
+		"strict": true,
+		"module": "commonjs",
+		"sourceMap": true,
+		"types" : ["node"],
+		"lib": ["es5", "es6"],
+		"target": "es6"
+	},
+	"files": [
+		"async-to-promises.ts"
+	]
+}

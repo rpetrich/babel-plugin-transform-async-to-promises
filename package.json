@@ -19,7 +19,8 @@
     "optimization",
     "babel",
     "compile",
-    "transform"
+    "transform",
+    "minify"
   ],
   "author": "Ryan Petrich <rpetrich@gmail.com>",
   "license": "MIT",

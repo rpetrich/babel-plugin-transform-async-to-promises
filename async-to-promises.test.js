@@ -37,7 +37,41 @@ const environments = {
 	},
 };
 
-const helperNames = ["_Pact", "_settle", "_isSettledPact", "_async", "_await", "_awaitIgnored", "_continue", "_continueIgnored", "_forTo", "_forValues", "_forIn", "_forOwn", "_forOf", "_forAwaitOf", "_for", "_do", "_switch", "_call", "_callIgnored", "_invoke", "_invokeIgnored", "_catch", "_finallyRethrows", "_finally", "_rethrow", "_empty", "_earlyReturn", "_catchInGenerator", "_wrapReturnedValue", "_wrapYieldedValue", "_AsyncGenerator", "_iteratorSymbol", "_asyncIteratorSymbol"];
+const helperNames = [
+	"_Pact",
+	"_settle",
+	"_isSettledPact",
+	"_async",
+	"_await",
+	"_awaitIgnored",
+	"_continue",
+	"_continueIgnored",
+	"_forTo",
+	"_forValues",
+	"_forIn",
+	"_forOwn",
+	"_forOf",
+	"_forAwaitOf",
+	"_for",
+	"_do",
+	"_switch",
+	"_call",
+	"_callIgnored",
+	"_invoke",
+	"_invokeIgnored",
+	"_catch",
+	"_finallyRethrows",
+	"_finally",
+	"_rethrow",
+	"_empty",
+	"_earlyReturn",
+	"_catchInGenerator",
+	"_wrapReturnedValue",
+	"_wrapYieldedValue",
+	"_AsyncGenerator",
+	"_iteratorSymbol",
+	"_asyncIteratorSymbol",
+];
 
 const stripHelpersVisitor = {
 	FunctionDeclaration(path) {
@@ -56,7 +90,9 @@ const stripHelpersVisitor = {
 			path.skip();
 		} else if (path.isVariableDeclaration()) {
 			const allDeclarations = path.get("declarations");
-			const declarationsToRemove = allDeclarations.filter(declaration => /^_async/.test(declaration.node.id.name));
+			const declarationsToRemove = allDeclarations.filter((declaration) =>
+				/^_async/.test(declaration.node.id.name)
+			);
 			if (declarationsToRemove.length === allDeclarations.length) {
 				path.remove();
 			} else {
@@ -80,11 +116,15 @@ const stripHelpersVisitor = {
 				path.parentPath.remove();
 			}
 		}
-	}
+	},
 };
 
 function extractOnlyUserCode(babel, result) {
-	return babel.transformFromAst(result.ast, result.code, { plugins: [{ visitor: stripHelpersVisitor }], compact: true, ast: false }).code;
+	return babel.transformFromAst(result.ast, result.code, {
+		plugins: [{ visitor: stripHelpersVisitor }],
+		compact: true,
+		ast: false,
+	}).code;
 }
 
 function extractJustFunction(babel, result) {
@@ -106,7 +146,7 @@ function writeOutput(name, myCode, outputCode) {
 	}
 }
 
-const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
 
 function readTest(name) {
 	let input;
@@ -134,7 +174,14 @@ function readTest(name) {
 			}
 		}
 	}
-	const { error, checkSyntax = true, module = false, plugins = [], supportedBabels = Object.keys(environments), presets = [] } = options || {};
+	const {
+		error,
+		checkSyntax = true,
+		module = false,
+		plugins = [],
+		supportedBabels = Object.keys(environments),
+		presets = [],
+	} = options || {};
 	return {
 		error,
 		checkSyntax,
@@ -151,7 +198,16 @@ function readTest(name) {
 }
 
 function parse(babel, input) {
-	return babel.parse ? babel.parse(input, { parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] }, sourceType: "module" }) : babylon.parse(input, { allowReturnOutsideFunction: true, sourceType: "module", plugins: ["asyncGenerators", "objectRestSpread"] });
+	return babel.parse
+		? babel.parse(input, {
+				parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] },
+				sourceType: "module",
+		  })
+		: babylon.parse(input, {
+				allowReturnOutsideFunction: true,
+				sourceType: "module",
+				plugins: ["asyncGenerators", "objectRestSpread"],
+		  });
 }
 
 for (const { babel } of Object.values(environments)) {
@@ -164,7 +220,19 @@ for (const name of fs.readdirSync("tests").sort()) {
 	}
 	if (fs.statSync(`tests/${name}`).isDirectory()) {
 		describe(name, () => {
-			const { input, output, inlined, hoisted, cases, error, checkSyntax, module, plugins, presets, supportedBabels } = readTest(name);
+			const {
+				input,
+				output,
+				inlined,
+				hoisted,
+				cases,
+				error,
+				checkSyntax,
+				module,
+				plugins,
+				presets,
+				supportedBabels,
+			} = readTest(name);
 			for (const babelName of supportedBabels) {
 				describe(babelName, () => {
 					const { babel, types, pluginUnderTest, pluginMapping } = environments[babelName];
@@ -174,7 +242,11 @@ for (const name of fs.readdirSync("tests").sort()) {
 					if (error) {
 						test("error", () => {
 							try {
-								babel.transformFromAst(ast, parseInput, { presets, plugins: [[pluginUnderTest, {}]], compact: true })
+								babel.transformFromAst(ast, parseInput, {
+									presets,
+									plugins: [[pluginUnderTest, {}]],
+									compact: true,
+								});
 								throw new Error("Expected error: " + error.toString());
 							} catch (e) {
 								expect(e.toString()).toEqual(expect.stringContaining(error));
@@ -183,20 +255,34 @@ for (const name of fs.readdirSync("tests").sort()) {
 						return;
 					}
 					const extractFunction = module ? extractOnlyUserCode : extractJustFunction;
-					const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, { presets, plugins: mappedPlugins.concat([[pluginUnderTest, { target: "es6" }]]), compact: true, ast: true });
+					const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, {
+						presets,
+						plugins: mappedPlugins.concat([[pluginUnderTest, { target: "es6" }]]),
+						compact: true,
+						ast: true,
+					});
 					const strippedResult = extractFunction(babel, result);
-					const inlinedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { presets, plugins: mappedPlugins.concat([[pluginUnderTest, { inlineHelpers: true }]]), compact: true, ast: true });
+					const inlinedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, {
+						presets,
+						plugins: mappedPlugins.concat([[pluginUnderTest, { inlineHelpers: true }]]),
+						compact: true,
+						ast: true,
+					});
 					const inlinedAndStrippedResult = extractFunction(babel, inlinedResult);
-					const hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, { presets, plugins: mappedPlugins.concat([[pluginUnderTest, { hoist: true, minify: true }]]), compact: true, ast: true });
+					const hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, {
+						presets,
+						plugins: mappedPlugins.concat([[pluginUnderTest, { hoist: true, minify: true }]]),
+						compact: true,
+						ast: true,
+					});
 					const hoistedAndStrippedResult = extractFunction(babel, hoistedResult);
 					writeOutput(`tests/${name}/output.js`, strippedResult);
 					writeOutput(`tests/${name}/inlined.js`, inlinedAndStrippedResult, strippedResult);
 					writeOutput(`tests/${name}/hoisted.js`, hoistedAndStrippedResult, strippedResult);
 					let fn, rewrittenFn, inlinedFn, hoistedFn;
 					try {
-						fn = new Function(`/* ${name} original */${parseInput}`)
-					} catch (e) {
-					}
+						fn = new Function(`/* ${name} original */${parseInput}`);
+					} catch (e) {}
 					if (checkSyntax) {
 						describe("syntax", () => {
 							test("normal", () => {
@@ -241,10 +327,14 @@ for (const name of fs.readdirSync("tests").sort()) {
 									expect(strippedResult).toBe(output);
 								});
 								test("inlined", () => {
-									expect(inlinedAndStrippedResult).toBe(typeof inlined !== "undefined" ? inlined : output);
+									expect(inlinedAndStrippedResult).toBe(
+										typeof inlined !== "undefined" ? inlined : output
+									);
 								});
 								test("hoisted", () => {
-									expect(hoistedAndStrippedResult).toBe(typeof hoisted !== "undefined" ? hoisted : output);
+									expect(hoistedAndStrippedResult).toBe(
+										typeof hoisted !== "undefined" ? hoisted : output
+									);
 								});
 							});
 						}

@@ -5,7 +5,8 @@
   "main": "async-to-promises.js",
   "scripts": {
     "prepare": "tsc && node ./generate-helpers-string.js",
-    "test": "jest",
+    "format": "prettier --write async-to-promises.ts async-to-promises.test.js",
+    "test": "jest && prettier -c async-to-promises.ts async-to-promises.test.js",
     "test:coverage": "jest --coverage"
   },
   "repository": {
@@ -45,6 +46,7 @@
     "babel-preset-env": "^1.7.0",
     "babel-traverse": "^6.26.0",
     "jest": "^24.8.0",
+    "prettier": "1.18.2",
     "typescript": "^3.5.3"
   }
 }

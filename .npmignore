@@ -6,3 +6,5 @@ generate-helpers-string.js
 *.ts
 tests/
 .DS_Store
+tsconfig.json
+.prettierrc.json

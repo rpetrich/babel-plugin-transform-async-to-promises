@@ -5,7 +5,13 @@
 		"sourceMap": true,
 		"types" : ["node"],
 		"lib": ["es5", "es6"],
-		"target": "es6"
+		"target": "es6",
+		"noImplicitThis": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"removeComments": true,
+		"alwaysStrict": true,
+		"newLine": "lf",
 	},
 	"files": [
 		"async-to-promises.ts"

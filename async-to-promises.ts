@@ -1,5 +1,6 @@
-import { JSXNamespacedName, ObjectProperty, ArgumentPlaceholder, ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, File, LabeledStatement, ObjectMethod, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, ObjectPattern, RestElement, TSParameterProperty, YieldExpression, PatternLike } from "@babel/types";
+import { JSXNamespacedName, ArgumentPlaceholder, ArrowFunctionExpression, AwaitExpression, BlockStatement, CallExpression, ClassMethod, File, LabeledStatement, Node, Expression, FunctionDeclaration, Statement, Identifier, ForStatement, ForInStatement, SpreadElement, ReturnStatement, ForOfStatement, Function, FunctionExpression, MemberExpression, NumericLiteral, ThisExpression, SwitchCase, Program, VariableDeclaration, VariableDeclarator, StringLiteral, BooleanLiteral, Pattern, LVal, ObjectPattern, RestElement, TSParameterProperty, YieldExpression, PatternLike } from "@babel/types";
 import { NodePath, Scope, Visitor } from "@babel/traverse";
+import { PluginObj } from "@babel/core";
 import { code as helperCode } from "./helpers-string";
 
 // Configuration types
@@ -241,8 +242,6 @@ interface ExtractedDeclarations {
 	resultIdentifier?: Identifier | Pattern;
 }
 
-const errorOnIncompatible = true;
-
 interface Helper {
 	value: Node;
 	dependencies: string[];
@@ -255,13 +254,12 @@ const numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seve
 type CompatibleSubset<New, Old> = Partial<New> & Pick<New, keyof New & keyof Old>;
 
 // Main function, called by babel with module implementations for types, template, traverse, transformFromAST and its version information
-export default function({ types, template, traverse, transformFromAst, version }: {
+export default function({ types, traverse, transformFromAst, version }: {
 	types: CompatibleSubset<typeof import("@babel/types"), typeof import("babel-types")>,
-	template: CompatibleSubset<typeof import("@babel/template"), typeof import("babel-template")>,
 	traverse: typeof import("@babel/traverse").default,
 	transformFromAst: (ast: Program, code?: string, options?: any) => { code: string, map: any, ast: Program };
 	version: string,
-}) {
+}): PluginObj<PluginState> {
 
 	const isNewBabel = !/^6\./.test(version);
 
@@ -652,7 +650,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Check if an expression is a function that returns undefined and has no side effects or is a reference to the _empty helper
-	function isEmptyContinuation(continuation: Expression, path: NodePath): boolean {
+	function isEmptyContinuation(continuation: Expression): boolean {
 		if (types.isIdentifier(continuation)) {
 			return helperNameMap.get(continuation) === "_empty";
 		}
@@ -842,7 +840,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 				}
 			} else if (continuation) {
 				// Emit a potentially asynhcronous call to the continuation with the result of the value
-				let expressions: Expression[] = [];
 				if (!types.isIdentifier(value)) {
 					// Return a call to .then on expressions that provably return a Promise
 					if (types.isCallExpression(value) && promiseCallExpressionType(value) !== undefined) {
@@ -857,7 +854,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					value = id;
 				}
 				// Store the continuation in a temporary if it's simple
-				const isEmpty = isEmptyContinuation(continuation, path);
+				const isEmpty = isEmptyContinuation(continuation);
 				let simpleExpression;
 				if (!isEmpty && !types.isIdentifier(continuation) && !(simpleExpression = simpleExpressionForContinuation(continuation, value))) {
 					const id = path.scope.generateUidIdentifier("temp");
@@ -885,7 +882,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 		// Emit calls to helpers
 		const callTarget = types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee) ? value.callee : undefined;
 		const args: Expression[] = [callTarget || value];
-		const ignoreResult = continuation && isEmptyContinuation(continuation, path);
+		const ignoreResult = continuation && isEmptyContinuation(continuation);
 		// Avoid unnecssary arguments to improve code density
 		if (!ignoreResult && continuation) {
 			args.push(continuation);
@@ -948,7 +945,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 		let current: NodePath | undefined = target;
 		while (current && current.node && current.inList && current.container && !current.isFunction()) {
 			for (var i = (current.key as number) + 1; i < (current.container as Node[]).length; i++) {
-				const sibling = (current.container as Node[])[(current.key as number) + 1];
 				if (pathsReturnOrThrow(current).any) {
 					return true;
 				}
@@ -1418,7 +1414,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 		},
 		VariableDeclaration(path) {
 			if (path.node.kind === "var") {
-				const scope = path.scope;
 				const declarations = path.get("declarations");
 				if ((path.parentPath.isForInStatement() || path.parentPath.isForOfStatement()) && path.parentPath.get("left") === path && declarations.length === 1) {
 					const lval = declarations[0].node.id;
@@ -2581,7 +2576,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 				relocateTail(state.generatorState, types.isExpression(expression) ? expression : types.callExpression(functionize(pluginState, [], expression, targetPath), []), undefined, parent, additionalConstantNames, temporary, exitCheck);
 				processExpressions = false;
 			} else if (parent.isForStatement() || parent.isWhileStatement() || parent.isDoWhileStatement() || parent.isForInStatement() || parent.isForOfStatement() || isForAwaitStatement(parent)) {
-				const breaks = pathsBreak(parent);
 				const label = parent.parentPath.isLabeledStatement() ? parent.parentPath.node.label.name : undefined;
 				if (parent.isForInStatement() || parent.isForOfStatement() || isForAwaitStatement(parent)) {
 					const right = parent.get("right");
@@ -2650,7 +2644,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 								}
 							}
 						}
-						const forIdentifier = path.scope.generateUidIdentifier("for");
 						const bodyFunction = rewriteAsyncNode(state.generatorState, parent, functionize(pluginState, [], blockStatement(parent.node.body || []), targetPath), additionalConstantNames, exitIdentifier);
 						const testFunction = unwrapReturnCallWithEmptyArguments(testExpression || voidExpression(), path.scope, additionalConstantNames);
 						const updateFunction = unwrapReturnCallWithEmptyArguments(updateExpression || voidExpression(), path.scope, additionalConstantNames);
@@ -2689,7 +2682,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 							args.push(voidExpression());
 						}
 						if (consequent) {
-							const useBreakIdentifier = !caseItem.caseBreaks.all && caseItem.caseBreaks.any;
 							args.push(consequent);
 							if (!caseItem.caseExits.any && !caseItem.caseBreaks.any) {
 								args.push(emptyFunction(pluginState, parent));
@@ -3361,7 +3353,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 	}
 
 	// Rewrite function arguments with default values to be check statements inserted into the body
-	function rewriteDefaultArguments(targetPath: NodePath<FunctionExpression> | NodePath<ClassMethod>, pluginState: PluginState) {
+	function rewriteDefaultArguments(targetPath: NodePath<FunctionExpression> | NodePath<ClassMethod>) {
 		const statements: Statement[] = [];
 		const params = targetPath.get("params");
 		const literals: string[] = [];
@@ -3424,7 +3416,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 
 	// Main babel plugin implementation and top level visitor
 	return {
-		manipulateOptions(options: any, parserOptions: { plugins: string[] }) {
+		manipulateOptions(_options: any, parserOptions: { plugins: string[] }) {
 			parserOptions.plugins.push("asyncGenerators");
 		},
 		visitor: {
@@ -3437,7 +3429,6 @@ export default function({ types, template, traverse, transformFromAst, version }
 						return;
 					}
 					const declarators = [types.variableDeclarator(node.id, expression)];
-					let targetPath: NodePath<Node>;
 					if (path.parentPath.isExportDeclaration()) {
 						if (path.parentPath.isExportDefaultDeclaration()) {
 							// export default function... is a function declaration in babel 7
@@ -3474,7 +3465,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 						reorderPathBeforeSiblingStatements(targetPath);
 						return;
 					}
-					rewriteDefaultArguments(path, this);
+					rewriteDefaultArguments(path);
 					rewriteThisArgumentsAndHoistFunctions(path, path, false);
 					const bodyPath = path.get("body");
 					if (path.node.generator) {
@@ -3577,9 +3568,8 @@ export default function({ types, template, traverse, transformFromAst, version }
 			ClassMethod(path) {
 				if (path.node.async) {
 					const body = path.get("body");
-					let newBody: NodePath;
 					if (path.node.kind === "method") {
-						rewriteDefaultArguments(path, this);
+						rewriteDefaultArguments(path);
 						body.replaceWith(types.blockStatement([
 							body.node
 						]));
@@ -3647,7 +3637,7 @@ export default function({ types, template, traverse, transformFromAst, version }
 					}
 				}
 			},
-		} as Visitor<PluginState>
+		}
 	}
 }
 

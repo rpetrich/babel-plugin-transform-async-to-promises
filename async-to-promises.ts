@@ -4625,7 +4625,18 @@ export default function({
 							const inlineHelpers = readConfigKey(this.opts, "inlineHelpers");
 							rewriteThisArgumentsAndHoistFunctions(target, inlineHelpers ? target : body, true);
 							rewriteAsyncBlock({ state: this }, target, []);
-							if (inlineHelpers) {
+							const statements = target.get("body");
+							const lastStatement = statements[statements.length - 1];
+							if (!lastStatement || !lastStatement.isReturnStatement()) {
+								const awaitHelper = inlineHelpers
+									? promiseResolve()
+									: helperReference(this, path, "_await");
+								target.node.body.push(types.returnStatement(types.callExpression(awaitHelper, [])));
+							}
+							const canThrow = checkForErrorsAndRewriteReturns(body, this, true);
+							if (!canThrow) {
+								target.replaceWithMultiple(target.node.body);
+							} else if (inlineHelpers) {
 								target.replaceWith(
 									types.tryStatement(
 										target.node,

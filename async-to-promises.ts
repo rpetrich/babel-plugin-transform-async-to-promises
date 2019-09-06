@@ -2855,7 +2855,7 @@ export default function({
 
 	// Check if a path is a for-await statement (not supported on all Babel versions)
 	function isForAwaitStatement(path: NodePath<any>): path is NodePath<ForAwaitStatement> {
-		return path.isForAwaitStatement ? path.isForAwaitStatement() : false;
+		return (path.isForAwaitStatement && path.node) ? path.isForAwaitStatement() : false;
 	}
 
 	// Check if a path is an ArgumentPlaceholder statement (not supported on all Babel versions)

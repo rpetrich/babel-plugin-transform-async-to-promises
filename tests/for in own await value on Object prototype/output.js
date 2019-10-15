@@ -1,1 +1,1 @@
-_async(foo=>{var values=[];return _continue(_forIn(foo,key=>_invokeIgnored(()=>{if(Object.prototype.hasOwnProperty.call(foo,key)){const _push=values.push;return _await(foo[key](),(_foo$key)=>{_push.call(values,_foo$key);});}})),()=>values.sort());})
+_async(foo=>{var key;var values=[];return _continue(_forIn(foo,(key)=>_invokeIgnored(()=>{if(Object.prototype.hasOwnProperty.call(foo,key)){const _push=values.push;return _await(foo[key](),(_foo$key)=>{_push.call(values,_foo$key);});}})),()=>values.sort());})

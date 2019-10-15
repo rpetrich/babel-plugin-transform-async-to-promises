@@ -36,6 +36,7 @@ import {
 	TSParameterProperty,
 	YieldExpression,
 	PatternLike,
+	V8IntrinsicIdentifier,
 } from "@babel/types";
 import { NodePath, Scope, Visitor } from "@babel/traverse";
 import { PluginObj } from "@babel/core";
@@ -69,6 +70,23 @@ function readConfigKey<K extends keyof AsyncToPromisesConfiguration>(
 		}
 	}
 	return defaultConfigValues[key];
+}
+
+function discardingIntrinsics<T extends Node>(node: T | V8IntrinsicIdentifier): Exclude<T, V8IntrinsicIdentifier> {
+	if (node.type == "V8IntrinsicIdentifier") {
+		throw new Error(`Expected either an expression or a statement, got a ${node.type}!`);
+	}
+	return node as Exclude<T, V8IntrinsicIdentifier>;
+}
+
+function clearDeclarationData(declaration: NodePath<VariableDeclaration>) {
+	let path: NodePath = declaration;
+	while (path) {
+		if (path.getData("declaration:var:2") == declaration) {
+			path.setData("declaration:var:2", null);
+		}
+		path = path.parentPath;
+	}
 }
 
 const constantFunctionMethods: { readonly [name: string]: boolean } = {
@@ -709,7 +727,9 @@ export default function({
 		}
 	}
 
-	function isContinuation(possible: Expression): possible is FunctionExpression | ArrowFunctionExpression {
+	function isContinuation(
+		possible: Expression | V8IntrinsicIdentifier
+	): possible is FunctionExpression | ArrowFunctionExpression {
 		return (
 			(types.isFunctionExpression(possible) && possible.id === null) || types.isArrowFunctionExpression(possible)
 		);
@@ -832,7 +852,7 @@ export default function({
 	}
 
 	// Checks if an expression is an identifier or a literal
-	function isIdentifierOrLiteral(expression: Expression) {
+	function isIdentifierOrLiteral(expression: Expression | V8IntrinsicIdentifier) {
 		return types.isIdentifier(expression) || types.isLiteral(expression);
 	}
 
@@ -865,10 +885,10 @@ export default function({
 							return;
 						}
 						const firstParam = continuation.params[0];
-						const replace = (expr: Expression) =>
+						const replace = (expr: Expression | V8IntrinsicIdentifier) =>
 							types.isIdentifier(firstParam) && types.isIdentifier(expr) && expr.name === firstParam.name
 								? value
-								: expr;
+								: discardingIntrinsics(expr);
 						if (isIdentifierOrLiteral(expression)) {
 							return replace(expression);
 						}
@@ -1068,7 +1088,7 @@ export default function({
 			types.isCallExpression(value) && value.arguments.length === 0 && !types.isMemberExpression(value.callee)
 				? value.callee
 				: undefined;
-		const args: Expression[] = [callTarget || value];
+		const args: (Expression | V8IntrinsicIdentifier)[] = [callTarget || value];
 		const ignoreResult = continuation && isEmptyContinuation(continuation);
 		// Avoid unnecssary arguments to improve code density
 		if (!ignoreResult && continuation) {
@@ -1095,14 +1115,14 @@ export default function({
 				case "_continue":
 					return {
 						declarators,
-						expression: args[0],
+						expression: discardingIntrinsics(args[0]),
 					};
 			}
 		}
 		// Emit the call to the helper with the arguments
 		return {
 			declarators,
-			expression: types.callExpression(helperReference(state, path, helperName), args),
+			expression: types.callExpression(helperReference(state, path, helperName), args.map(discardingIntrinsics)),
 		};
 	}
 
@@ -1642,13 +1662,29 @@ export default function({
 
 	// Checks if any identifiers are referenced before a specific path
 	function anyIdentifiersRequireHoisting(identifiers: ReadonlyArray<Identifier>, path: NodePath) {
+		// Workaround bugs with NodePath.willIMaybeExecuteBefore in babel 7.6
+		if (
+			path.key == 0 &&
+			path.parentPath.isBlockStatement() &&
+			path.parentPath.key == "body" &&
+			path.parentPath.parentPath == path.getFunctionParent()
+		) {
+			return false;
+		}
 		for (const id of identifiers) {
 			const binding = path.scope.getBinding(id.name);
+			if (!binding) {
+				return true;
+			}
+			const executingBeforePath = binding.referencePaths.find((referencePath) =>
+				referencePath.willIMaybeExecuteBefore(path)
+			);
+			if (executingBeforePath) {
+				return true;
+			}
 			if (
-				!binding ||
-				(binding.referencePaths.some((referencePath) => referencePath.willIMaybeExecuteBefore(path)) ||
-					(binding.referencePaths.length &&
-						path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath))
+				binding.referencePaths.length &&
+				path.getDeepestCommonAncestorFrom(binding.referencePaths.concat([path])) !== path.parentPath
 			) {
 				return true;
 			}
@@ -1730,16 +1766,14 @@ export default function({
 					}));
 					if (mapped.some(({ identifiers }) => anyIdentifiersRequireHoisting(identifiers, path))) {
 						const expressions: Expression[] = [];
-						for (const { declaration, identifiers } of mapped) {
-							for (const id of identifiers) {
-								this.targetPath.scope.push({ id });
-							}
+						for (const { declaration } of mapped) {
 							if (declaration.node.init) {
 								expressions.push(
 									types.assignmentExpression("=", declaration.node.id, declaration.node.init)
 								);
 							}
 						}
+						clearDeclarationData(path);
 						if (expressions.length === 0) {
 							path.remove();
 						} else if (path.parentPath.isForStatement() && path.parentPath.get("init") === path) {
@@ -1748,6 +1782,11 @@ export default function({
 							path.replaceWithMultiple(
 								expressions.map((expression) => types.expressionStatement(expression))
 							);
+						}
+						for (const { identifiers } of mapped) {
+							for (const id of identifiers) {
+								this.targetPath.scope.push({ id });
+							}
 						}
 					}
 				}
@@ -1943,7 +1982,10 @@ export default function({
 	}
 
 	// Return true if an expression contains entirely literals, with a list of identifiers assumed to have literal values
-	function isExpressionOfLiterals(path: NodePath<Node | null>, literalNames: string[]): boolean {
+	function isExpressionOfLiterals(
+		path: NodePath<Node | V8IntrinsicIdentifier | null>,
+		literalNames: string[]
+	): boolean {
 		if (path.node == null) {
 			return true;
 		}
@@ -2019,7 +2061,13 @@ export default function({
 		if (path.isUnaryExpression()) {
 			return isExpressionOfLiterals(path.get("argument"), literalNames);
 		}
-		if (path.isLogicalExpression() || path.isBinaryExpression()) {
+		if (path.isLogicalExpression()) {
+			return (
+				isExpressionOfLiterals(path.get("left"), literalNames) &&
+				isExpressionOfLiterals(path.get("right"), literalNames)
+			);
+		}
+		if (path.isBinaryExpression()) {
 			return (
 				isExpressionOfLiterals(path.get("left"), literalNames) &&
 				isExpressionOfLiterals(path.get("right"), literalNames)
@@ -2247,7 +2295,7 @@ export default function({
 	// Extract prefixes of an await expression out into declarations so that they can be reused in the continuation
 	function extractDeclarations(
 		state: PluginState,
-		originalAwaitPath: NodePath<AwaitExpression> | NodePath<YieldExpression>,
+		originalAwaitPath: NodePath<AwaitExpression | YieldExpression>,
 		awaitExpression: Expression,
 		additionalConstantNames: string[]
 	): ExtractedDeclarations {
@@ -2328,11 +2376,13 @@ export default function({
 						);
 					}
 					if (awaitPath === originalAwaitPath) {
-						if (!resultIdentifier) {
+						if (resultIdentifier) {
+							parent.replaceWith(resultIdentifier);
+						} else {
 							resultIdentifier =
 								existingIdentifier || generateIdentifierForPath(originalAwaitPath.get("argument"));
+							parent.replaceWith(resultIdentifier);
 						}
-						parent.replaceWith(resultIdentifier);
 						awaitPath = parent;
 						continue;
 					}
@@ -2507,7 +2557,9 @@ export default function({
 							const calleeIdentifier = generateIdentifierForPath(callee);
 							const calleeNode = callee.node;
 							callee.replaceWith(calleeIdentifier);
-							declarations.unshift(types.variableDeclarator(calleeIdentifier, calleeNode));
+							declarations.unshift(
+								types.variableDeclarator(calleeIdentifier, discardingIntrinsics(calleeNode))
+							);
 						}
 					}
 				}
@@ -3018,7 +3070,11 @@ export default function({
 				isForAwaitStatement(parent) ||
 				parent.isLabeledStatement()
 			) {
-				item.breakIdentifiers = replaceReturnsAndBreaks(pluginState, parent.get("body"), item.exitIdentifier);
+				item.breakIdentifiers = replaceReturnsAndBreaks(
+					pluginState,
+					parent.get("body") as NodePath,
+					item.exitIdentifier
+				);
 				if (parent.isForStatement()) {
 					if ((item.forToIdentifiers = identifiersInForToLengthStatement(parent))) {
 						addConstantNames(additionalConstantNames, item.forToIdentifiers.i);
@@ -3218,15 +3274,17 @@ export default function({
 			) {
 				const label = parent.parentPath.isLabeledStatement() ? parent.parentPath.node.label.name : undefined;
 				if (parent.isForInStatement() || parent.isForOfStatement() || isForAwaitStatement(parent)) {
-					const right = parent.get("right");
+					const right = parent.get("right") as NodePath<Expression>;
 					if (awaitPath !== right) {
-						const left = parent.get("left");
+						const left = parent.get("left") as NodePath<VariableDeclaration | LVal>;
 						const loopIdentifier = left.isVariableDeclaration()
 							? left.get("declarations")[0].get("id")
 							: left;
 						if (loopIdentifier.isIdentifier() || loopIdentifier.isPattern()) {
 							const forOwnBodyPath = parent.isForInStatement() && extractForOwnBodyPath(parent);
-							const bodyBlock = blockStatement((forOwnBodyPath || parent.get("body")).node);
+							const bodyBlock = blockStatement(
+								(forOwnBodyPath || (parent.get("body") as NodePath<Statement>)).node
+							);
 							const params = [
 								right.node,
 								rewriteAsyncNode(
@@ -4327,7 +4385,7 @@ export default function({
 	}
 
 	// Rewrite function arguments with default values to be check statements inserted into the body
-	function rewriteDefaultArguments(targetPath: NodePath<FunctionExpression> | NodePath<ClassMethod>) {
+	function rewriteDefaultArguments(targetPath: NodePath<FunctionExpression | ClassMethod>) {
 		const statements: Statement[] = [];
 		const params = targetPath.get("params");
 		const literals: string[] = [];

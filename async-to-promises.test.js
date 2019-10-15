@@ -1,6 +1,6 @@
 const asyncToPromises = require("./async-to-promises");
-const babel6 = require("babel-core");
-const types6 = require("babel-types");
+// const babel6 = require("babel-core");
+// const types6 = require("babel-types");
 const babel7 = require("@babel/core");
 const types7 = require("@babel/types");
 const babylon = require("babylon");
@@ -13,17 +13,17 @@ const testsToRun = [];
 const shouldWriteOutput = false;
 
 const environments = {
-	"babel 6": {
-		babel: babel6,
-		types: types6,
-		pluginUnderTest: asyncToPromises(babel6),
-		pluginMapping: {
-			"transform-modules-commonjs": "babel-plugin-transform-es2015-modules-commonjs",
-			"transform-parameters": "babel-plugin-transform-es2015-parameters",
-			"transform-classes": "babel-plugin-transform-es2015-classes",
-			"external-helpers": "babel-plugin-external-helpers",
-		},
-	},
+	// "babel 6": {
+	// 	babel: babel6,
+	// 	types: types6,
+	// 	pluginUnderTest: asyncToPromises(babel6),
+	// 	pluginMapping: {
+	// 		"transform-modules-commonjs": "babel-plugin-transform-es2015-modules-commonjs",
+	// 		"transform-parameters": "babel-plugin-transform-es2015-parameters",
+	// 		"transform-classes": "babel-plugin-transform-es2015-classes",
+	// 		"external-helpers": "babel-plugin-external-helpers",
+	// 	},
+	// },
 	"babel 7": {
 		babel: babel7,
 		types: types7,

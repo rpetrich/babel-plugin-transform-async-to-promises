@@ -1,1 +1,1 @@
-_async(function(delay,callback){var array=[0,1,2,3,4];return _continue(_forTo(array,function(i){return _invokeIgnored(function(){if(delay){return _awaitIgnored(array[i]);}});}),function(){return callback();});})
+_async(function(delay,callback){var i;function _temp(){if(delay){return _awaitIgnored(array[i]);}}var array=[0,1,2,3,4];i=0;return _continue(_for(function(){return i<array.length;},function(){return i++;},function(){return _invokeIgnored(_temp);}),function(){return callback();});})

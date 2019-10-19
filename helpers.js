@@ -665,17 +665,22 @@ export const _AsyncGenerator = /*#__PURE__*/(function() {
 					_this._pact = null;
 					_this._resolve = null;
 				}
-				_entry(_this).then(returnValue, function(error) {
-					if (error === _earlyReturn) {
-						returnValue(_this._return);
-					} else {
-						const pact = new _Pact();
-						_this._resolve(pact);
-						_this._pact = null;
-						_this._resolve = null;
-						_resolve(pact, 2, error);
-					}
-				});
+				var result = _entry(_this);
+				if (result && result.then) {
+					result.then(returnValue, function(error) {
+						if (error === _earlyReturn) {
+							returnValue(_this._return);
+						} else {
+							const pact = new _Pact();
+							_this._resolve(pact);
+							_this._pact = null;
+							_this._resolve = null;
+							_resolve(pact, 2, error);
+						}
+					});
+				} else {
+					returnValue(result);
+				}
 			} else {
 				// Generator is started and a yield expression is pending, settle it
 				_this._pact = null;

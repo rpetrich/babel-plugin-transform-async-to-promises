@@ -1,3 +1,3 @@
-async f => expect((await f(async _ => {
+expect((await f(async _ => {
 			throw "test";
 		}, _ => undefined))).toBe("suppressed")

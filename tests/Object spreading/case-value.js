@@ -1,1 +1,1 @@
-async f => expect((await f(() => ({ bar: "baz" })))).toBe("baz")
+expect((await f(() => ({ bar: "baz" })))).toBe("baz");

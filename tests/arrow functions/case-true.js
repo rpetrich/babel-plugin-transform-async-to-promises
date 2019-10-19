@@ -1,1 +1,1 @@
-async f => expect((await f(true))).toBe(true)
+expect((await f(true))).toBe(true);

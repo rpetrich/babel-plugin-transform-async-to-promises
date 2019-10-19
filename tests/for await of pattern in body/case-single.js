@@ -1,1 +1,1 @@
-async f => expect((await f([{ value: 1 }]))).toBe(1)
+expect((await f([{ value: 1 }]))).toBe(1)

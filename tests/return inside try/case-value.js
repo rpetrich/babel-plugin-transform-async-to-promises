@@ -1,1 +1,1 @@
-async f => expect((await f(() => 0, []))).toBe('result-try')
+expect((await f(() => 0, []))).toBe('result-try')

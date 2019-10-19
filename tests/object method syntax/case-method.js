@@ -1,1 +1,1 @@
-async f => expect((await f().foo(async () => true))).toBe(true)
+expect((await f().foo(async () => true))).toBe(true)

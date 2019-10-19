@@ -1,1 +1,1 @@
-async f => expect((await f(1)(2))).toBe(3)
+expect((await f(1)(2))).toBe(3)

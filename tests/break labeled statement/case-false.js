@@ -1,1 +1,1 @@
-async f => expect((await f(() => 0))).toEqual(false)
+expect((await f(() => 0))).toEqual(false)

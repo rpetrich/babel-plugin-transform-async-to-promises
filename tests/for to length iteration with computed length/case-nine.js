@@ -1,1 +1,1 @@
-async f => expect((await f([async _ => 1, async _ => 3, async _ => 5]))).toBe(9)
+expect((await f([async _ => 1, async _ => 3, async _ => 5]))).toBe(9)

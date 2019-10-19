@@ -1,1 +1,1 @@
-async f => expect((await f([[1, 2], [3, 4]]))).toBe(10)
+expect((await f([[1, 2], [3, 4]]))).toBe(10)

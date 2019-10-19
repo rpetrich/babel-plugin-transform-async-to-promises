@@ -1,1 +1,1 @@
-async f => expect((await f())).toEqual(['start', 'tryStart', 'waitStart1', 'waitStop1', 'tryStop', 'finallyStart', 'waitStart2', 'waitStop2', 'finallyStop', 'stop'])
+expect((await f())).toEqual(['start', 'tryStart', 'waitStart1', 'waitStop1', 'tryStop', 'finallyStart', 'waitStart2', 'waitStop2', 'finallyStop', 'stop'])

@@ -1,3 +1,3 @@
-async f => expect((await f(_ => {
+expect((await f(_ => {
 			throw "test";
 		}, () => "fallback"))).toBe("fallback")

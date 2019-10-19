@@ -1,1 +1,1 @@
-async f => expect((await f.call({ foo: async _ => 2, bar: async _ => 4 }))).toBe(6)
+expect((await f.call({ foo: async _ => 2, bar: async _ => 4 }))).toBe(6)

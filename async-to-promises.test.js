@@ -1,6 +1,6 @@
 const asyncToPromises = require("./async-to-promises");
-// const babel6 = require("babel-core");
-// const types6 = require("babel-types");
+const babel6 = require("babel-core");
+const types6 = require("babel-types");
 const babel7 = require("@babel/core");
 const types7 = require("@babel/types");
 const babylon = require("babylon");
@@ -13,17 +13,18 @@ const testsToRun = [];
 const shouldWriteOutput = false;
 
 const environments = {
-	// "babel 6": {
-	// 	babel: babel6,
-	// 	types: types6,
-	// 	pluginUnderTest: asyncToPromises(babel6),
-	// 	pluginMapping: {
-	// 		"transform-modules-commonjs": "babel-plugin-transform-es2015-modules-commonjs",
-	// 		"transform-parameters": "babel-plugin-transform-es2015-parameters",
-	// 		"transform-classes": "babel-plugin-transform-es2015-classes",
-	// 		"external-helpers": "babel-plugin-external-helpers",
-	// 	},
-	// },
+	"babel 6": {
+		babel: babel6,
+		types: types6,
+		pluginUnderTest: asyncToPromises(babel6),
+		pluginMapping: {
+			"transform-modules-commonjs": "babel-plugin-transform-es2015-modules-commonjs",
+			"transform-parameters": "babel-plugin-transform-es2015-parameters",
+			"transform-classes": "babel-plugin-transform-es2015-classes",
+			"external-helpers": "babel-plugin-external-helpers",
+		},
+		checkOutput: false,
+	},
 	"babel 7": {
 		babel: babel7,
 		types: types7,
@@ -34,6 +35,7 @@ const environments = {
 			"transform-classes": "@babel/plugin-transform-classes",
 			"external-helpers": "@babel/plugin-external-helpers",
 		},
+		checkOutput: true,
 	},
 };
 
@@ -134,15 +136,13 @@ function extractJustFunction(babel, result) {
 }
 
 function writeOutput(name, myCode, outputCode) {
-	if (shouldWriteOutput) {
-		if (fs.existsSync(name)) {
-			fs.unlinkSync(name);
-		}
-		if (typeof outputCode === "undefined" || myCode !== outputCode) {
-			fs.writeFileSync(name, myCode);
-		} else {
-			fs.symlinkSync("output.js", name);
-		}
+	if (fs.existsSync(name)) {
+		fs.unlinkSync(name);
+	}
+	if (typeof outputCode === "undefined" || myCode !== outputCode) {
+		fs.writeFileSync(name, myCode);
+	} else {
+		fs.symlinkSync("output.js", name);
 	}
 }
 
@@ -235,7 +235,7 @@ for (const name of fs.readdirSync("tests").sort()) {
 			} = readTest(name);
 			for (const babelName of supportedBabels) {
 				describe(babelName, () => {
-					const { babel, types, pluginUnderTest, pluginMapping } = environments[babelName];
+					const { babel, types, pluginUnderTest, pluginMapping, checkOutput } = environments[babelName];
 					const mappedPlugins = plugins.map((pluginName) => pluginMapping[pluginName]);
 					const parseInput = module ? input : "return " + input;
 					const ast = parse(babel, parseInput);
@@ -276,9 +276,11 @@ for (const name of fs.readdirSync("tests").sort()) {
 						ast: true,
 					});
 					const hoistedAndStrippedResult = extractFunction(babel, hoistedResult);
-					writeOutput(`tests/${name}/output.js`, strippedResult);
-					writeOutput(`tests/${name}/inlined.js`, inlinedAndStrippedResult, strippedResult);
-					writeOutput(`tests/${name}/hoisted.js`, hoistedAndStrippedResult, strippedResult);
+					if (shouldWriteOutput && checkOutput) {
+						writeOutput(`tests/${name}/output.js`, strippedResult);
+						writeOutput(`tests/${name}/inlined.js`, inlinedAndStrippedResult, strippedResult);
+						writeOutput(`tests/${name}/hoisted.js`, hoistedAndStrippedResult, strippedResult);
+					}
 					let fn, rewrittenFn, inlinedFn, hoistedFn;
 					try {
 						fn = new Function(`/* ${name} original */${parseInput}`);
@@ -320,7 +322,7 @@ for (const name of fs.readdirSync("tests").sort()) {
 							});
 						});
 					}
-					if (checkOutputMatches) {
+					if (checkOutputMatches && checkOutput) {
 						if (typeof output !== "undefined") {
 							describe("output", () => {
 								test("normal", () => {

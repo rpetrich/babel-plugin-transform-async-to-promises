@@ -233,7 +233,7 @@ export function _forAwaitOf(target, body, check) {
 		iterator.next().then(_resumeAfterNext).then(void 0, _reject);
 		return pact;
 		function _resumeAfterBody(result) {
-			if (check && !check()) {
+			if (check && check()) {
 				return _settle(pact, 1, iterator.return ? iterator.return().then(function() { return result; }) : result);
 			}
 			iterator.next().then(_resumeAfterNext).then(void 0, _reject);

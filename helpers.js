@@ -582,7 +582,7 @@ export function _finallyRethrows(body, finalizer) {
 	if (result && result.then) {
 		return result.then(finalizer.bind(null, false), finalizer.bind(null, true));
 	}
-	return finalizer(false, value);
+	return finalizer(false, result);
 }
 
 // Asynchronously await a promise and invoke a finally continuation that always overrides the result

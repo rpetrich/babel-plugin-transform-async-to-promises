@@ -1337,7 +1337,7 @@ export default function({
 					this.originalScope.removeBinding(declarator.id.name);
 				}
 			}
-			path.scope.registerDeclaration(path);
+			reregisterDeclarations(path);
 		},
 		Function(path) {
 			path.skip();
@@ -1570,7 +1570,7 @@ export default function({
 		}
 		// Insert any new variable declarators the await call needed
 		if (replacement.declarators.length) {
-			target.insertBefore(types.variableDeclaration("const", replacement.declarators));
+			reregisterDeclarations(target.insertBefore(types.variableDeclaration("const", replacement.declarators)));
 		}
 		// Hoist the call arguments if configured to do so
 		if (readConfigKey(generatorState.state.opts, "hoist")) {
@@ -1800,10 +1800,8 @@ export default function({
 			for (const sibling of path.getAllPrevSiblings()) {
 				if (!sibling.isFunctionDeclaration()) {
 					const node = path.node;
-					const parentPath = path.parentPath;
 					path.remove();
-					const paths = sibling.insertBefore(node as any);
-					parentPath.scope.registerDeclaration(paths[0]);
+					reregisterDeclarations(sibling.insertBefore(node as any));
 					return;
 				}
 			}
@@ -4366,9 +4364,20 @@ export default function({
 			if (!sibling.isFunctionDeclaration() && !sibling.isImportDeclaration()) {
 				const newNode = targetPath.node;
 				targetPath.remove();
-				sibling.insertBefore(newNode);
+				reregisterDeclarations(sibling.insertBefore(newNode));
 				return;
 			}
+		}
+	}
+
+	// Register all declarations
+	function reregisterDeclarations(pathOrPaths: any) {
+		if (Array.isArray(pathOrPaths)) {
+			for (const path of pathOrPaths) {
+				reregisterDeclarations(path);
+			}
+		} else if (pathOrPaths && pathOrPaths.isLabeledStatement) {
+			pathOrPaths.scope.registerDeclaration(pathOrPaths);
 		}
 	}
 
@@ -4472,14 +4481,17 @@ export default function({
 							// export default function... is a function declaration in babel 7
 							const targetPath = path.parentPath;
 							targetPath.replaceWith(types.variableDeclaration("const", declarators));
-							targetPath.insertAfter(types.exportDefaultDeclaration(node.id));
+							reregisterDeclarations(targetPath);
+							reregisterDeclarations(targetPath.insertAfter(types.exportDefaultDeclaration(node.id)));
 							reorderPathBeforeSiblingStatements(targetPath);
 						} else {
 							path.replaceWith(types.variableDeclaration("const", declarators));
+							reregisterDeclarations(path);
 							reorderPathBeforeSiblingStatements(path.parentPath);
 						}
 					} else {
 						path.replaceWith(types.variableDeclaration("const", declarators));
+						reregisterDeclarations(path);
 						reorderPathBeforeSiblingStatements(path);
 					}
 				}
@@ -4514,6 +4526,7 @@ export default function({
 								),
 							])
 						);
+						reregisterDeclarations(targetPath);
 						targetPath.insertAfter(types.exportDefaultDeclaration(id));
 						reorderPathBeforeSiblingStatements(targetPath);
 						return;

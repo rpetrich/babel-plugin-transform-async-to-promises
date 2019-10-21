@@ -1277,16 +1277,10 @@ export default function({
 					if (this.additionalConstantNames.indexOf(name) !== -1) {
 						this.scopes.push(this.path.scope.parent);
 					} else {
-						const binding = identifierPath.scope.getBinding(name);
+						const binding = identifierPath.scope.getBinding(name) || this.path.scope.getBinding(name);
 						if (binding) {
-							let scope = binding.scope;
+							const scope = binding.scope;
 							if (scope !== null) {
-								if (binding.kind === "var" && !binding.path.isFunction()) {
-									const functionScope = scope.getFunctionParent() || scope.getProgramParent();
-									if (functionScope !== null) {
-										scope = functionScope;
-									}
-								}
 								if (this.pathScopes.indexOf(scope) !== -1) {
 									this.scopes.push(scope);
 								}
@@ -1332,12 +1326,13 @@ export default function({
 	// Helper visitor to reregister bindings on demand (working around some bugs in babel's scope tracking)
 	const reregisterVariableVisitor: Visitor<{ originalScope: Scope }> = {
 		VariableDeclaration(path) {
-			for (const declarator of path.node.declarations) {
-				if (declarator.id.type === "Identifier") {
-					this.originalScope.removeBinding(declarator.id.name);
-				}
-			}
-			reregisterDeclarations(path);
+			path.scope.registerDeclaration(path);
+		},
+		FunctionDeclaration(path) {
+			path.parentPath.scope.registerDeclaration(path);
+		},
+		ClassDeclaration(path) {
+			path.scope.registerDeclaration(path);
 		},
 		Function(path) {
 			path.skip();
@@ -1355,7 +1350,8 @@ export default function({
 			throw scope.path.buildCodeFrameError(`Could not find newly created binding for ${id.name}!`, Error);
 		}
 		// Replace it with a function declaration, because it generates smaller code and we no longer have to worry about const/let ordering issues
-		binding.path.parentPath.replaceWith(
+		const targetPath = binding.path.parentPath;
+		targetPath.replaceWith(
 			types.functionDeclaration(
 				id,
 				func.params,
@@ -1366,6 +1362,7 @@ export default function({
 				func.async
 			)
 		);
+		reregisterDeclarations(targetPath);
 	}
 
 	// Hoist function expressions into a scope where they can be reused
@@ -1465,13 +1462,15 @@ export default function({
 	// Hoist the arguments of a call expression, so that additional closures aren't unnecessarily created at runtime
 	function hoistCallArguments(state: PluginState, path: NodePath, additionalConstantNames: string[]) {
 		if (path.isCallExpression()) {
-			// Workaround problems with babel not detecting scope properly with vars that are relocated
-			const functionParent = path.getFunctionParent();
-			if (functionParent !== null) {
-				functionParent.traverse(reregisterVariableVisitor, { originalScope: path.scope });
-			}
 			const callee = path.node.callee;
 			if ((types.isIdentifier(callee) || types.isMemberExpression(callee)) && helperNameMap.has(callee)) {
+				const functionParent = path.getFunctionParent();
+				if (functionParent) {
+					const scope = functionParent.scope as any;
+					if (scope.crawl) {
+						scope.crawl();
+					}
+				}
 				path.traverse(hoistCallArgumentsVisitor, { state, additionalConstantNames });
 			}
 		}
@@ -1593,20 +1592,30 @@ export default function({
 		const declarators: { [name: string]: { kind: "const"; id: Identifier; init: Expression } } = Object.create(
 			null
 		);
-		const result = callback((name, path) => {
-			if (!Object.hasOwnProperty.call(declarators, name)) {
-				declarators[name] = {
-					kind: "const",
-					id: path.scope.generateUidIdentifier(name),
-					init: path.node,
-				};
+		return callback((name, path) => {
+			if (Object.hasOwnProperty.call(declarators, name)) {
+				const id = declarators[name].id;
+				const binding = targetPath.scope.getBinding(id.name);
+				if (!binding || binding.path.get("init") !== path) {
+					path.replaceWith(types.identifier(id.name));
+				}
+			} else {
+				const id = path.scope.generateUidIdentifier(name);
+				const init = path.node;
+				path.replaceWith(id);
+				targetPath.scope.push(
+					(declarators[name] = {
+						kind: "const",
+						id,
+						init,
+					})
+				);
+				const binding = targetPath.scope.getBinding(id.name);
+				if (binding) {
+					binding.path.skip();
+				}
 			}
-			path.replaceWith(declarators[name].id);
 		});
-		for (const key of Object.keys(declarators)) {
-			targetPath.scope.push(declarators[key]);
-		}
-		return result;
 	}
 
 	// Rewrite this expression visitor
@@ -1661,24 +1670,45 @@ export default function({
 	}
 
 	// Checks if any identifiers are referenced before a specific path
-	function anyIdentifiersRequireHoisting(identifiers: ReadonlyArray<Identifier>, path: NodePath) {
-		// Workaround bugs with NodePath.willIMaybeExecuteBefore in babel 7.6
-		if (
-			path.key == 0 &&
-			path.parentPath.isBlockStatement() &&
-			path.parentPath.key == "body" &&
-			path.parentPath.parentPath == path.getFunctionParent()
-		) {
-			return false;
-		}
+	function anyIdentifiersRequireHoisting(
+		identifiers: ReadonlyArray<Identifier>,
+		path: NodePath<VariableDeclaration>
+	) {
+		const ancestry = path.getAncestry().reverse();
 		for (const id of identifiers) {
 			const binding = path.scope.getBinding(id.name);
 			if (!binding) {
 				return true;
 			}
-			const executingBeforePath = binding.referencePaths.find((referencePath) =>
-				referencePath.willIMaybeExecuteBefore(path)
-			);
+			const executingBeforePath = binding.referencePaths.find((referencePath) => {
+				if (!referencePath.willIMaybeExecuteBefore(path)) {
+					return false;
+				}
+				// Workaround bugs in babel's willIMaybeExecuteBefore
+				const referenceAncestry = referencePath.getAncestry().reverse();
+				const length = ancestry.length < referenceAncestry.length ? ancestry.length : referenceAncestry.length;
+				for (let i = 1; i < length; i++) {
+					if (ancestry[i] !== referenceAncestry[i]) {
+						if (
+							typeof ancestry[i].key === "number" &&
+							typeof referenceAncestry[i].key === "number" &&
+							ancestry[i].key < referenceAncestry[i].key
+						) {
+							return false;
+						}
+						if (
+							(ancestry[i - 1].isForOfStatement() || ancestry[i - 1].isForInStatement()) &&
+							ancestry[i].key === "left"
+						) {
+							return false;
+						}
+						if (ancestry[i - 1].isForStatement() && ancestry[i].key === "init") {
+							return false;
+						}
+					}
+				}
+				return true;
+			});
 			if (executingBeforePath) {
 				return true;
 			}
@@ -1729,6 +1759,7 @@ export default function({
 						grandparent.replaceWith(
 							types.callExpression(types.memberExpression(parent.node, types.identifier("call")), args)
 						);
+						reregisterDeclarations(grandparent);
 					}
 				}
 			}
@@ -1739,32 +1770,25 @@ export default function({
 		},
 		Identifier(path) {
 			// Rewrite arguments
-			if (path.node.name === "arguments") {
+			if (path.node.name === "arguments" && identifierSearchesScope(path)) {
 				this.rewrite("arguments", path);
 			}
 		},
 		VariableDeclaration(path) {
 			if (path.node.kind === "var") {
 				const declarations = path.get("declarations");
-				if (
-					(path.parentPath.isForInStatement() || path.parentPath.isForOfStatement()) &&
-					path.parentPath.get("left") === path &&
-					declarations.length === 1
-				) {
-					const lval = declarations[0].node.id;
-					const identifiers = identifiersInLVal(lval);
-					if (anyIdentifiersRequireHoisting(identifiers, path)) {
-						for (const id of identifiers) {
-							this.targetPath.scope.push({ id });
-						}
-						path.replaceWith(lval);
-					}
-				} else {
-					const mapped = declarations.map((declaration) => ({
-						declaration,
-						identifiers: identifiersInLVal(declaration.node.id),
-					}));
-					if (mapped.some(({ identifiers }) => anyIdentifiersRequireHoisting(identifiers, path))) {
+				const mapped = declarations.map((declaration) => ({
+					declaration,
+					identifiers: identifiersInLVal(declaration.node.id),
+				}));
+				if (mapped.some(({ identifiers }) => anyIdentifiersRequireHoisting(identifiers, path))) {
+					if (
+						(path.parentPath.isForInStatement() || path.parentPath.isForOfStatement()) &&
+						path.parentPath.get("left") === path &&
+						declarations.length === 1
+					) {
+						path.replaceWith(declarations[0].node.id);
+					} else {
 						const expressions: Expression[] = [];
 						for (const { declaration } of mapped) {
 							if (declaration.node.init) {
@@ -1776,6 +1800,8 @@ export default function({
 						clearDeclarationData(path);
 						if (expressions.length === 0) {
 							path.remove();
+						} else if (expressions.length === 1) {
+							path.replaceWith(expressions[0]);
 						} else if (path.parentPath.isForStatement() && path.parentPath.get("init") === path) {
 							path.replaceWith(types.sequenceExpression(expressions));
 						} else {
@@ -1783,10 +1809,10 @@ export default function({
 								expressions.map((expression) => types.expressionStatement(expression))
 							);
 						}
-						for (const { identifiers } of mapped) {
-							for (const id of identifiers) {
-								this.targetPath.scope.push({ id });
-							}
+					}
+					for (const { identifiers } of mapped) {
+						for (const id of identifiers) {
+							this.targetPath.scope.push({ id });
 						}
 					}
 				}
@@ -1924,7 +1950,7 @@ export default function({
 							return callTarget;
 						}
 					} else if (isContinuation(callTarget)) {
-						return callTarget;
+						return unwrapReturnCallWithEmptyArguments(callTarget, scope, additionalConstantNames);
 					}
 				}
 			}
@@ -3405,8 +3431,12 @@ export default function({
 							if (init) {
 								const initNode = init.node;
 								if (initNode !== null) {
-									parent.insertBefore(
-										types.isExpression(initNode) ? types.expressionStatement(initNode) : initNode
+									reregisterDeclarations(
+										parent.insertBefore(
+											types.isExpression(initNode)
+												? types.expressionStatement(initNode)
+												: initNode
+										)
 									);
 								}
 							}
@@ -3606,7 +3636,9 @@ export default function({
 						addConstantNames(additionalConstantNames, id);
 					}
 					if (parent.parentPath.isBlockStatement()) {
-						parent.insertBefore(types.variableDeclaration(declarationKind, declarations));
+						reregisterDeclarations(
+							parent.insertBefore(types.variableDeclaration(declarationKind, declarations))
+						);
 					} else {
 						parent.replaceWith(
 							blockStatement([
@@ -3614,7 +3646,9 @@ export default function({
 								types.isStatement(parent.node) ? parent.node : returnStatement(parent.node),
 							])
 						);
-						parent = ((parent as unknown) as NodePath<BlockStatement>).get("body")[1];
+						const body = ((parent as unknown) as NodePath<BlockStatement>).get("body");
+						reregisterDeclarations(body[0]);
+						parent = body[1];
 					}
 				}
 				if (reusingExisting) {
@@ -3814,22 +3848,22 @@ export default function({
 				isHelperDefinitionSet.add(declaration);
 				if (before.length === 0) {
 					const target = after[0];
-					target.insertBefore(declaration);
+					reregisterDeclarations(target.insertBefore(declaration));
 					return getPreviousSibling(target)!;
 				} else {
 					const target = before[before.length - 1];
-					target.insertAfter(declaration);
+					reregisterDeclarations(target.insertAfter(declaration));
 					return getNextSibling(target)!;
 				}
 			} else {
 				isHelperDefinitionSet.add(value);
 				if (before.length === 0) {
 					isHelperDefinitionSet.add(destinationPath.node);
-					destinationPath.insertBefore(value);
+					reregisterDeclarations(destinationPath.insertBefore(value));
 					return getPreviousSibling(destinationPath)!;
 				} else if (after.length === 0) {
 					isHelperDefinitionSet.add(destinationPath.node);
-					destinationPath.insertAfter(value);
+					reregisterDeclarations(destinationPath.insertAfter(value));
 					return getNextSibling(destinationPath)!;
 				} else {
 					const beforeNode = types.variableDeclaration(
@@ -3842,8 +3876,9 @@ export default function({
 						after.map((path: NodePath) => path.node as VariableDeclarator)
 					);
 					destinationPath.replaceWith(afterNode);
-					destinationPath.insertBefore(beforeNode);
-					destinationPath.insertBefore(value);
+					reregisterDeclarations(destinationPath);
+					reregisterDeclarations(destinationPath.insertBefore(beforeNode));
+					reregisterDeclarations(destinationPath.insertBefore(value));
 					return getPreviousSibling(destinationPath)!;
 				}
 			}
@@ -3855,7 +3890,8 @@ export default function({
 			}
 			const oldNode = destinationPath.node;
 			destinationPath.replaceWith(value);
-			destinationPath.insertAfter(oldNode);
+			reregisterDeclarations(destinationPath);
+			reregisterDeclarations(destinationPath.insertAfter(oldNode));
 			return destinationPath;
 		}
 	}
@@ -4377,7 +4413,15 @@ export default function({
 				reregisterDeclarations(path);
 			}
 		} else if (pathOrPaths && pathOrPaths.isLabeledStatement) {
-			pathOrPaths.scope.registerDeclaration(pathOrPaths);
+			const scope = pathOrPaths.isFunction() ? pathOrPaths.parentPath.scope : pathOrPaths.scope;
+			if (
+				pathOrPaths.isVariableDeclaration() ||
+				pathOrPaths.isFunctionDeclaration() ||
+				pathOrPaths.isClassDeclaration()
+			) {
+				scope.registerDeclaration(pathOrPaths);
+			}
+			pathOrPaths.traverse(reregisterVariableVisitor, { originalScope: pathOrPaths.scope });
 		}
 	}
 
@@ -4473,6 +4517,7 @@ export default function({
 					);
 					if (node.id === null) {
 						path.replaceWith(expression);
+						reregisterDeclarations(path);
 						return;
 					}
 					const declarators = [types.variableDeclarator(node.id, expression)];
@@ -4504,6 +4549,7 @@ export default function({
 						? path.node.body
 						: blockStatement([types.returnStatement(path.node.body)]);
 					path.replaceWith(types.functionExpression(undefined, node.params, body, false, node.async));
+					reregisterDeclarations(path);
 				}
 			},
 			FunctionExpression(path) {
@@ -4527,7 +4573,7 @@ export default function({
 							])
 						);
 						reregisterDeclarations(targetPath);
-						targetPath.insertAfter(types.exportDefaultDeclaration(id));
+						reregisterDeclarations(targetPath.insertAfter(types.exportDefaultDeclaration(id)));
 						reorderPathBeforeSiblingStatements(targetPath);
 						return;
 					}

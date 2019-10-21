@@ -23,7 +23,7 @@ const environments = {
 			"transform-classes": "babel-plugin-transform-es2015-classes",
 			"external-helpers": "babel-plugin-external-helpers",
 		},
-		checkOutput: false,
+		checkOutput: true,
 	},
 	"babel 7": {
 		babel: babel7,

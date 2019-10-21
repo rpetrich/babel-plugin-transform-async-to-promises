@@ -1,9 +1,4 @@
 const asyncToPromises = require("./async-to-promises");
-const babel6 = require("babel-core");
-const types6 = require("babel-types");
-const babel7 = require("@babel/core");
-const types7 = require("@babel/types");
-const babylon = require("babylon");
 const fs = require("fs");
 const util = require("util");
 
@@ -14,9 +9,15 @@ const shouldWriteOutput = false;
 
 const environments = {
 	"babel 6": {
-		babel: babel6,
-		types: types6,
-		pluginUnderTest: asyncToPromises(babel6),
+		babel: require("babel-core"),
+		types: require("babel-types"),
+		parse(babel, input) {
+			return require("babylon").parse(input, {
+				allowReturnOutsideFunction: true,
+				sourceType: "module",
+				plugins: ["asyncGenerators", "objectRestSpread"],
+			});
+		},
 		pluginMapping: {
 			"transform-modules-commonjs": "babel-plugin-transform-es2015-modules-commonjs",
 			"transform-parameters": "babel-plugin-transform-es2015-parameters",
@@ -26,9 +27,14 @@ const environments = {
 		checkOutput: true,
 	},
 	"babel 7": {
-		babel: babel7,
-		types: types7,
-		pluginUnderTest: asyncToPromises(babel7),
+		babel: require("@babel/core"),
+		types: require("@babel/types"),
+		parse(babel, input) {
+			return babel.parse(input, {
+				parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] },
+				sourceType: "module",
+			});
+		},
 		pluginMapping: {
 			"transform-modules-commonjs": "@babel/plugin-transform-modules-commonjs",
 			"transform-parameters": "@babel/plugin-transform-parameters",
@@ -38,6 +44,10 @@ const environments = {
 		checkOutput: true,
 	},
 };
+
+for (const environment of Object.values(environments)) {
+	environment.pluginUnderTest = asyncToPromises(environment.babel);
+}
 
 const helperNames = [
 	"_Pact",
@@ -197,20 +207,7 @@ function readTest(name) {
 	};
 }
 
-function parse(babel, input) {
-	return babel.parse
-		? babel.parse(input, {
-				parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] },
-				sourceType: "module",
-		  })
-		: babylon.parse(input, {
-				allowReturnOutsideFunction: true,
-				sourceType: "module",
-				plugins: ["asyncGenerators", "objectRestSpread"],
-		  });
-}
-
-for (const { babel } of Object.values(environments)) {
+for (const { babel, parse } of Object.values(environments)) {
 	parse(babel, "let test;");
 }
 
@@ -235,7 +232,9 @@ for (const name of fs.readdirSync("tests").sort()) {
 			} = readTest(name);
 			for (const babelName of supportedBabels) {
 				describe(babelName, () => {
-					const { babel, types, pluginUnderTest, pluginMapping, checkOutput } = environments[babelName];
+					const { babel, parse, types, pluginUnderTest, pluginMapping, checkOutput } = environments[
+						babelName
+					];
 					const mappedPlugins = plugins.map((pluginName) => pluginMapping[pluginName]);
 					const parseInput = module ? input : "return " + input;
 					const ast = parse(babel, parseInput);

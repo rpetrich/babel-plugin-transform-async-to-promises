@@ -1550,9 +1550,16 @@ export default function({
 					blocks = [declaration].concat(blocks);
 					temporary = temporaryIdentifier;
 				}
-				blocks = removeUnnecessaryReturnStatements(
-					[types.ifStatement(exitCheck, returnStatement(temporary)) as Statement].concat(blocks)
-				);
+				if (temporary !== undefined) {
+					blocks = removeUnnecessaryReturnStatements(
+						[types.ifStatement(exitCheck, returnStatement(temporary)) as Statement].concat(blocks)
+					);
+				} else {
+					const minify = readConfigKey(generatorState.state.opts, "minify");
+					blocks = removeUnnecessaryReturnStatements(
+						[types.ifStatement(logicalNot(exitCheck, minify), blocks.length === 1 ? blocks[0] : blockStatement(blocks)) as Statement]
+					);
+				}
 			}
 			// Build a function expression for it
 			const fn = functionize(generatorState.state, temporary ? [temporary] : [], blockStatement(blocks), target);

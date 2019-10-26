@@ -7,6 +7,9 @@ const checkOutputMatches = true;
 const testsToRun = [];
 const shouldWriteOutput = false;
 
+const runInlined = true;
+const runHoisted = true;
+
 const environments = {
 	"babel 6": {
 		babel: require("babel-core"),
@@ -261,24 +264,32 @@ for (const name of fs.readdirSync("tests").sort()) {
 						ast: true,
 					});
 					const strippedResult = extractFunction(babel, result);
-					const inlinedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, {
-						presets,
-						plugins: mappedPlugins.concat([[pluginUnderTest, { inlineHelpers: true }]]),
-						compact: true,
-						ast: true,
-					});
-					const inlinedAndStrippedResult = extractFunction(babel, inlinedResult);
-					const hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, {
-						presets,
-						plugins: mappedPlugins.concat([[pluginUnderTest, { hoist: true, minify: true }]]),
-						compact: true,
-						ast: true,
-					});
-					const hoistedAndStrippedResult = extractFunction(babel, hoistedResult);
+					if (runInlined) {
+						var inlinedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, {
+							presets,
+							plugins: mappedPlugins.concat([[pluginUnderTest, { inlineHelpers: true }]]),
+							compact: true,
+							ast: true,
+						});
+						var inlinedAndStrippedResult = extractFunction(babel, inlinedResult);
+					}
+					if (runHoisted) {
+						var hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, {
+							presets,
+							plugins: mappedPlugins.concat([[pluginUnderTest, { hoist: true, minify: true }]]),
+							compact: true,
+							ast: true,
+						});
+						var hoistedAndStrippedResult = extractFunction(babel, hoistedResult);
+					}
 					if (shouldWriteOutput && checkOutput) {
 						writeOutput(`tests/${name}/output.js`, strippedResult);
-						writeOutput(`tests/${name}/inlined.js`, inlinedAndStrippedResult, strippedResult);
-						writeOutput(`tests/${name}/hoisted.js`, hoistedAndStrippedResult, strippedResult);
+						if (runInlined) {
+							writeOutput(`tests/${name}/inlined.js`, inlinedAndStrippedResult, strippedResult);
+						}
+						if (runHoisted) {
+							writeOutput(`tests/${name}/hoisted.js`, hoistedAndStrippedResult, strippedResult);
+						}
 					}
 					let fn, rewrittenFn, inlinedFn, hoistedFn;
 					try {
@@ -297,28 +308,32 @@ for (const name of fs.readdirSync("tests").sort()) {
 									throw e;
 								}
 							});
-							test("inlined", () => {
-								const code = inlinedResult.code;
-								try {
-									inlinedFn = new Function(`/* ${name} inlined */${code}`);
-								} catch (e) {
-									if (e instanceof SyntaxError) {
-										e.message += "\n" + code;
+							if (runInlined) {
+								test("inlined", () => {
+									const code = inlinedResult.code;
+									try {
+										inlinedFn = new Function(`/* ${name} inlined */${code}`);
+									} catch (e) {
+										if (e instanceof SyntaxError) {
+											e.message += "\n" + code;
+										}
+										throw e;
 									}
-									throw e;
-								}
-							});
-							test("hoisted", () => {
-								const code = hoistedResult.code;
-								try {
-									hoistedFn = new Function(`/* ${name} hoisted */${code}`);
-								} catch (e) {
-									if (e instanceof SyntaxError) {
-										e.message += "\n" + code;
+								});
+							}
+							if (runHoisted) {
+								test("hoisted", () => {
+									const code = hoistedResult.code;
+									try {
+										hoistedFn = new Function(`/* ${name} hoisted */${code}`);
+									} catch (e) {
+										if (e instanceof SyntaxError) {
+											e.message += "\n" + code;
+										}
+										throw e;
 									}
-									throw e;
-								}
-							});
+								});
+							}
 						});
 					}
 					if (checkOutputMatches && checkOutput) {
@@ -327,16 +342,20 @@ for (const name of fs.readdirSync("tests").sort()) {
 								test("normal", () => {
 									expect(strippedResult).toBe(output);
 								});
-								test("inlined", () => {
-									expect(inlinedAndStrippedResult).toBe(
-										typeof inlined !== "undefined" ? inlined : output
-									);
-								});
-								test("hoisted", () => {
-									expect(hoistedAndStrippedResult).toBe(
-										typeof hoisted !== "undefined" ? hoisted : output
-									);
-								});
+								if (runInlined) {
+									test("inlined", () => {
+										expect(inlinedAndStrippedResult).toBe(
+											typeof inlined !== "undefined" ? inlined : output
+										);
+									});
+								}
+								if (runHoisted) {
+									test("hoisted", () => {
+										expect(hoistedAndStrippedResult).toBe(
+											typeof hoisted !== "undefined" ? hoisted : output
+										);
+									});
+								}
 							});
 						}
 					}
@@ -353,16 +372,20 @@ for (const name of fs.readdirSync("tests").sort()) {
 										return cases[key](rewrittenFn());
 									}
 								});
-								test("inlined", () => {
-									if (inlinedFn) {
-										return cases[key](inlinedFn());
-									}
-								});
-								test("hoisted", () => {
-									if (hoistedFn) {
-										return cases[key](hoistedFn());
-									}
-								});
+								if (runInlined) {
+									test("inlined", () => {
+										if (inlinedFn) {
+											return cases[key](inlinedFn());
+										}
+									});
+								}
+								if (runHoisted) {
+									test("hoisted", () => {
+										if (hoistedFn) {
+											return cases[key](hoistedFn());
+										}
+									});
+								}
 							});
 						}
 					}

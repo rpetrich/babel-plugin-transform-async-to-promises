@@ -20,6 +20,7 @@ import {
 	ForOfStatement,
 	Function,
 	FunctionExpression,
+	LogicalExpression,
 	MemberExpression,
 	NumericLiteral,
 	ThisExpression,
@@ -1117,6 +1118,19 @@ export default function({
 						declarators,
 						expression: discardingIntrinsics(args[0]),
 					};
+				case "_continueIgnored":
+					const firstArgument = args[0];
+					if (
+						types.isCallExpression(firstArgument) &&
+						(types.isIdentifier(firstArgument.callee) || types.isMemberExpression(firstArgument.callee))
+					) {
+						if (helperNameMap.get(firstArgument.callee) === "_continueIgnored") {
+							return {
+								declarators,
+								expression: firstArgument,
+							};
+						}
+					}
 			}
 		}
 		// Emit the call to the helper with the arguments
@@ -2123,12 +2137,12 @@ export default function({
 	}
 
 	// Emit a truthy literal, using 1/0 if minified
-	function booleanLiteral(value: boolean, minify?: boolean) {
+	function booleanLiteral(value: boolean, minify?: boolean): NumericLiteral | BooleanLiteral {
 		return minify ? types.numericLiteral(value ? 1 : 0) : types.booleanLiteral(value);
 	}
 
 	// Emit an optimized conditional expression, simplifying if possible
-	function conditionalExpression(test: Expression, consequent: Expression, alternate: Expression) {
+	function conditionalExpression(test: Expression, consequent: Expression, alternate: Expression): Expression {
 		const looseValue = extractLooseBooleanValue(test);
 		if (typeof looseValue !== "undefined") {
 			return looseValue ? consequent : alternate;
@@ -2190,7 +2204,7 @@ export default function({
 	}
 
 	// Emit a logical or, optimizing based on the truthiness of both sides
-	function logicalOr(left: Expression, right: Expression): Expression {
+	function logicalOr<L extends Expression, R extends Expression>(left: L, right: R): LogicalExpression | L | R {
 		if (extractLooseBooleanValue(left) === true) {
 			return left;
 		} else if (extractBooleanValue(left) === false) {
@@ -2201,7 +2215,11 @@ export default function({
 	}
 
 	// Emit a logical or, optimizing based on the loose truthiness of both sides assuming that the consumer of the expression only cares about truthiness
-	function logicalOrLoose(left: Expression, right: Expression, minify?: boolean): Expression {
+	function logicalOrLoose<L extends Expression, R extends Expression>(
+		left: L,
+		right: R,
+		minify?: boolean
+	): LogicalExpression | BooleanLiteral | NumericLiteral | L | R {
 		switch (extractLooseBooleanValue(left)) {
 			case false:
 				return extractLooseBooleanValue(right) === false ? booleanLiteral(false, minify) : right;
@@ -2676,16 +2694,18 @@ export default function({
 	// Build an expression that checks if a loop should be exited
 	function buildBreakExitCheck(
 		state: PluginState,
-		exitIdentifier: Identifier | undefined,
-		breakIdentifiers: { identifier: Identifier }[]
+		exitIdentifier?: Identifier | undefined,
+		breakIdentifiers?: { identifier: Identifier }[]
 	): Expression | undefined {
-		let expressions: Expression[] = (breakIdentifiers.map((identifier) => identifier.identifier) || []).concat(
-			exitIdentifier ? [exitIdentifier] : []
-		);
-		if (expressions.length) {
-			return expressions.reduce((accumulator, identifier) =>
-				logicalOrLoose(accumulator, identifier, readConfigKey(state.opts, "minify"))
-			);
+		if (breakIdentifiers !== undefined && breakIdentifiers.length > 0) {
+			const minify = readConfigKey(state.opts, "minify");
+			const first = breakIdentifiers[0].identifier as Expression;
+			const partial = breakIdentifiers
+				.slice(1)
+				.reduce((accumulator, { identifier }) => logicalOrLoose(accumulator, identifier, minify), first);
+			return exitIdentifier ? logicalOrLoose(partial, exitIdentifier, minify) : partial;
+		} else {
+			return exitIdentifier;
 		}
 	}
 
@@ -2784,27 +2804,43 @@ export default function({
 	function replaceReturnsAndBreaks(
 		pluginState: PluginState,
 		path: NodePath,
-		exitIdentifier?: Identifier
+		exitIdentifier: Identifier | undefined,
+		existingUsedIdentifiers?: BreakContinueItem[]
 	): BreakContinueItem[] {
+		const usedIdentifiers: BreakContinueItem[] = [];
+		// Import existing break identifiers that still exist in scope
+		if (existingUsedIdentifiers !== undefined) {
+			for (const item of existingUsedIdentifiers) {
+				if (
+					path.parentPath.scope.getBinding(item.identifier.name) ===
+					path.scope.getBinding(item.identifier.name)
+				) {
+					usedIdentifiers.push(item);
+				}
+			}
+		}
+		// Search for new breaks
 		const state = {
 			pluginState,
 			exitIdentifier,
 			breakIdentifiers: breakContinueStackForPath(path),
-			usedIdentifiers: [] as BreakContinueItem[],
+			usedIdentifiers,
 		};
 		path.traverse(replaceReturnsAndBreaksVisitor, state);
-		for (const identifier of state.usedIdentifiers) {
-			if (!identifier.path.parentPath.scope.getBinding(identifier.identifier.name)) {
-				identifier.path.parentPath.scope.push({
+		// Add declarations for any new identifiers
+		for (const { identifier, path: identifierPath } of usedIdentifiers) {
+			const parentScope = identifierPath.parentPath.scope;
+			if (!parentScope.getBinding(identifier.name)) {
+				parentScope.push({
 					kind: "let",
-					id: identifier.identifier,
+					id: identifier,
 					init: readConfigKey(pluginState.opts, "minify")
 						? undefined
 						: booleanLiteral(false, readConfigKey(pluginState.opts, "minify")),
 				});
 			}
 		}
-		return state.usedIdentifiers;
+		return usedIdentifiers;
 	}
 
 	// Finds the break identifier associated with a path
@@ -3083,6 +3119,7 @@ export default function({
 				});
 			}
 		}
+		let breakIdentifiers: BreakContinueItem[] = [];
 		for (const item of paths) {
 			const parent = item.parent;
 			if (
@@ -3094,10 +3131,11 @@ export default function({
 				isForAwaitStatement(parent) ||
 				parent.isLabeledStatement()
 			) {
-				item.breakIdentifiers = replaceReturnsAndBreaks(
+				breakIdentifiers = item.breakIdentifiers = replaceReturnsAndBreaks(
 					pluginState,
 					parent.get("body") as NodePath,
-					item.exitIdentifier
+					item.exitIdentifier,
+					breakIdentifiers
 				);
 				if (parent.isForStatement()) {
 					if ((item.forToIdentifiers = identifiersInForToLengthStatement(parent))) {
@@ -3105,17 +3143,38 @@ export default function({
 					}
 				}
 			} else if (item.parent.isSwitchStatement()) {
+				breakIdentifiers = breakIdentifiers.slice();
 				item.cases = item.parent.get("cases").map((casePath) => {
+					const caseExits = pathsReturnOrThrow(casePath);
+					const caseBreaks = pathsBreak(casePath);
+					const caseBreakIdentifiers = (item.breakIdentifiers = replaceReturnsAndBreaks(
+						pluginState,
+						casePath,
+						item.exitIdentifier,
+						breakIdentifiers
+					));
+					for (const breakItem of caseBreakIdentifiers) {
+						if (
+							!breakIdentifiers.find((existing) => existing.identifier.name === breakItem.identifier.name)
+						) {
+							breakIdentifiers.push(breakItem);
+						}
+					}
 					return {
 						casePath,
-						caseExits: pathsReturnOrThrow(casePath),
-						caseBreaks: pathsBreak(casePath),
-						breakIdentifiers: replaceReturnsAndBreaks(pluginState, casePath, item.exitIdentifier),
+						caseExits,
+						caseBreaks,
+						breakIdentifiers: caseBreakIdentifiers,
 						test: casePath.node.test,
 					};
 				});
-			} else if (item.exitIdentifier) {
-				replaceReturnsAndBreaks(pluginState, parent, item.exitIdentifier);
+			} else {
+				breakIdentifiers = item.breakIdentifiers = replaceReturnsAndBreaks(
+					pluginState,
+					parent,
+					item.exitIdentifier,
+					breakIdentifiers
+				);
 			}
 		}
 		for (const {
@@ -3184,7 +3243,7 @@ export default function({
 				const exitCheck = buildBreakExitCheck(
 					pluginState,
 					explicitExits.any && !explicitExits.all ? exitIdentifier : undefined,
-					[]
+					breakIdentifiers
 				);
 				let expression: Expression | Statement = rewriteAsyncNode(
 					state.generatorState,
@@ -3321,7 +3380,7 @@ export default function({
 									exitIdentifier
 								),
 							];
-							const exitCheck = buildBreakExitCheck(pluginState, exitIdentifier, breakIdentifiers || []);
+							const exitCheck = buildBreakExitCheck(pluginState, exitIdentifier, breakIdentifiers);
 							if (exitCheck) {
 								params.push(
 									functionize(
@@ -3373,7 +3432,7 @@ export default function({
 					}
 				} else {
 					let testExpression = parent.node.test;
-					const breakExitCheck = buildBreakExitCheck(pluginState, exitIdentifier, breakIdentifiers || []);
+					const breakExitCheck = buildBreakExitCheck(pluginState, exitIdentifier, breakIdentifiers);
 					if (breakExitCheck) {
 						const inverted = logicalNot(breakExitCheck, readConfigKey(pluginState.opts, "minify"));
 						testExpression =

@@ -5,8 +5,8 @@ async function() {
 			await null;
 			result = 1;
 			break;
+		} catch (e) {
 		}
-		catch {}
 		result = 2;
 	}
 	return result;

@@ -1,1 +1,1 @@
-_async(foo=>{let _loopInterrupt=false;loop:return _continueIgnored(_for(()=>!_loopInterrupt,void 0,()=>_call(foo,()=>{_loopInterrupt=true;})));})
+_async(foo=>{let _loopInterrupt=false;return _continueIgnored(_for(()=>!_loopInterrupt,void 0,()=>_call(foo,()=>{_loopInterrupt=true;})));})

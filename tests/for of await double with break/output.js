@@ -1,1 +1,1 @@
-_async(matrix=>{let _outerInterrupt=false;var result=0;return _continue(_forOf(matrix,row=>_continueIgnored(_forOf(row,value=>{return _await(value,(_value)=>{result+=_value;if(result>10){_outerInterrupt=true;}});},()=>_outerInterrupt))),()=>result);})
+_async(matrix=>{let _outerInterrupt=false;var result=0;return _continue(_forOf(matrix,row=>_continueIgnored(_forOf(row,value=>{return _await(value,(_value)=>{result+=_value;if(result>10){_outerInterrupt=true;}});},()=>_outerInterrupt)),()=>_outerInterrupt),()=>result);})

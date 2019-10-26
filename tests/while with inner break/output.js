@@ -1,0 +1,1 @@
+_async(()=>{let _interrupt=false;let result=0;return _continue(_for(()=>!_interrupt,void 0,()=>_continue(_catch(()=>_await(null,()=>{result=1;_interrupt=true;}),_empty),()=>{if(_interrupt)return;result=2;})),()=>result);})

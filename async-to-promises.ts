@@ -58,10 +58,10 @@ const defaultConfigValues: AsyncToPromisesConfiguration = {
 	inlineHelpers: false,
 	minify: false,
 	target: "es5",
-};
+} as const;
 
 function readConfigKey<K extends keyof AsyncToPromisesConfiguration>(
-	config: Partial<AsyncToPromisesConfiguration>,
+	config: Partial<Readonly<AsyncToPromisesConfiguration>>,
 	key: K
 ): AsyncToPromisesConfiguration[K] {
 	if (Object.hasOwnProperty.call(config, key)) {
@@ -256,7 +256,7 @@ declare module "@babel/traverse" {
 }
 
 interface PluginState {
-	opts: Partial<AsyncToPromisesConfiguration>;
+	readonly opts: Partial<Readonly<AsyncToPromisesConfiguration>>;
 }
 
 interface GeneratorState {
@@ -265,16 +265,16 @@ interface GeneratorState {
 }
 
 interface HoistCallArgumentsInnerState {
-	argumentNames: string[];
-	additionalConstantNames: string[];
+	argumentNames: readonly string[];
+	additionalConstantNames: readonly string[];
 	path: NodePath;
-	pathScopes: Scope[];
+	pathScopes: readonly Scope[];
 	scopes: Scope[];
 }
 
 interface HoistCallArgumentsState {
 	state: PluginState;
-	additionalConstantNames: string[];
+	additionalConstantNames: readonly string[];
 }
 
 interface TraversalTestResult {
@@ -303,8 +303,8 @@ interface ExtractedDeclarations {
 }
 
 interface Helper {
-	value: Node;
-	dependencies: string[];
+	readonly value: Node;
+	readonly dependencies: readonly string[];
 }
 let helpers: { [name: string]: Helper } | undefined;
 
@@ -947,7 +947,7 @@ export default function({
 		value: Expression,
 		continuation?: Expression,
 		directExpression?: Expression
-	): { declarators: VariableDeclarator[]; expression: Expression } {
+	): { readonly declarators: VariableDeclarator[]; readonly expression: Expression } {
 		const declarators: VariableDeclarator[] = [];
 		if (continuation) {
 			if (isPassthroughContinuation(continuation)) {
@@ -1338,7 +1338,7 @@ export default function({
 	}
 
 	// Helper visitor to reregister bindings on demand (working around some bugs in babel's scope tracking)
-	const reregisterVariableVisitor: Visitor<{ originalScope: Scope }> = {
+	const reregisterVariableVisitor: Visitor<{ readonly originalScope: Scope }> = {
 		VariableDeclaration(path) {
 			path.scope.registerDeclaration(path);
 		},
@@ -1410,7 +1410,7 @@ export default function({
 			pathScopes,
 			path,
 			additionalConstantNames: this.additionalConstantNames,
-		});
+		} as const);
 		let scope = path.scope.getProgramParent();
 		let ancestry = [scope];
 		for (let otherScope of scopes) {
@@ -1474,7 +1474,7 @@ export default function({
 	};
 
 	// Hoist the arguments of a call expression, so that additional closures aren't unnecessarily created at runtime
-	function hoistCallArguments(state: PluginState, path: NodePath, additionalConstantNames: string[]) {
+	function hoistCallArguments(state: PluginState, path: NodePath, additionalConstantNames: readonly string[]) {
 		if (path.isCallExpression()) {
 			const callee = path.node.callee;
 			if ((types.isIdentifier(callee) || types.isMemberExpression(callee)) && helperNameMap.has(callee)) {
@@ -1556,9 +1556,12 @@ export default function({
 					);
 				} else {
 					const minify = readConfigKey(generatorState.state.opts, "minify");
-					blocks = removeUnnecessaryReturnStatements(
-						[types.ifStatement(logicalNot(exitCheck, minify), blocks.length === 1 ? blocks[0] : blockStatement(blocks)) as Statement]
-					);
+					blocks = removeUnnecessaryReturnStatements([
+						types.ifStatement(
+							logicalNot(exitCheck, minify),
+							blocks.length === 1 ? blocks[0] : blockStatement(blocks)
+						) as Statement,
+					]);
 				}
 			}
 			// Build a function expression for it

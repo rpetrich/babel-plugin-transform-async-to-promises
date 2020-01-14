@@ -238,7 +238,16 @@ for (const name of fs.readdirSync("tests").sort()) {
 					const { babel, parse, types, pluginUnderTest, pluginMapping, checkOutput } = environments[
 						babelName
 					];
-					const mappedPlugins = plugins.map((pluginName) => pluginMapping[pluginName]);
+					const mappedPlugins = plugins.map((pluginName) => {
+						const mappedPlugin = pluginMapping[pluginName];
+						if (mappedPlugin) {
+							return mappedPlugin;
+						}
+
+						throw new Error(
+							`No plugin mapping provided for plugin "${pluginName}" in environment "${babelName}".`
+						);
+					});
 					const parseInput = module ? input : "return " + input;
 					const ast = parse(babel, parseInput);
 					if (error) {

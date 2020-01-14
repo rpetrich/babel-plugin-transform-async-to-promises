@@ -18,7 +18,7 @@ const environments = {
 			return require("babylon").parse(input, {
 				allowReturnOutsideFunction: true,
 				sourceType: "module",
-				plugins: ["asyncGenerators", "objectRestSpread"],
+				plugins: ["asyncGenerators", "objectRestSpread", "classProperties"],
 			});
 		},
 		pluginMapping: {
@@ -26,6 +26,7 @@ const environments = {
 			"transform-parameters": "babel-plugin-transform-es2015-parameters",
 			"transform-classes": "babel-plugin-transform-es2015-classes",
 			"external-helpers": "babel-plugin-external-helpers",
+			"class-properties": "babel-plugin-transform-class-properties",
 		},
 		checkOutput: true,
 	},
@@ -34,7 +35,7 @@ const environments = {
 		types: require("@babel/types"),
 		parse(babel, input) {
 			return babel.parse(input, {
-				parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] },
+				parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators", "classProperties"] },
 				sourceType: "module",
 			});
 		},
@@ -43,6 +44,7 @@ const environments = {
 			"transform-parameters": "@babel/plugin-transform-parameters",
 			"transform-classes": "@babel/plugin-transform-classes",
 			"external-helpers": "@babel/plugin-external-helpers",
+			"class-properties": "@babel/plugin-proposal-class-properties",
 		},
 		checkOutput: true,
 	},

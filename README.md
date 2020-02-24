@@ -50,6 +50,23 @@ const fetchAsObjectURL = function(url) {
 }
 ```
 
+### Output with `externalHelpers` enabled:
+
+In the normal case, helpers are added to the top of the file for the `_async` and `_await` functions (as well as others). This can cause bloat in a codebase due to duplication of helper code in every file. To avoid this, enable `externalHelpers` and those will be imported instead:
+
+```javascript
+import { _async } from "babel-plugin-transform-async-to-promises/helpers";
+import { _await } from "babel-plugin-transform-async-to-promises/helpers";
+
+const fetchAsObjectURL = _async(function(url) {
+	return _await(fetch(url), function(response) {
+		return _await(response.blob(), URL.createObjectURL);
+	});
+});
+
+export default fetchAsObjectURL;
+```
+
 ## JavaScript Language Features
 
 ### Full Support

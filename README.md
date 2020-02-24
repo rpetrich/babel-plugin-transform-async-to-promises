@@ -13,6 +13,8 @@ async function fetchAsObjectURL(url) {
     const blob = await response.blob();
     return URL.createObjectURL(blob);
 }
+
+export default fetchAsObjectURL;
 ```
 
 ### Output:
@@ -23,6 +25,8 @@ const fetchAsObjectURL = _async(function(url) {
 		return _await(response.blob(), URL.createObjectURL);
 	});
 });
+
+export default fetchAsObjectURL;
 ```
 
 ### Output with `hoist` enabled:
@@ -34,6 +38,8 @@ function _response$blob(response) {
 const fetchAsObjectURL = _async(function(url) {
 	return _await(fetch(url), _response$blob);
 });
+
+export default fetchAsObjectURL;
 ```
 
 ### Output with `inlineHelpers` enabled:
@@ -48,6 +54,8 @@ const fetchAsObjectURL = function(url) {
 		return Promise.reject(e);
 	}
 }
+
+export default fetchAsObjectURL;
 ```
 
 ## JavaScript Language Features

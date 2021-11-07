@@ -159,7 +159,7 @@ function writeOutput(name, myCode, outputCode) {
 	}
 }
 
-const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
 function readTest(name) {
 	let input;
@@ -235,9 +235,8 @@ for (const name of fs.readdirSync("tests").sort()) {
 			} = readTest(name);
 			for (const babelName of supportedBabels) {
 				describe(babelName, () => {
-					const { babel, parse, types, pluginUnderTest, pluginMapping, checkOutput } = environments[
-						babelName
-					];
+					const { babel, parse, types, pluginUnderTest, pluginMapping, checkOutput } =
+						environments[babelName];
 					const mappedPlugins = plugins.map((pluginName) => pluginMapping[pluginName]);
 					const parseInput = module ? input : "return " + input;
 					const ast = parse(babel, parseInput);

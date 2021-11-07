@@ -316,7 +316,7 @@ const numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seve
 type CompatibleSubset<New, Old> = Partial<New> & Pick<New, keyof New & keyof Old>;
 
 // Main function, called by babel with module implementations for types, template, traverse, transformFromAST and its version information
-export default function({
+export default function ({
 	types,
 	traverse,
 	transformFromAst,
@@ -334,7 +334,7 @@ export default function({
 		if (types.isIdentifier(node) || types.isMemberExpression(node)) {
 			const helperName = helperNameMap.get(node);
 			if (helperName !== undefined) {
-				helperNameMap.set((result as any) as (Identifier | MemberExpression), helperName);
+				helperNameMap.set(result as any as Identifier | MemberExpression, helperName);
 			}
 		}
 		return result;
@@ -530,7 +530,10 @@ export default function({
 				}
 			},
 		};
-		function match(path: NodePath<Node | null | undefined>, state: { breakingLabels: string[]; unnamedBreak: boolean }) {
+		function match(
+			path: NodePath<Node | null | undefined>,
+			state: { breakingLabels: string[]; unnamedBreak: boolean }
+		) {
 			const match: TraversalTestResult = { all: false, any: false };
 			if (path && path.node) {
 				if (typeof visit(path as NodePath<Node>, match, state) === "undefined") {
@@ -855,7 +858,9 @@ export default function({
 	}
 
 	// Checks if an expression is an identifier or a literal
-	function isIdentifierOrLiteral(expression: Expression | V8IntrinsicIdentifier | PrivateName): expression is (Identifier | Literal) {
+	function isIdentifierOrLiteral(
+		expression: Expression | V8IntrinsicIdentifier | PrivateName
+	): expression is Identifier | Literal {
 		return types.isIdentifier(expression) || types.isLiteral(expression);
 	}
 
@@ -1558,9 +1563,9 @@ export default function({
 			if (exitCheck) {
 				if (temporary && !types.isIdentifier(temporary)) {
 					const temporaryIdentifier = (temporary = target.scope.generateUidIdentifier("temp"));
-					const declaration = (types.variableDeclaration("const", [
+					const declaration = types.variableDeclaration("const", [
 						types.variableDeclarator(temporary, temporaryIdentifier),
-					]) as any) as Statement;
+					]) as any as Statement;
 					blocks = [declaration].concat(blocks);
 					temporary = temporaryIdentifier;
 				}
@@ -1627,9 +1632,8 @@ export default function({
 		targetPath: NodePath,
 		callback: (rewrite: (name: string, path: NodePath<Expression>) => void) => T
 	): T {
-		const declarators: { [name: string]: { kind: "const"; id: Identifier; init: Expression } } = Object.create(
-			null
-		);
+		const declarators: { [name: string]: { kind: "const"; id: Identifier; init: Expression } } =
+			Object.create(null);
 		return callback((name, path) => {
 			if (Object.hasOwnProperty.call(declarators, name)) {
 				const id = declarators[name].id;
@@ -1879,8 +1883,10 @@ export default function({
 		);
 	}
 
-	function translateTSParameterProperties<T extends Node>(array: Array<T | TSParameterProperty>): Array<T | Identifier | AssignmentPattern> {
-		return array.map(n => n.type === "TSParameterProperty" ? n.parameter : n);
+	function translateTSParameterProperties<T extends Node>(
+		array: Array<T | TSParameterProperty>
+	): Array<T | Identifier | AssignmentPattern> {
+		return array.map((n) => (n.type === "TSParameterProperty" ? n.parameter : n));
 	}
 
 	// Convert an expression or statement into a callable function expression
@@ -2844,8 +2850,9 @@ export default function({
 		if (existingUsedIdentifiers !== undefined) {
 			for (const item of existingUsedIdentifiers) {
 				if (
-					path.parentPath === null || (path.parentPath.scope.getBinding(item.identifier.name) ===
-					path.scope.getBinding(item.identifier.name))
+					path.parentPath === null ||
+					path.parentPath.scope.getBinding(item.identifier.name) ===
+						path.scope.getBinding(item.identifier.name)
 				) {
 					usedIdentifiers.push(item);
 				}
@@ -2880,7 +2887,9 @@ export default function({
 		let result = breakIdentifierMap.get(path.node);
 		if (!result) {
 			result = path.scope.generateUidIdentifier(
-				path.parentPath !== null && path.parentPath.isLabeledStatement() ? path.parentPath.node.label.name + "Interrupt" : "interrupt"
+				path.parentPath !== null && path.parentPath.isLabeledStatement()
+					? path.parentPath.node.label.name + "Interrupt"
+					: "interrupt"
 			);
 			breakIdentifierMap.set(path.node, result);
 		}
@@ -3038,7 +3047,7 @@ export default function({
 		} else if (types.isObjectPattern(node)) {
 			for (const property of node.properties) {
 				if (types.isObjectProperty(property)) {
-					addConstantNames(additionalConstantNames, (property.key as any) as LVal);
+					addConstantNames(additionalConstantNames, property.key as any as LVal);
 				} else if (types.isRestElement(property)) {
 					addConstantNames(additionalConstantNames, property.argument);
 				}
@@ -3289,8 +3298,10 @@ export default function({
 				if (catchClause) {
 					const param = catchClause.param;
 					const paramIsUsed =
-						param !== null && param !== undefined &&
-						(param.type !== "Identifier" || parent.get("handler").scope.getBinding(param.name)!.referencePaths.length !== 0);
+						param !== null &&
+						param !== undefined &&
+						(param.type !== "Identifier" ||
+							parent.get("handler").scope.getBinding(param.name)!.referencePaths.length !== 0);
 					const fn = catchClause.body.body.length
 						? rewriteAsyncNode(
 								state.generatorState,
@@ -3738,7 +3749,7 @@ export default function({
 								types.isStatement(parent.node) ? parent.node : returnStatement(parent.node),
 							])
 						);
-						const body = ((parent as unknown) as NodePath<BlockStatement>).get("body");
+						const body = (parent as unknown as NodePath<BlockStatement>).get("body");
 						reregisterDeclarations(body[0]);
 						parent = body[1];
 					}
@@ -3898,10 +3909,7 @@ export default function({
 		if ("file" in hub) {
 			return hub.file as HubFile;
 		}
-		throw path.buildCodeFrameError(
-			"Expected the path's hub to contain a file!",
-			TypeError
-		);
+		throw path.buildCodeFrameError("Expected the path's hub to contain a file!", TypeError);
 	}
 
 	// Visitor to extract dependencies from a helper function

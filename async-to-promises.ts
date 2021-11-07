@@ -2,11 +2,11 @@ import {
 	JSXNamespacedName,
 	ArgumentPlaceholder,
 	ArrowFunctionExpression,
+	AssignmentPattern,
 	AwaitExpression,
 	BlockStatement,
 	CallExpression,
 	ClassMethod,
-	File,
 	LabeledStatement,
 	Node,
 	Expression,
@@ -20,6 +20,7 @@ import {
 	ForOfStatement,
 	Function,
 	FunctionExpression,
+	Literal,
 	LogicalExpression,
 	MemberExpression,
 	NumericLiteral,
@@ -38,6 +39,7 @@ import {
 	YieldExpression,
 	PatternLike,
 	V8IntrinsicIdentifier,
+	PrivateName,
 } from "@babel/types";
 import { NodePath, Scope, Visitor } from "@babel/traverse";
 import { PluginObj } from "@babel/core";
@@ -81,7 +83,7 @@ function discardingIntrinsics<T extends Node>(node: T | V8IntrinsicIdentifier): 
 }
 
 function clearDeclarationData(declaration: NodePath<VariableDeclaration>) {
-	let path: NodePath = declaration;
+	let path: NodePath | null = declaration;
 	while (path) {
 		if (path.getData("declaration:var:2") == declaration) {
 			path.setData("declaration:var:2", null);
@@ -351,23 +353,23 @@ export default function({
 
 	// Helper to wrap a fresh node in a path so that it can be traversed
 	function pathForNewNode<T extends Node>(node: T, parentPath: NodePath): NodePath<T> {
-		let contextPath = parentPath;
-		while (!contextPath.context) {
-			contextPath = contextPath.parentPath;
-			if (contextPath === null) {
-				throw parentPath.buildCodeFrameError(`Unable to find a context upon which to traverse!`, TypeError);
+		let contextPath: NodePath | null = parentPath;
+		while (contextPath != null) {
+			if (contextPath.context) {
+				const result = contextPath.context.create(parentPath.node, [node], 0, "dummy");
+				result.setContext(contextPath.context);
+				return result;
 			}
+			contextPath = contextPath.parentPath;
 		}
-		const result = contextPath.context.create(parentPath.node, [node], 0, "dummy");
-		result.setContext(contextPath.context);
-		return result;
+		throw parentPath.buildCodeFrameError(`Unable to find a context upon which to traverse!`, TypeError);
 	}
 
 	// Checks whether nodes pass a test
 	function pathsPassTest(
-		matchingNodeTest: (path: NodePath<Node | null>) => boolean,
+		matchingNodeTest: (path: NodePath<Node | null | undefined>) => boolean,
 		referenceOriginalNodes?: boolean
-	): (path: NodePath<Node | null>) => TraversalTestResult {
+	): (path: NodePath<Node | null | undefined>) => TraversalTestResult {
 		function visit(
 			path: NodePath,
 			result: TraversalTestResult,
@@ -528,7 +530,7 @@ export default function({
 				}
 			},
 		};
-		function match(path: NodePath<Node | null>, state: { breakingLabels: string[]; unnamedBreak: boolean }) {
+		function match(path: NodePath<Node | null | undefined>, state: { breakingLabels: string[]; unnamedBreak: boolean }) {
 			const match: TraversalTestResult = { all: false, any: false };
 			if (path && path.node) {
 				if (typeof visit(path as NodePath<Node>, match, state) === "undefined") {
@@ -542,7 +544,7 @@ export default function({
 
 	function pathsReachNodeTypes(matchingNodeTypes: string[], referenceOriginalNodes?: boolean) {
 		return pathsPassTest(
-			(path) => path.type !== null && matchingNodeTypes.indexOf(path.type) !== -1,
+			(path) => path.type !== null && path.type !== undefined && matchingNodeTypes.indexOf(path.type) !== -1,
 			referenceOriginalNodes
 		);
 	}
@@ -853,7 +855,7 @@ export default function({
 	}
 
 	// Checks if an expression is an identifier or a literal
-	function isIdentifierOrLiteral(expression: Expression | V8IntrinsicIdentifier) {
+	function isIdentifierOrLiteral(expression: Expression | V8IntrinsicIdentifier | PrivateName): expression is (Identifier | Literal) {
 		return types.isIdentifier(expression) || types.isLiteral(expression);
 	}
 
@@ -1006,6 +1008,10 @@ export default function({
 						) {
 							const id = path.scope.generateUidIdentifier("temp");
 							if (isContinuation(continuation)) {
+								if (!path.parentPath) {
+									/* istanbul ignore next */
+									throw path.buildCodeFrameError(`Expected a parent path!`, Error);
+								}
 								insertFunctionIntoScope(continuation, id, path.parentPath.scope);
 							} else {
 								declarators.push(types.variableDeclarator(id, continuation));
@@ -1063,6 +1069,10 @@ export default function({
 				) {
 					const id = path.scope.generateUidIdentifier("temp");
 					if (isContinuation(continuation)) {
+						if (!path.parentPath) {
+							/* istanbul ignore next */
+							throw path.buildCodeFrameError(`Expected a parent path!`, Error);
+						}
 						insertFunctionIntoScope(continuation, id, path.parentPath.scope);
 					} else {
 						declarators.push(types.variableDeclarator(id, continuation));
@@ -1142,7 +1152,7 @@ export default function({
 
 	// Borrow the tail continuation of a statement
 	function borrowTail(target: NodePath): Statement[] {
-		let current = target;
+		let current: NodePath<Node> | null = target;
 		const dest = [];
 		while (current && current.node && current.inList && current.container) {
 			const siblings = current.getAllNextSiblings();
@@ -1154,7 +1164,7 @@ export default function({
 				sibling.remove();
 			}
 			current = current.parentPath;
-			if (!current.isBlockStatement()) {
+			if (!current || !current.isBlockStatement()) {
 				break;
 			}
 		}
@@ -1163,7 +1173,7 @@ export default function({
 
 	// Check if the tail continuation of an expression has a return or throw statement
 	function exitsInTail(target: NodePath) {
-		let current: NodePath | undefined = target;
+		let current: NodePath | null | undefined = target;
 		while (current && current.node && current.inList && current.container && !current.isFunction()) {
 			for (var i = (current.key as number) + 1; i < (current.container as Node[]).length; i++) {
 				if (pathsReturnOrThrow(current).any) {
@@ -1365,6 +1375,10 @@ export default function({
 		}
 		// Replace it with a function declaration, because it generates smaller code and we no longer have to worry about const/let ordering issues
 		const targetPath = binding.path.parentPath;
+		if (!targetPath) {
+			/* istanbul ignore next */
+			throw scope.path.buildCodeFrameError(`Could not find newly created binding for ${id.name}!`, Error);
+		}
 		targetPath.replaceWith(
 			types.functionDeclaration(
 				id,
@@ -1865,6 +1879,10 @@ export default function({
 		);
 	}
 
+	function translateTSParameterProperties<T extends Node>(array: Array<T | TSParameterProperty>): Array<T | Identifier | AssignmentPattern> {
+		return array.map(n => n.type === "TSParameterProperty" ? n.parameter : n);
+	}
+
 	// Convert an expression or statement into a callable function expression
 	function functionize(
 		state: PluginState,
@@ -1873,16 +1891,17 @@ export default function({
 		target: NodePath,
 		id?: Identifier | null
 	): FunctionExpression | ArrowFunctionExpression {
+		const translatedParams = translateTSParameterProperties<Identifier | Pattern | RestElement>(params);
 		if (!id && readConfigKey(state.opts, "target") === "es6") {
 			let newExpression = expression;
 			if (types.isBlockStatement(newExpression) && newExpression.body.length === 1) {
 				newExpression = newExpression.body[0];
 			}
-			if (types.isReturnStatement(newExpression) && newExpression.argument !== null) {
+			if (types.isReturnStatement(newExpression) && newExpression.argument) {
 				newExpression = newExpression.argument;
 			}
 			const result = types.arrowFunctionExpression(
-				params,
+				translatedParams,
 				types.isStatement(newExpression) && !types.isBlockStatement(newExpression)
 					? types.blockStatement([newExpression])
 					: newExpression
@@ -1914,7 +1933,7 @@ export default function({
 			expression = blockStatement([expression]);
 		}
 		expression.body = removeUnnecessaryReturnStatements(expression.body);
-		return types.functionExpression(id, params, expression);
+		return types.functionExpression(id, translatedParams, expression);
 	}
 
 	// Create a block statement from a list of statements
@@ -2031,10 +2050,10 @@ export default function({
 
 	// Return true if an expression contains entirely literals, with a list of identifiers assumed to have literal values
 	function isExpressionOfLiterals(
-		path: NodePath<Node | V8IntrinsicIdentifier | null>,
+		path: NodePath<Node | V8IntrinsicIdentifier | null | undefined>,
 		literalNames: string[]
 	): boolean {
-		if (path.node == null) {
+		if (path.node === null || path.node === undefined) {
 			return true;
 		}
 		if (path.isIdentifier()) {
@@ -2135,7 +2154,7 @@ export default function({
 	}
 
 	// Generate a new identifier named after the current node at a path
-	function generateIdentifierForPath(path: NodePath<Node | null>): Identifier {
+	function generateIdentifierForPath(path: NodePath<Node | null | undefined>): Identifier {
 		const node = path.node;
 		if (node) {
 			const result = path.scope.generateUidIdentifierBasedOnNode(node, "temp");
@@ -2311,8 +2330,11 @@ export default function({
 
 	// Find the path of a declaration statement to reuse
 	function findDeclarationToReuse(path: NodePath): NodePath<VariableDeclarator> | undefined {
-		for (;;) {
+		while (path) {
 			const parent = path.parentPath;
+			if (parent === null) {
+				break;
+			}
 			if (parent.isVariableDeclarator()) {
 				const id = parent.get("id");
 				if (id.isIdentifier() || id.isPattern()) {
@@ -2337,7 +2359,7 @@ export default function({
 			}
 			const otherAwaitPath = findAwaitOrYieldPath(other);
 			if (otherAwaitPath === other || !otherAwaitPath) {
-				path = path.parentPath;
+				path = parent;
 			} else {
 				break;
 			}
@@ -2442,7 +2464,7 @@ export default function({
 			} else if (parent.isBinaryExpression()) {
 				const left = parent.get("left");
 				if (awaitPath !== left) {
-					if (!isExpressionOfLiterals(left, additionalConstantNames)) {
+					if (!isExpressionOfLiterals(left, additionalConstantNames) && left.node.type !== "PrivateName") {
 						const leftIdentifier = generateIdentifierForPath(left);
 						declarations.unshift(types.variableDeclarator(leftIdentifier, left.node));
 						left.replaceWith(leftIdentifier);
@@ -2822,8 +2844,8 @@ export default function({
 		if (existingUsedIdentifiers !== undefined) {
 			for (const item of existingUsedIdentifiers) {
 				if (
-					path.parentPath.scope.getBinding(item.identifier.name) ===
-					path.scope.getBinding(item.identifier.name)
+					path.parentPath === null || (path.parentPath.scope.getBinding(item.identifier.name) ===
+					path.scope.getBinding(item.identifier.name))
 				) {
 					usedIdentifiers.push(item);
 				}
@@ -2858,7 +2880,7 @@ export default function({
 		let result = breakIdentifierMap.get(path.node);
 		if (!result) {
 			result = path.scope.generateUidIdentifier(
-				path.parentPath.isLabeledStatement() ? path.parentPath.node.label.name + "Interrupt" : "interrupt"
+				path.parentPath !== null && path.parentPath.isLabeledStatement() ? path.parentPath.node.label.name + "Interrupt" : "interrupt"
 			);
 			breakIdentifierMap.set(path.node, result);
 		}
@@ -2936,7 +2958,7 @@ export default function({
 
 	// Build the break/continue stack for a path
 	function breakContinueStackForPath(path: NodePath) {
-		let current = path;
+		let current: NodePath | null = path;
 		const result = [];
 		while (current && !current.isFunction()) {
 			if (current.isLoop() || current.isSwitchStatement()) {
@@ -2987,15 +3009,16 @@ export default function({
 
 	// Find the most immediate statement parent of a path
 	function getStatementOrArrowBodyParent(path: NodePath<Statement | Expression>): NodePath<Statement | Expression> {
-		let parent: NodePath = path;
-		do {
+		let parent: NodePath<Node> | null = path;
+		while (parent) {
 			if (parent.isStatement()) {
 				return parent;
 			}
 			if (parent.isArrowFunctionExpression()) {
 				return parent.get("body");
 			}
-		} while ((parent = parent.parentPath));
+			parent = parent.parentPath;
+		}
 		/* istanbul ignore next */
 		throw path.buildCodeFrameError(`Expected a statement parent!`, TypeError);
 	}
@@ -3088,7 +3111,7 @@ export default function({
 				caseExits: TraversalTestResult;
 				caseBreaks: TraversalTestResult;
 				breakIdentifiers: BreakContinueItem[];
-				test: Expression | null;
+				test: Expression | null | undefined;
 			}[];
 		}[] = [];
 		{
@@ -3266,8 +3289,8 @@ export default function({
 				if (catchClause) {
 					const param = catchClause.param;
 					const paramIsUsed =
-						param !== null &&
-						parent.get("handler").scope.getBinding(param.name)!.referencePaths.length !== 0;
+						param !== null && param !== undefined &&
+						(param.type !== "Identifier" || parent.get("handler").scope.getBinding(param.name)!.referencePaths.length !== 0);
 					const fn = catchClause.body.body.length
 						? rewriteAsyncNode(
 								state.generatorState,
@@ -3483,7 +3506,7 @@ export default function({
 						}
 						loopCall = types.callExpression(helperReference(pluginState, parent, "_forTo"), args);
 					} else {
-						let updateExpression: Expression | null = null;
+						let updateExpression: Expression | null | undefined = null;
 						if (parent.isForStatement()) {
 							updateExpression = parent.node.update;
 							if (updateExpression) {
@@ -3499,7 +3522,7 @@ export default function({
 							const init = parent.get("init");
 							if (init) {
 								const initNode = init.node;
-								if (initNode !== null) {
+								if (initNode !== null && initNode !== undefined) {
 									reregisterDeclarations(
 										parent.insertBefore(
 											types.isExpression(initNode)
@@ -3864,12 +3887,29 @@ export default function({
 		}
 	}
 
+	interface HubFile {
+		declarations: { [key: string]: Identifier };
+		path: NodePath<Program>;
+		scope: Scope;
+	}
+
+	function getFile(path: NodePath): HubFile {
+		let hub: any = path.hub;
+		if ("file" in hub) {
+			return hub.file as HubFile;
+		}
+		throw path.buildCodeFrameError(
+			"Expected the path's hub to contain a file!",
+			TypeError
+		);
+	}
+
 	// Visitor to extract dependencies from a helper function
 	const getHelperDependenciesVisitor: Visitor<{ dependencies: string[] }> = {
 		Identifier(path) {
 			if (
 				identifierSearchesScope(path) &&
-				path.hub.file.scope.getBinding(path.node.name) &&
+				getFile(path).scope.getBinding(path.node.name) &&
 				this.dependencies.indexOf(path.node.name) === -1
 			) {
 				this.dependencies.push(path.node.name);
@@ -3901,7 +3941,7 @@ export default function({
 		return state.found;
 	}
 
-	function insertHelper(programPath: NodePath<File>, value: Node): NodePath {
+	function insertHelper(programPath: NodePath<Program>, value: Node): NodePath {
 		const destinationPath = programPath
 			.get("body")
 			.find((path: NodePath) => !isHelperDefinitionSet.has(path.node) && !path.isImportDeclaration())!;
@@ -3967,7 +4007,7 @@ export default function({
 
 	// Emits a reference to a helper, inlining or importing it as necessary
 	function helperReference(state: PluginState, path: NodePath, name: string): Identifier {
-		const file = path.scope.hub.file;
+		const file = getFile(path);
 		let result = file.declarations[name];
 		if (result) {
 			result = cloneNode(result);
@@ -4584,7 +4624,7 @@ export default function({
 						node.generator,
 						node.async
 					);
-					if (node.id === null) {
+					if (node.id === null || node.id === undefined) {
 						path.replaceWith(expression);
 						reregisterDeclarations(path);
 						return;
@@ -4624,13 +4664,13 @@ export default function({
 			FunctionExpression(path) {
 				if (path.node.async) {
 					const id = path.node.id;
-					if (path.parentPath.isExportDefaultDeclaration() && id !== null) {
+					if (path.parentPath.isExportDefaultDeclaration() && id !== null && id !== undefined) {
 						// export default function... is a function expression in babel 6
 						const targetPath = path.parentPath;
 						targetPath.replaceWith(
 							types.variableDeclaration("const", [
 								types.variableDeclarator(
-									path.node.id || id,
+									id,
 									types.functionExpression(
 										undefined,
 										path.node.params,

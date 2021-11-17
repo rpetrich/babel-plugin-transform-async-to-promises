@@ -86,6 +86,10 @@ const helperNames = [
 	"_AsyncGenerator",
 	"_iteratorSymbol",
 	"_asyncIteratorSymbol",
+	// babel's
+	"_classCallCheck",
+	"_defineProperties",
+	"_createClass",
 ];
 
 const stripHelpersVisitor = {

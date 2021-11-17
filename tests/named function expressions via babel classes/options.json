@@ -1,0 +1,4 @@
+{
+	"supportedBabels": ["babel 7"],
+	"plugins": ["transform-classes"]
+}

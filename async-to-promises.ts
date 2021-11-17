@@ -4724,7 +4724,11 @@ export default function ({
 					} else {
 						rewriteAsyncBlock({ state: this }, path, []);
 						const inlineHelpers = readConfigKey(this.opts, "inlineHelpers");
-						const canThrow = checkForErrorsAndRewriteReturns(bodyPath, this, inlineHelpers);
+						const canThrow = checkForErrorsAndRewriteReturns(
+							bodyPath,
+							this,
+							inlineHelpers || (id !== null && id !== undefined)
+						);
 						const parentPath = path.parentPath;
 						const skipReturn =
 							parentPath.isCallExpression() &&

@@ -1,0 +1,1 @@
+/*#__PURE__*/function(){function TestClass(){_classCallCheck(this,TestClass);}_createClass(TestClass,[{key:"testMe",value:function testMe(enabled){try{if(!enabled){return Promise.resolve();}return Promise.resolve(doIt()).then(function(){});}catch(e){return Promise.reject(e);}}}]);return TestClass;}()

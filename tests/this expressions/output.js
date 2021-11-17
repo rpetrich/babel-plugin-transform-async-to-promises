@@ -1,1 +1,1 @@
-_async(function(){const _this=this;const test=()=>_this;return _await(_this.foo(),(_this$foo)=>_await(_this.bar(),(_this$bar)=>_this$foo+_this$bar));})
+_async(function(){const _this=this;const test=()=>_this;return _await(_this.foo(),_this$foo=>_await(_this.bar(),_this$bar=>_this$foo+_this$bar));})

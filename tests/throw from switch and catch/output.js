@@ -1,1 +1,1 @@
-()=>{let _exit=false;return _await(_catch(()=>_continue(_switch(true,[[()=>true,()=>_await(1,(_)=>{throw _;})]]),_result=>_exit?_result:false),()=>true));}
+()=>{let _exit=false;return _await(_catch(()=>_continue(_switch(true,[[()=>true,()=>_await(1,_=>{throw _;})]]),_result=>_exit?_result:false),()=>true));}

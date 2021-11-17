@@ -1,4 +1,5 @@
 {
+	"supportedBabels": ["babel 7"],
 	"checkSyntax": false,
 	"module": true
 }

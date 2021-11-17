@@ -1,1 +1,1 @@
-_async((a,b,c,d)=>{const _a=a();return _await(_a?b():0,_b=>{const _c=_a||c();return _await(_a?_b:_c&&d(),(result)=>result||result,_a||!_c);},!_a);})
+_async((a,b,c,d)=>{const _a=a();return _await(_a?b():0,_b=>{const _c=_a||c();return _await(_a?_b:_c&&d(),result=>result||result,_a||!_c);},!_a);})

@@ -1,2 +1,2 @@
-export const retried=_async((bail,currentAttempt)=>{let data;return _await(fetch(url),(res)=>_invoke(()=>{if(opts.throwOnHTTPError&&(res.status<200||res.status>=300)){return _invokeIgnored(()=>{if(type==='application/json'){return _await(res.json(),(_res$json)=>{data=_res$json;});}});}else return _invokeIgnored(()=>{if(res.status===204){// Since 204 means no content we return null
-data=null;}else{return _await(res.json(),(_res$json2)=>{data=_res$json2;});}});},()=>data));});
+export const retried=_async((bail,currentAttempt)=>{let data;return _await(fetch(url),res=>_invoke(()=>{if(opts.throwOnHTTPError&&(res.status<200||res.status>=300)){return _invokeIgnored(()=>{if(type==='application/json'){return _await(res.json(),_res$json=>{data=_res$json;});}});}else return _invokeIgnored(()=>{if(res.status===204){// Since 204 means no content we return null
+data=null;}else{return _await(res.json(),_res$json2=>{data=_res$json2;});}});},()=>data));});

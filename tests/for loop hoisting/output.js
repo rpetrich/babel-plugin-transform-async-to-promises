@@ -1,1 +1,1 @@
-foo=>{var i;return _call(foo,(_foo)=>{i=_foo;for(i in{}){}return i;});}
+foo=>{var i;return _call(foo,_foo=>{i=_foo;for(i in{}){}return i;});}

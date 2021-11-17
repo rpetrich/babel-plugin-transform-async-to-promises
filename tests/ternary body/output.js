@@ -1,1 +1,1 @@
-_async((foo,bar,baz)=>_await(foo()?bar():baz(),(result)=>result||result))
+_async((foo,bar,baz)=>_await(foo()?bar():baz(),result=>result||result))

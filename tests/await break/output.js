@@ -1,1 +1,1 @@
-(foo,bar)=>{var result;return _call(foo,(_foo)=>_continue(_switch(_foo,[[()=>_call(bar),()=>{result=true;}],[void 0,()=>{result=false;}]]),()=>result));}
+(foo,bar)=>{var result;return _call(foo,_foo=>_continue(_switch(_foo,[[()=>_call(bar),()=>{result=true;}],[void 0,()=>{result=false;}]]),()=>result));}

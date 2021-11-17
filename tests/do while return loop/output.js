@@ -1,1 +1,1 @@
-_async(foo=>{let _exit=false;let shouldContinue;return _do(()=>{return _call(foo,(_foo)=>{if(!_foo){_exit=true;return true;}});},()=>!_exit);})
+_async(foo=>{let _exit=false;let shouldContinue;return _do(()=>{return _call(foo,_foo=>{if(!_foo){_exit=true;return true;}});},()=>!_exit);})

@@ -179,7 +179,11 @@ function readTest(name) {
 		} else if (fileName === "hoisted.js") {
 			hoisted = content;
 		} else if (fileName === "options.json") {
-			options = JSON.parse(content);
+			try {
+				options = JSON.parse(content);
+			} catch (e) {
+				throw new Error(`Failed to parse tests/${name}/options.json`);
+			}
 		} else {
 			const caseMatch = fileName.match(/^case-(.*)\.js$/);
 			if (caseMatch !== null) {
@@ -234,6 +238,9 @@ for (const name of fs.readdirSync("tests").sort()) {
 				supportedBabels,
 			} = readTest(name);
 			for (const babelName of supportedBabels) {
+				if (!(babelName in environments)) {
+					continue;
+				}
 				describe(babelName, () => {
 					const { babel, parse, types, pluginUnderTest, pluginMapping, checkOutput } =
 						environments[babelName];

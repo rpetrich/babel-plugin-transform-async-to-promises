@@ -1,1 +1,1 @@
-_async(url=>_await(fetch(url),(response)=>_await(response.blob(),URL.createObjectURL)))
+_async(url=>_await(fetch(url),response=>_await(response.blob(),URL.createObjectURL)))

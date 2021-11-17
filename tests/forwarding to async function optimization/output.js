@@ -1,1 +1,1 @@
-function(value){const add=_async((l,r)=>{const _l=l();return _await(r,(_r)=>_l+_r);});return foo=>add(()=>1,foo);}
+function(value){const add=_async((l,r)=>{const _l=l();return _await(r,_r=>_l+_r);});return foo=>add(()=>1,foo);}

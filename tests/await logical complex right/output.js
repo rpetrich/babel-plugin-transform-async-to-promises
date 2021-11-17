@@ -1,1 +1,1 @@
-_async((left,right)=>{const _left=left();return _await(_left&&right(),(_right)=>_left&&1+_right,!_left);})
+_async((left,right)=>{const _left=left();return _await(_left&&right(),_right=>_left&&1+_right,!_left);})

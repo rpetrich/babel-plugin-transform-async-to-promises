@@ -1,1 +1,1 @@
-_async(iter=>{let _interrupt=false;var result=0;return _continue(_forOf(iter,value=>{return _await(value,(_value)=>{result+=_value;if(result>10){_interrupt=true;}});},()=>_interrupt),()=>result);})
+_async(iter=>{let _interrupt=false;var result=0;return _continue(_forOf(iter,value=>{return _await(value,_value=>{result+=_value;if(result>10){_interrupt=true;}});},()=>_interrupt),()=>result);})

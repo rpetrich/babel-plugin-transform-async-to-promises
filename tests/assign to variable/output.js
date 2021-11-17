@@ -1,1 +1,1 @@
-foo=>_call(foo,(result)=>result+1)
+foo=>_call(foo,result=>result+1)

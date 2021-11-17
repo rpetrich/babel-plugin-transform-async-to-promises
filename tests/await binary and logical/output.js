@@ -1,1 +1,1 @@
-(left,middle,right)=>_call(left,(_left)=>_call(middle,(_middle)=>_await(_left+!_middle&&right(),void 0,!(_left+!_middle))))
+(left,middle,right)=>_call(left,_left=>_call(middle,_middle=>_await(_left+!_middle&&right(),void 0,!(_left+!_middle))))

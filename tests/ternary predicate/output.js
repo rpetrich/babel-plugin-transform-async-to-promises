@@ -1,1 +1,1 @@
-(foo,bar,baz)=>_call(foo,(_foo)=>_foo?bar():baz())
+(foo,bar,baz)=>_call(foo,_foo=>_foo?bar():baz())

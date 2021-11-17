@@ -1,1 +1,1 @@
-_async(matrix=>{var result=0;return _continue(_forOf(matrix,row=>{let _innerInterrupt=false;return _continueIgnored(_forOf(row,cell=>{return _await(cell,(value)=>{if(value>10)return;result+=value;if(result<0){_innerInterrupt=true;}});},()=>_innerInterrupt));}),()=>result);})
+_async(matrix=>{var result=0;return _continue(_forOf(matrix,row=>{let _innerInterrupt=false;return _continueIgnored(_forOf(row,cell=>{return _await(cell,value=>{if(value>10)return;result+=value;if(result<0){_innerInterrupt=true;}});},()=>_innerInterrupt));}),()=>result);})

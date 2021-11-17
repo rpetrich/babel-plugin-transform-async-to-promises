@@ -1,1 +1,1 @@
-foo=>_call(foo,(b)=>{var a=1,c=3;return a+b+c;})
+foo=>_call(foo,b=>{var a=1,c=3;return a+b+c;})

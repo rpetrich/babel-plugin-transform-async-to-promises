@@ -1,1 +1,1 @@
-(left,right)=>_call(left,(_left)=>_call(right,(_right)=>_left+_right))
+(left,right)=>_call(left,_left=>_call(right,_right=>_left+_right))

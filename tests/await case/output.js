@@ -1,1 +1,1 @@
-(foo,bar)=>_call(foo,(_foo)=>_switch(_foo,[[()=>_call(bar),()=>true],[void 0,()=>false]]))
+(foo,bar)=>_call(foo,_foo=>_switch(_foo,[[()=>_call(bar),()=>true],[void 0,()=>false]]))

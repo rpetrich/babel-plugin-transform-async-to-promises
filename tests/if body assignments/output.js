@@ -1,1 +1,1 @@
-_async((foo,bar,baz)=>{var result;return _invoke(()=>{if(foo()){return _call(bar,(_bar)=>{result=_bar;});}else{return _call(baz,(_baz)=>{result=_baz;});}},()=>result);})
+_async((foo,bar,baz)=>{var result;return _invoke(()=>{if(foo()){return _call(bar,_bar=>{result=_bar;});}else{return _call(baz,_baz=>{result=_baz;});}},()=>result);})

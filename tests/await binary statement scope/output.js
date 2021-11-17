@@ -1,1 +1,1 @@
-_async((left,right)=>{if(true){const _left=left();return _call(right,(_right)=>_left+_right);}else return false;})
+_async((left,right)=>{if(true){const _left=left();return _call(right,_right=>_left+_right);}else return false;})

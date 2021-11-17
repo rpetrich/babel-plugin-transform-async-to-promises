@@ -1,1 +1,1 @@
-_async(list=>{let _interrupt=false;return _continueIgnored(_forTo(list,i=>{return _await(list[i](),(_list$i)=>{if(_list$i){_interrupt=true;}});},()=>_interrupt));})
+_async(list=>{let _interrupt=false;return _continueIgnored(_forTo(list,i=>{return _await(list[i](),_list$i=>{if(_list$i){_interrupt=true;}});},()=>_interrupt));})

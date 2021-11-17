@@ -1,1 +1,1 @@
-(foo,bar)=>_call(foo,(f)=>_call(bar,(b)=>f+b))
+(foo,bar)=>_call(foo,f=>_call(bar,b=>f+b))

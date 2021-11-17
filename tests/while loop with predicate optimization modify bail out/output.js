@@ -1,1 +1,1 @@
-_async(foo=>{let shouldContinue=true;let shouldContinueAsCall;shouldContinueAsCall=()=>shouldContinue;return _continueIgnored(_for(()=>_call(shouldContinueAsCall),void 0,()=>{return _call(foo,(_foo)=>{shouldContinue=_foo;});}));})
+_async(foo=>{let shouldContinue=true;let shouldContinueAsCall;shouldContinueAsCall=()=>shouldContinue;return _continueIgnored(_for(()=>_call(shouldContinueAsCall),void 0,()=>{return _call(foo,_foo=>{shouldContinue=_foo;});}));})

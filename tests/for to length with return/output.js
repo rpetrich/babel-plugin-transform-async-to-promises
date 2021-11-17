@@ -1,1 +1,1 @@
-_async(list=>{let _exit=false;return _forTo(list,i=>{return _await(list[i](),(_list$i)=>{if(_list$i){_exit=true;return true;}});},()=>_exit);})
+_async(list=>{let _exit=false;return _forTo(list,i=>{return _await(list[i](),_list$i=>{if(_list$i){_exit=true;return true;}});},()=>_exit);})

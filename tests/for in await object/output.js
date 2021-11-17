@@ -1,1 +1,1 @@
-foo=>{var keys=[];return _call(foo,(_foo)=>{for(var key in _foo){keys.push(key);}return keys.sort();});}
+foo=>{var keys=[];return _call(foo,_foo=>{for(var key in _foo){keys.push(key);}return keys.sort();});}

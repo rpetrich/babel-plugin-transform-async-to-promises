@@ -1,1 +1,1 @@
-foo=>_call(foo,(_foo)=>{switch(_foo){case 1:return true;default:return false;}})
+foo=>_call(foo,_foo=>{switch(_foo){case 1:return true;default:return false;}})

@@ -1,1 +1,1 @@
-function(){class Base{}return class extends Base{foo(baz){const _super$foo=super.foo,_this=this;return _call(()=>_call(baz,(_baz)=>_super$foo.call(_this,_baz)));}static bar(baz){const _super$bar=super.bar,_this2=this;return _call(()=>_call(baz,(_baz2)=>_super$bar.call(_this2,_baz2)));}};}
+function(){class Base{}return class extends Base{foo(baz){const _super$foo=super.foo,_this=this;return _call(()=>_call(baz,_baz=>_super$foo.call(_this,_baz)));}static bar(baz){const _super$bar=super.bar,_this2=this;return _call(()=>_call(baz,_baz2=>_super$bar.call(_this2,_baz2)));}};}

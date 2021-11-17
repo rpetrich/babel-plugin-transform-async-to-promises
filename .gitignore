@@ -4,3 +4,4 @@ coverage
 async-to-promises.js
 async-to-promises.js.map
 helpers-string.js
+.DS_Store

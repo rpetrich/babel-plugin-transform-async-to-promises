@@ -18,7 +18,7 @@ const environments = {
 			return require("babylon").parse(input, {
 				allowReturnOutsideFunction: true,
 				sourceType: "module",
-				plugins: ["asyncGenerators", "objectRestSpread"],
+				plugins: ["asyncGenerators", "objectRestSpread", "classProperties"],
 			});
 		},
 		pluginMapping: {
@@ -26,6 +26,7 @@ const environments = {
 			"transform-parameters": "babel-plugin-transform-es2015-parameters",
 			"transform-classes": "babel-plugin-transform-es2015-classes",
 			"external-helpers": "babel-plugin-external-helpers",
+			"class-properties": "babel-plugin-transform-class-properties",
 		},
 		checkOutput: true,
 	},
@@ -34,7 +35,7 @@ const environments = {
 		types: require("@babel/types"),
 		parse(babel, input) {
 			return babel.parse(input, {
-				parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators"] },
+				parserOpts: { allowReturnOutsideFunction: true, plugins: ["asyncGenerators", "classProperties"] },
 				sourceType: "module",
 			});
 		},
@@ -43,6 +44,7 @@ const environments = {
 			"transform-parameters": "@babel/plugin-transform-parameters",
 			"transform-classes": "@babel/plugin-transform-classes",
 			"external-helpers": "@babel/plugin-external-helpers",
+			"class-properties": "@babel/plugin-proposal-class-properties",
 		},
 		checkOutput: true,
 	},
@@ -89,6 +91,7 @@ const helperNames = [
 	// babel's
 	"_classCallCheck",
 	"_defineProperties",
+	"_defineProperty",
 	"_createClass",
 ];
 
@@ -248,7 +251,16 @@ for (const name of fs.readdirSync("tests").sort()) {
 				describe(babelName, () => {
 					const { babel, parse, types, pluginUnderTest, pluginMapping, checkOutput } =
 						environments[babelName];
-					const mappedPlugins = plugins.map((pluginName) => pluginMapping[pluginName]);
+					const mappedPlugins = plugins.map((pluginName) => {
+						const mappedPlugin = pluginMapping[pluginName];
+						if (mappedPlugin) {
+							return mappedPlugin;
+						}
+
+						throw new Error(
+							`No plugin mapping provided for plugin "${pluginName}" in environment "${babelName}".`
+						);
+					});
 					const parseInput = module ? input : "return " + input;
 					const ast = parse(babel, parseInput);
 					if (error) {

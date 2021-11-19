@@ -31,6 +31,7 @@
   "devDependencies": {
     "@babel/core": "^7.16.0",
     "@babel/plugin-external-helpers": "^7.16.0",
+    "@babel/plugin-proposal-class-properties": "^7.16.0",
     "@babel/plugin-transform-classes": "^7.16.0",
     "@babel/plugin-transform-modules-commonjs": "^7.16.0",
     "@babel/plugin-transform-parameters": "^7.16.3",
@@ -42,6 +43,7 @@
     "@types/node": "^16.11.7",
     "babel-core": "^6.26.3",
     "babel-plugin-external-helpers": "^6.22.0",
+    "babel-plugin-transform-class-properties": "^6.24.1",
     "babel-plugin-transform-es2015-modules-commonjs": "^6.26.2",
     "babel-plugin-transform-es2015-parameters": "^6.24.1",
     "babel-preset-env": "^1.7.0",

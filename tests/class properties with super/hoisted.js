@@ -1,0 +1,1 @@
+function(){class Base{constructor(){_defineProperty(this,"a",Promise.resolve(42));}}class Sub extends Base{constructor(...args){super(...args);const _this=this;_defineProperty(this,"f",_async(function(){return _awaitIgnored(_this.a);}));}};return new B();}

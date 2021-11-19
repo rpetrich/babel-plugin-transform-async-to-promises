@@ -2786,6 +2786,14 @@ export default function ({
 		);
 	}
 
+	function expressionNeverThrows(expression: Expression): boolean {
+		return (
+			isValueLiteral(expression) ||
+			types.isIdentifier(expression) ||
+			(types.isUnaryExpression(expression) && isValueLiteral(expression.argument))
+		);
+	}
+
 	// Visitor that replaces all returns and breaks with updates to the appropriate break/exit bookkeeping variables
 	const replaceReturnsAndBreaksVisitor: Visitor<{
 		pluginState: PluginState;
@@ -2797,19 +2805,43 @@ export default function ({
 		ReturnStatement(path) {
 			if (!skipNodeSet.has(path.node) && this.exitIdentifier) {
 				const minify = readConfigKey(this.pluginState.opts, "minify");
-				if (minify && path.node.argument && extractLooseBooleanValue(path.node.argument) === true) {
-					path.replaceWith(
-						returnStatement(
-							types.assignmentExpression("=", this.exitIdentifier, path.node.argument),
-							path.node
-						)
-					);
+				if (path.node.argument) {
+					if (minify && extractLooseBooleanValue(path.node.argument) === true) {
+						// assign _exit using a truthy return value
+						path.replaceWith(
+							returnStatement(
+								types.assignmentExpression("=", this.exitIdentifier, path.node.argument),
+								path.node
+							)
+						);
+					} else if (expressionNeverThrows(path.node.argument)) {
+						// path cannot throw, assign _exit first
+						path.replaceWithMultiple([
+							types.expressionStatement(
+								types.assignmentExpression("=", this.exitIdentifier, booleanLiteral(true, minify))
+							),
+							returnStatement(path.node.argument, path.node),
+						]);
+					} else {
+						// path might throw, evaluate it and assign to a temporary before assigning _exit
+						const tempIdentifier = path.scope.generateUidIdentifierBasedOnNode(path.node.argument, "temp");
+						path.replaceWithMultiple([
+							types.variableDeclaration("const", [
+								types.variableDeclarator(tempIdentifier, path.node.argument),
+							]),
+							types.expressionStatement(
+								types.assignmentExpression("=", this.exitIdentifier, booleanLiteral(true, minify))
+							),
+							returnStatement(tempIdentifier, path.node),
+						]);
+					}
 				} else {
+					// empty return, assign _exit before returning
 					path.replaceWithMultiple([
 						types.expressionStatement(
 							types.assignmentExpression("=", this.exitIdentifier, booleanLiteral(true, minify))
 						),
-						returnStatement(path.node.argument || undefined, path.node),
+						returnStatement(undefined, path.node),
 					]);
 				}
 			}

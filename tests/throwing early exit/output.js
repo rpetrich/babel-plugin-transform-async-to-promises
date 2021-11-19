@@ -1,0 +1,1 @@
+_async(arg=>{let _exit=false;return _continue(_catch(()=>_await(arg,value=>{const _value$missing=value.missing;_exit=true;return _value$missing;}),_empty),_result=>_exit?_result:"fallback");})

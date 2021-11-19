@@ -1,1 +1,1 @@
-_async((left,right)=>{let _exit=false;return _invoke(()=>{if(true){const _left=left();return _await(_left&&right(),result=>{_exit=true;return result||result;},!_left);}},_result=>_exit?_result:false);})
+_async((left,right)=>{let _exit=false;return _invoke(()=>{if(true){const _left=left();return _await(_left&&right(),result=>{const _temp=result||result;_exit=true;return _temp;},!_left);}},_result=>_exit?_result:false);})

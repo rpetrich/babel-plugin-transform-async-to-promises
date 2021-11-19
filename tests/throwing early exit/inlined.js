@@ -1,0 +1,1 @@
+function(arg){try{let _exit=false;const _temp=_catch(function(){return Promise.resolve(arg).then(function(value){const _value$missing=value.missing;_exit=true;return _value$missing;});},function(){});return Promise.resolve(_temp&&_temp.then?_temp.then(function(_result){return _exit?_result:"fallback";}):_exit?_temp:"fallback");}catch(e){return Promise.reject(e);}}

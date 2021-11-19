@@ -1645,13 +1645,29 @@ export default function ({
 				const id = path.scope.generateUidIdentifier(name);
 				const init = path.node;
 				path.replaceWith(id);
-				targetPath.scope.push(
-					(declarators[name] = {
-						kind: "const",
-						id,
-						init,
-					})
-				);
+				const declarator = (declarators[name] = {
+					kind: "const",
+					id,
+					init,
+				});
+				let skip = false;
+				if (targetPath.isClassMethod() && targetPath.node.kind === "constructor") {
+					// Workaround Scope.push not taking into account calls to super within constructors
+					targetPath.traverse({
+						Super(path) {
+							if (!skip && path.parentPath.isCallExpression() && path.parentPath.get("callee") === path) {
+								path.stop();
+								path.getStatementParent()!.insertAfter(
+									types.variableDeclaration("const", [types.variableDeclarator(id, init)])
+								);
+								skip = true;
+							}
+						},
+					});
+				}
+				if (!skip) {
+					targetPath.scope.push(declarator);
+				}
 				const binding = targetPath.scope.getBinding(id.name);
 				if (binding) {
 					binding.path.skip();

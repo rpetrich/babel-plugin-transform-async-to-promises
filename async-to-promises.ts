@@ -3966,9 +3966,10 @@ export default function ({
 	}
 
 	function insertHelper(programPath: NodePath<Program>, value: Node): NodePath {
-		const destinationPath = programPath
-			.get("body")
-			.find((path: NodePath) => !isHelperDefinitionSet.has(path.node) && !path.isImportDeclaration())!;
+		const body = programPath.get("body");
+		const destinationPath =
+			body.find((path: NodePath) => !isHelperDefinitionSet.has(path.node) && !path.isImportDeclaration()) ||
+			body.find(() => true)!;
 		if (destinationPath.isVariableDeclaration()) {
 			const before = destinationPath
 				.get("declarations")

@@ -288,6 +288,7 @@ interface BreakContinueItem {
 	identifier: Identifier;
 	name?: string;
 	path: NodePath<Statement>;
+	isAsync: boolean;
 }
 
 interface ForToIdentifier {
@@ -2800,6 +2801,7 @@ export default function ({
 		exitIdentifier?: Identifier;
 		breakIdentifiers: BreakContinueItem[];
 		usedIdentifiers: BreakContinueItem[];
+		switchCount: number;
 	}> = {
 		Function: skipNode,
 		ReturnStatement(path) {
@@ -2846,32 +2848,62 @@ export default function ({
 				}
 			}
 		},
+		SwitchStatement: {
+			enter() {
+				this.switchCount++;
+			},
+			exit() {
+				this.switchCount--;
+			},
+		},
+		Loop: {
+			enter(path) {
+				const parent = path.parentPath;
+				this.breakIdentifiers.unshift({
+					identifier: types.identifier("break"),
+					path,
+					name: parent.isLabeledStatement() ? parent.node.label.name : undefined,
+					isAsync: false,
+				});
+			},
+			exit() {
+				this.breakIdentifiers.shift();
+			},
+		},
 		BreakStatement(path) {
-			const replace = returnStatement(undefined, path.node);
 			const label = path.node.label;
-			const index = label
-				? this.breakIdentifiers.findIndex((breakIdentifier) => breakIdentifier.name === label.name)
-				: 0;
-			if (index !== -1 && this.breakIdentifiers.length) {
-				const used = this.breakIdentifiers.slice(0, index + 1);
-				if (used.length) {
-					pushMissing(this.usedIdentifiers, used);
-					path.replaceWithMultiple([
-						types.expressionStatement(setBreakIdentifiers(used, this.pluginState)),
-						replace,
-					]);
-					return;
+			if (label || this.switchCount === 0) {
+				const index = label
+					? this.breakIdentifiers.findIndex((breakIdentifier) => breakIdentifier.name === label.name)
+					: 0;
+				const replace = returnStatement(undefined, path.node);
+				if (index !== -1 && this.breakIdentifiers.length) {
+					if (!this.breakIdentifiers[index].isAsync) {
+						return;
+					}
+					const used = this.breakIdentifiers.slice(0, index + 1);
+					if (used.length) {
+						pushMissing(this.usedIdentifiers, used);
+						path.replaceWithMultiple([
+							types.expressionStatement(setBreakIdentifiers(used, this.pluginState)),
+							replace,
+						]);
+						return;
+					}
 				}
+				path.replaceWith(replace);
 			}
-			path.replaceWith(replace);
 		},
 		ContinueStatement(path) {
-			const replace = returnStatement(undefined, path.node);
 			const label = path.node.label;
 			const index = label
 				? this.breakIdentifiers.findIndex((breakIdentifier) => breakIdentifier.name === label.name)
 				: 0;
+			const replace = returnStatement(undefined, path.node);
 			if (index !== -1 && this.breakIdentifiers.length) {
+				if (!this.breakIdentifiers[index].isAsync) {
+					return;
+				}
 				const used = this.breakIdentifiers.slice(0, index);
 				if (used.length) {
 					pushMissing(this.usedIdentifiers, used);
@@ -2912,6 +2944,7 @@ export default function ({
 			exitIdentifier,
 			breakIdentifiers: breakContinueStackForPath(path),
 			usedIdentifiers,
+			switchCount: 0,
 		};
 		path.traverse(replaceReturnsAndBreaksVisitor, state);
 		// Add declarations for any new identifiers
@@ -3014,9 +3047,9 @@ export default function ({
 	}
 
 	// Build the break/continue stack for a path
-	function breakContinueStackForPath(path: NodePath) {
+	function breakContinueStackForPath(path: NodePath): BreakContinueItem[] {
 		let current: NodePath | null = path;
-		const result = [];
+		const result = [] as BreakContinueItem[];
 		while (current && !current.isFunction()) {
 			if (current.isLoop() || current.isSwitchStatement()) {
 				const breaks = pathsBreak(current);
@@ -3029,6 +3062,7 @@ export default function ({
 								identifier: breakIdentifierForPath(current),
 								name: current.parentPath.node.label.name,
 								path: current.parentPath,
+								isAsync: true,
 							});
 						}
 						current = current.parentPath;
@@ -3036,6 +3070,7 @@ export default function ({
 						result.push({
 							identifier: breakIdentifierForPath(current),
 							path: current,
+							isAsync: true,
 						});
 					}
 				}
@@ -3046,6 +3081,7 @@ export default function ({
 						identifier: breakIdentifierForPath(current.get("body")),
 						name: current.node.label.name,
 						path: current,
+						isAsync: true,
 					});
 				}
 			}

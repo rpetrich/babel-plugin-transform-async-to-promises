@@ -1,0 +1,1 @@
+const foo=function _foo(){try{return _await(bar);}catch(e){return Promise.reject(e);}};

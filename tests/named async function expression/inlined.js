@@ -1,0 +1,1 @@
+const foo=function _foo(){try{return Promise.resolve(bar);}catch(e){return Promise.reject(e);}};

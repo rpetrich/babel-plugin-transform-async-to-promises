@@ -3053,7 +3053,7 @@ export default function ({
 		while (current && !current.isFunction()) {
 			if (current.isLoop() || current.isSwitchStatement()) {
 				const breaks = pathsBreak(current);
-				if (breaks.any && !breaks.all) {
+				if (breaks.any && (!current.isSwitchStatement() || !breaks.all)) {
 					const simpleReferences = simpleBreakOrContinueReferences(current);
 					if (current.parentPath.isLabeledStatement()) {
 						const refs = namedLabelReferences(current.parentPath, path);

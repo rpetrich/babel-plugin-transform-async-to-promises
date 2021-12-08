@@ -1,0 +1,1 @@
+_async((foo,until)=>{let count=0;return _continue(_for(foo,void 0,()=>{++count;}),()=>count);})

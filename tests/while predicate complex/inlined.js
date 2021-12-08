@@ -1,0 +1,1 @@
+function(foo,until){try{let count=0;const _temp=_for(function(){return!!Promise.resolve(foo()).then(function(_foo){return _foo!==until;});},void 0,function(){++count;});return Promise.resolve(_temp&&_temp.then?_temp.then(function(){return count;}):count);}catch(e){return Promise.reject(e);}}

@@ -3853,7 +3853,7 @@ export default function ({
 					awaitPath.isYieldExpression()
 						? yieldOnExpression(state.generatorState, awaitExpression)
 						: awaitExpression,
-					parent.isStatement() ? parent.node : undefined,
+					parent.isStatement() ? parent.node : types.returnStatement(parent.node),
 					parent,
 					additionalConstantNames,
 					resultIdentifier,

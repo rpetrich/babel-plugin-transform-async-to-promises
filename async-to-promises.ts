@@ -232,7 +232,32 @@ const constantStaticMethods: { readonly [name: string]: { readonly [name: string
 	"$": constantFunctionMethods,
 } as const;
 
-type HelperName = "_async" | "_await" | "_empty" | "_call" | "_yield" | "_continue" | "_continueIgnored" | "_catch" | "_catchInGenerator" | "_finally" | "_finallyRethrows" | "_invoke" | "_invokeIgnored" | "_switch" | "_for" | "_do" | "_forTo" | "_forOf" | "_forOwn" | "_forIn" | "_forAwaitOf" | "_rethrow" | "_promiseResolve" | "_promiseThen" | "_AsyncGenerator";
+type HelperName =
+	| "_async"
+	| "_await"
+	| "_empty"
+	| "_call"
+	| "_yield"
+	| "_continue"
+	| "_continueIgnored"
+	| "_catch"
+	| "_catchInGenerator"
+	| "_finally"
+	| "_finallyRethrows"
+	| "_invoke"
+	| "_invokeIgnored"
+	| "_switch"
+	| "_for"
+	| "_do"
+	| "_forTo"
+	| "_forOf"
+	| "_forOwn"
+	| "_forIn"
+	| "_forAwaitOf"
+	| "_rethrow"
+	| "_promiseResolve"
+	| "_promiseThen"
+	| "_AsyncGenerator";
 
 // Weakly stored information on nodes
 
@@ -1119,8 +1144,14 @@ export default function ({
 			}
 			args.push(directExpression);
 		}
-		const baseHelper: "_call" | "_await" | "_invoke" | "_continue" = directExpression ? (callTarget ? "_call" : "_await") : callTarget ? "_invoke" : "_continue";
-		const helperName: HelperName = ignoreResult ? (baseHelper + "Ignored") as HelperName : baseHelper;
+		const baseHelper: "_call" | "_await" | "_invoke" | "_continue" = directExpression
+			? callTarget
+				? "_call"
+				: "_await"
+			: callTarget
+			? "_invoke"
+			: "_continue";
+		const helperName: HelperName = ignoreResult ? ((baseHelper + "Ignored") as HelperName) : baseHelper;
 		if (args.length === 1) {
 			// Handle a few cases where a helper isn't actually necessary
 			switch (helperName) {
@@ -3928,7 +3959,7 @@ export default function ({
 					if (args.length > 0 && args[0].isExpression()) {
 						unpromisify(args[0], pluginState);
 					}
-					// fallthrough
+				// fallthrough
 				case "_call": {
 					const args = path.get("arguments");
 					if (args.length > 2) {

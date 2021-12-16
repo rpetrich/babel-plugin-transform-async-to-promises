@@ -232,13 +232,15 @@ const constantStaticMethods: { readonly [name: string]: { readonly [name: string
 	"$": constantFunctionMethods,
 } as const;
 
+type HelperName = "_async" | "_await" | "_empty" | "_call" | "_yield" | "_continue" | "_continueIgnored" | "_catch" | "_catchInGenerator" | "_finally" | "_finallyRethrows" | "_invoke" | "_invokeIgnored" | "_switch" | "_for" | "_do" | "_forTo" | "_forOf" | "_forOwn" | "_forIn" | "_forAwaitOf" | "_rethrow" | "_promiseResolve" | "_promiseThen" | "_AsyncGenerator";
+
 // Weakly stored information on nodes
 
 const originalNodeMap = new WeakMap<Node, Node>();
 const skipNodeSet = new WeakSet<Node>();
 const breakIdentifierMap = new WeakMap<Node, Identifier>();
 const isHelperDefinitionSet = new WeakSet<Node>();
-const helperNameMap = new WeakMap<Identifier | MemberExpression, string>();
+const helperNameMap = new WeakMap<Identifier | MemberExpression, HelperName>();
 const nodeIsAsyncSet = new WeakSet<Node>();
 
 interface ForAwaitStatement {
@@ -307,7 +309,7 @@ interface ExtractedDeclarations {
 
 interface Helper {
 	readonly value: Node;
-	readonly dependencies: readonly string[];
+	readonly dependencies: readonly HelperName[];
 }
 let helpers: { [name: string]: Helper } | undefined;
 
@@ -1117,10 +1119,8 @@ export default function ({
 			}
 			args.push(directExpression);
 		}
-		let helperName = directExpression ? (callTarget ? "_call" : "_await") : callTarget ? "_invoke" : "_continue";
-		if (ignoreResult) {
-			helperName += "Ignored";
-		}
+		const baseHelper: "_call" | "_await" | "_invoke" | "_continue" = directExpression ? (callTarget ? "_call" : "_await") : callTarget ? "_invoke" : "_continue";
+		const helperName: HelperName = ignoreResult ? (baseHelper + "Ignored") as HelperName : baseHelper;
 		if (args.length === 1) {
 			// Handle a few cases where a helper isn't actually necessary
 			switch (helperName) {
@@ -1995,12 +1995,14 @@ export default function ({
 							callTarget = onlyArgument;
 						}
 						// Match function() { return _await(...()); } or function() { return Promise.resolve(...()); }
-						if (
-							(types.isIdentifier(callee) || types.isMemberExpression(callee)) &&
-							helperNameMap.get(callee) === "_await"
-						) {
-							if (types.isCallExpression(onlyArgument) && onlyArgument.arguments.length === 0) {
-								callTarget = onlyArgument.callee;
+						if (types.isIdentifier(callee) || types.isMemberExpression(callee)) {
+							switch (helperNameMap.get(callee)) {
+								case "_await":
+								case "_promiseResolve":
+									if (types.isCallExpression(onlyArgument) && onlyArgument.arguments.length === 0) {
+										callTarget = onlyArgument.callee;
+									}
+									break;
 							}
 						}
 						break;
@@ -3417,7 +3419,7 @@ export default function ({
 					);
 				}
 				if (parent.node.finalizer) {
-					let finallyName: string;
+					let finallyName: HelperName;
 					let finallyArgs: Identifier[];
 					let finallyBody = parent.node.finalizer.body;
 					if (!pathsReturnOrThrow(parent.get("finalizer")).all) {
@@ -3848,12 +3850,13 @@ export default function ({
 						reusingExisting.remove();
 					}
 				}
+				const parentNode = parent.node;
 				relocateTail(
 					state.generatorState,
 					awaitPath.isYieldExpression()
 						? yieldOnExpression(state.generatorState, awaitExpression)
 						: awaitExpression,
-					parent.isStatement() ? parent.node : types.returnStatement(parent.node),
+					types.isStatement(parentNode) ? parentNode : types.returnStatement(parentNode),
 					parent,
 					additionalConstantNames,
 					resultIdentifier,
@@ -3921,6 +3924,11 @@ export default function ({
 		) {
 			switch (helperNameMap.get(path.node.callee)) {
 				case "_await":
+					const args = path.get("arguments");
+					if (args.length > 0 && args[0].isExpression()) {
+						unpromisify(args[0], pluginState);
+					}
+					// fallthrough
 				case "_call": {
 					const args = path.get("arguments");
 					if (args.length > 2) {
@@ -3929,6 +3937,21 @@ export default function ({
 							secondArg.traverse(unpromisifyVisitor, pluginState);
 						} else if (secondArg.isIdentifier()) {
 							const binding = secondArg.scope.getBinding(secondArg.node.name);
+							if (binding && binding.path.isVariableDeclarator()) {
+								binding.path.get("init").traverse(unpromisifyVisitor, pluginState);
+							}
+						}
+					}
+					break;
+				}
+				case "_promiseThen": {
+					const args = path.get("arguments");
+					if (args.length > 2) {
+						const firstArg = args[1];
+						if (types.isExpression(firstArg.node) && isContinuation(firstArg.node)) {
+							firstArg.traverse(unpromisifyVisitor, pluginState);
+						} else if (firstArg.isIdentifier()) {
+							const binding = firstArg.scope.getBinding(firstArg.node.name);
 							if (binding && binding.path.isVariableDeclarator()) {
 								binding.path.get("init").traverse(unpromisifyVisitor, pluginState);
 							}
@@ -4099,7 +4122,7 @@ export default function ({
 	}
 
 	// Emits a reference to a helper, inlining or importing it as necessary
-	function helperReference(state: PluginState, path: NodePath, name: string): Identifier {
+	function helperReference(state: PluginState, path: NodePath, name: HelperName): Identifier {
 		const file = getFile(path);
 		let result = file.declarations[name];
 		if (result) {
@@ -4216,13 +4239,15 @@ export default function ({
 	// Emits a reference to Promise.resolve and tags it as an _await reference
 	function promiseResolve() {
 		const result = types.memberExpression(types.identifier("Promise"), types.identifier("resolve"));
-		helperNameMap.set(result, "_await");
+		helperNameMap.set(result, "_promiseResolve");
 		return result;
 	}
 
 	// Emits a call to a target's then method
 	function callThenMethod(value: Expression, continuation: Expression) {
-		return types.callExpression(types.memberExpression(value, types.identifier("then")), [continuation]);
+		const thenExpression = types.memberExpression(value, types.identifier("then"));
+		helperNameMap.set(thenExpression, "_promiseThen");
+		return types.callExpression(thenExpression, [continuation]);
 	}
 
 	// Checks if an expression is an async call expression
@@ -4231,6 +4256,8 @@ export default function ({
 			switch (helperNameMap.get(path.node.callee)) {
 				case "_await":
 				case "_call":
+				case "_promiseResolve":
+				case "_promiseThen":
 					return path.node.arguments.length < 3;
 			}
 		}
@@ -4581,6 +4608,7 @@ export default function ({
 							const firstArgument = callArgs[0];
 							if (types.isExpression(firstArgument)) {
 								switch (helperNameMap.get(argument.node.callee)) {
+									case "_promiseResolve":
 									case "_await":
 										argument.replaceWith(firstArgument);
 										break;

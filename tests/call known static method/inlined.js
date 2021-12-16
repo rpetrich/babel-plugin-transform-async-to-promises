@@ -1,1 +1,1 @@
-function(promisedData){try{return Promise.resolve(promisedData).then(JSON.parse);}catch(e){return Promise.reject(e);}}
+function(promisedData){return Promise.resolve(promisedData).then(JSON.parse);}

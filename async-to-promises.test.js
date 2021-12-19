@@ -4,8 +4,8 @@ const util = require("util");
 
 const checkTestCases = true;
 const checkOutputMatches = true;
-const testsToRun = [];
-const shouldWriteOutput = false;
+const testsToRun = ["top level await basic"];
+const shouldWriteOutput = true;
 
 const runInlined = true;
 const runHoisted = true;
@@ -173,7 +173,7 @@ function readTest(name) {
 	let output;
 	let inlined;
 	let hoisted;
-	let options;
+	let optionsJSON;
 	const cases = Object.create(null);
 	for (const fileName of fs.readdirSync(`tests/${name}`)) {
 		const content = fs.readFileSync(`tests/${name}/${fileName}`).toString();
@@ -187,7 +187,7 @@ function readTest(name) {
 			hoisted = content;
 		} else if (fileName === "options.json") {
 			try {
-				options = JSON.parse(content);
+				optionsJSON = JSON.parse(content);
 			} catch (e) {
 				throw new Error(`Failed to parse tests/${name}/options.json`);
 			}
@@ -205,7 +205,8 @@ function readTest(name) {
 		plugins = [],
 		supportedBabels = Object.keys(environments),
 		presets = [],
-	} = options || {};
+		options = {},
+	} = optionsJSON || {};
 	return {
 		error,
 		checkSyntax,
@@ -218,6 +219,7 @@ function readTest(name) {
 		plugins,
 		supportedBabels,
 		presets,
+		options,
 	};
 }
 
@@ -243,6 +245,7 @@ for (const name of fs.readdirSync("tests").sort()) {
 				plugins,
 				presets,
 				supportedBabels,
+				options,
 			} = readTest(name);
 			for (const babelName of supportedBabels) {
 				if (!(babelName in environments)) {
@@ -268,7 +271,7 @@ for (const name of fs.readdirSync("tests").sort()) {
 							try {
 								babel.transformFromAst(ast, parseInput, {
 									presets,
-									plugins: [[pluginUnderTest, {}]],
+									plugins: [[pluginUnderTest, options]],
 									compact: true,
 								});
 								throw new Error("Expected error: " + error.toString());
@@ -281,7 +284,7 @@ for (const name of fs.readdirSync("tests").sort()) {
 					const extractFunction = module ? extractOnlyUserCode : extractJustFunction;
 					const result = babel.transformFromAst(types.cloneDeep(ast), parseInput, {
 						presets,
-						plugins: mappedPlugins.concat([[pluginUnderTest, { target: "es6" }]]),
+						plugins: mappedPlugins.concat([[pluginUnderTest, Object.assign({ target: "es6" }, options)]]),
 						compact: true,
 						ast: true,
 					});
@@ -289,7 +292,9 @@ for (const name of fs.readdirSync("tests").sort()) {
 					if (runInlined) {
 						var inlinedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, {
 							presets,
-							plugins: mappedPlugins.concat([[pluginUnderTest, { inlineHelpers: true }]]),
+							plugins: mappedPlugins.concat([
+								[pluginUnderTest, Object.assign({ inlineHelpers: true }, options)],
+							]),
 							compact: true,
 							ast: true,
 						});
@@ -298,7 +303,9 @@ for (const name of fs.readdirSync("tests").sort()) {
 					if (runHoisted) {
 						var hoistedResult = babel.transformFromAst(types.cloneDeep(ast), parseInput, {
 							presets,
-							plugins: mappedPlugins.concat([[pluginUnderTest, { hoist: true, minify: true }]]),
+							plugins: mappedPlugins.concat([
+								[pluginUnderTest, Object.assign({ hoist: true, minify: true }, options)],
+							]),
 							compact: true,
 							ast: true,
 						});

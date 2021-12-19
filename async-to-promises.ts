@@ -52,6 +52,7 @@ interface AsyncToPromisesConfiguration {
 	inlineHelpers: boolean;
 	minify: boolean;
 	target: "es5" | "es6";
+	topLevelAwait: "disabled" | "simple";
 }
 
 const defaultConfigValues: AsyncToPromisesConfiguration = {
@@ -60,6 +61,7 @@ const defaultConfigValues: AsyncToPromisesConfiguration = {
 	inlineHelpers: false,
 	minify: false,
 	target: "es5",
+	topLevelAwait: "disabled",
 } as const;
 
 function readConfigKey<K extends keyof AsyncToPromisesConfiguration>(
@@ -284,8 +286,12 @@ declare module "@babel/traverse" {
 	}
 }
 
+type UsedHelpers = { [key in HelperName]: true }
+
 interface PluginState {
 	readonly opts: Partial<Readonly<AsyncToPromisesConfiguration>>;
+	processedTopLevelAwait?: true;
+	usedHelpers?: UsedHelpers;
 }
 
 interface GeneratorState {
@@ -343,6 +349,16 @@ const numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seve
 
 type CompatibleSubset<New, Old> = Partial<New> & Pick<New, keyof New & keyof Old>;
 
+function generate(node?: Node): string {
+	if (node === undefined) {
+		return "";
+	}
+	return require("@babel/generator").default(node, {
+		"compact": true,
+		"minified": true,
+	}).code;
+}
+
 // Main function, called by babel with module implementations for types, template, traverse, transformFromAST and its version information
 export default function ({
 	types,
@@ -384,6 +400,7 @@ export default function ({
 		let contextPath: NodePath | null = parentPath;
 		while (contextPath != null) {
 			if (contextPath.context) {
+				console.log("pathForNewNode", generate(node), contextPath.node.type, generate(contextPath.node));
 				const result = contextPath.context.create(parentPath.node, [node], 0, "dummy");
 				result.setContext(contextPath.context);
 				return result;
@@ -1568,7 +1585,8 @@ export default function ({
 		additionalConstantNames: string[],
 		temporary?: Identifier | Pattern,
 		exitCheck?: Expression,
-		directExpression?: Expression
+		directExpression?: Expression,
+		skipReturns?: boolean
 	) {
 		// Find the tail continuation
 		checkPathValidity(target);
@@ -1636,6 +1654,8 @@ export default function ({
 		checkPathValidity(target);
 		// Insert a call to return the awaited expression
 		if (target.isExpression() && target.parentPath.isArrowFunctionExpression()) {
+			target.replaceWith(replacement.expression);
+		} else if (skipReturns) {
 			target.replaceWith(replacement.expression);
 		} else if (target.isBlockStatement() && target.parentPath.isFunctionExpression()) {
 			target.replaceWith(types.blockStatement([returnStatement(replacement.expression, originalNode)]));
@@ -3179,6 +3199,7 @@ export default function ({
 		path: NodePath;
 		additionalConstantNames: string[];
 		exitIdentifier?: Identifier;
+		skipReturns?: boolean;
 	}
 
 	// Calls the _yield helper on an expression
@@ -3366,7 +3387,8 @@ export default function ({
 					undefined,
 					targetPath.isYieldExpression()
 						? undefined
-						: booleanLiteral(false, readConfigKey(pluginState.opts, "minify"))
+						: booleanLiteral(false, readConfigKey(pluginState.opts, "minify")),
+					state.skipReturns
 				);
 			} else if (parent.isIfStatement()) {
 				const test = parent.get("test");
@@ -3391,7 +3413,9 @@ export default function ({
 							parent,
 							additionalConstantNames,
 							resultIdentifier,
-							exitIdentifier
+							exitIdentifier,
+							undefined,
+							state.skipReturns
 						);
 						processExpressions = false;
 					}
@@ -3505,7 +3529,9 @@ export default function ({
 					parent,
 					additionalConstantNames,
 					temporary,
-					exitCheck
+					exitCheck,
+					undefined,
+					state.skipReturns
 				);
 				processExpressions = false;
 			} else if (
@@ -3580,7 +3606,9 @@ export default function ({
 									: (parent as NodePath<Statement>),
 								additionalConstantNames,
 								resultIdentifier,
-								exitIdentifier
+								exitIdentifier,
+								undefined,
+								state.skipReturns
 							);
 							processExpressions = false;
 						} else {
@@ -3701,7 +3729,9 @@ export default function ({
 						parent,
 						additionalConstantNames,
 						resultIdentifier,
-						exitIdentifier
+						exitIdentifier,
+						undefined,
+						state.skipReturns
 					);
 					processExpressions = false;
 				}
@@ -3791,7 +3821,9 @@ export default function ({
 						label && parent.parentPath.isStatement() ? parent.parentPath : parent,
 						additionalConstantNames,
 						resultIdentifier,
-						exitIdentifier
+						exitIdentifier,
+						undefined,
+						state.skipReturns
 					);
 					processExpressions = false;
 				}
@@ -3825,7 +3857,9 @@ export default function ({
 						parent,
 						additionalConstantNames,
 						resultIdentifier,
-						exitCheck
+						exitCheck,
+						undefined,
+						state.skipReturns
 					);
 					processExpressions = false;
 				}
@@ -3892,7 +3926,8 @@ export default function ({
 					additionalConstantNames,
 					resultIdentifier,
 					undefined,
-					awaitPath.isYieldExpression() ? undefined : directExpression
+					awaitPath.isYieldExpression() ? undefined : directExpression,
+					state.skipReturns
 				);
 			}
 		}
@@ -4020,9 +4055,16 @@ export default function ({
 		path: NodePath,
 		additionalConstantNames: string[],
 		exitIdentifier?: Identifier,
-		shouldUnpromisify?: boolean
+		shouldUnpromisify?: boolean,
+		skipReturns?: boolean
 	) {
-		path.traverse(rewriteAsyncBlockVisitor, { generatorState, path, additionalConstantNames, exitIdentifier });
+		path.traverse(rewriteAsyncBlockVisitor, {
+			generatorState,
+			path,
+			additionalConstantNames,
+			exitIdentifier,
+			skipReturns,
+		});
 		if (shouldUnpromisify) {
 			// Rewrite values that potentially could be promises to booleans so that they aren't awaited
 			if (path.isArrowFunctionExpression()) {
@@ -4240,18 +4282,20 @@ export default function ({
 				for (const dependency of helper.dependencies) {
 					helperReference(state, path, dependency);
 				}
+				const usedHelpers = state.usedHelpers || (state.usedHelpers = {} as UsedHelpers);
+				usedHelpers[name] = true;
 				// Insert the new node
-				const value = cloneNode(helper.value) as typeof helper.value;
-				const newPath = insertHelper(file.path, value);
-				// Rename references to other helpers due to name conflicts
-				newPath.traverse({
-					Identifier(path) {
-						const name = path.node.name;
-						if (Object.hasOwnProperty.call(helpers, name)) {
-							path.replaceWith(file.declarations[name]);
-						}
-					},
-				} as Visitor);
+				// const value = cloneNode(helper.value) as typeof helper.value;
+				// const newPath = insertHelper(file.path, value);
+				// // Rename references to other helpers due to name conflicts
+				// newPath.traverse({
+				// 	Identifier(path) {
+				// 		const name = path.node.name;
+				// 		if (Object.hasOwnProperty.call(helpers, name)) {
+				// 			path.replaceWith(file.declarations[name]);
+				// 		}
+				// 	},
+				// } as Visitor);
 			}
 		}
 		return result;
@@ -4766,6 +4810,42 @@ export default function ({
 			parserOptions.plugins.push("asyncGenerators");
 		},
 		visitor: {
+			AwaitExpression(path) {
+				if (!path.getFunctionParent() && !this.processedTopLevelAwait) {
+					this.processedTopLevelAwait = true;
+					if (readConfigKey(this.opts, "topLevelAwait") == "simple") {
+						console.log("AwaitExpression", generate(path.node));
+						const programPath = path.scope.getProgramParent().path;
+						rewriteAsyncBlock({ state: this }, programPath, [], undefined, false, true);
+						console.log("ProgramPath", generate(programPath.node));
+					} else {
+						throw path.buildCodeFrameError(`Top level await is not supported!`, TypeError);
+					}
+					// path.remove();
+				}
+			},
+			Program: {
+				exit(path) {
+					const usedHelpers = this.usedHelpers;
+					if (usedHelpers !== undefined) {
+						const file = getFile(path);
+						for (const helperName of Object.keys(usedHelpers)) {
+							const helper = helpers[helperName];
+							const value = cloneNode(helper.value) as typeof helper.value;
+							const newPath = insertHelper(file.path, value);
+							newPath.traverse({
+								Identifier(identifierPath) {
+									const name = identifierPath.node.name;
+									if (Object.hasOwnProperty.call(helpers, name)) {
+										identifierPath.replaceWith(file.declarations[name]);
+									}
+								},
+							} as Visitor);
+						}
+						console.log(this.usedHelpers, generate(path.node));
+					}
+				},
+			},
 			FunctionDeclaration(path) {
 				const node = path.node;
 				if (node.async) {

@@ -1,0 +1,1 @@
+function(){try{return Promise.resolve(test1()).then(function(r){switch(r){case"1":console.log("1111");break;case"2":console.log("2222");break;}console.log("33333333333");});}catch(e){return Promise.reject(e);}}

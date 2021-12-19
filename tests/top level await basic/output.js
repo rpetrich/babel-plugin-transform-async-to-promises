@@ -1,0 +1,1 @@
+_await(fetch("https://www.example.com/"),response=>_await(response.json(),json=>{console.log(json);}));

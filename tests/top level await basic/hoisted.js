@@ -1,0 +1,1 @@
+function _temp(json){console.log(json);}_await(fetch("https://www.example.com/"),function(response){return _await(response.json(),_temp);});

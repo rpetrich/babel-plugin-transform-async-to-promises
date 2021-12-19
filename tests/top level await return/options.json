@@ -1,0 +1,7 @@
+{
+	"supportedBabels": ["babel 7"],
+	"module": true,
+	"options": {
+		"topLevelAwait": "return"
+	}
+}

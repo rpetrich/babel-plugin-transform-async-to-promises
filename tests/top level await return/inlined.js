@@ -1,0 +1,1 @@
+return Promise.resolve(fetch("https://www.example.com/")).then(function(response){return Promise.resolve(response.json()).then(function(json){console.log(json);});});

@@ -1,6 +1,5 @@
 const asyncToPromises = require("./async-to-promises");
 const fs = require("fs");
-const util = require("util");
 
 const checkTestCases = true;
 const checkOutputMatches = true;
@@ -14,7 +13,7 @@ const environments = {
 	"babel 6": {
 		babel: require("babel-core"),
 		types: require("babel-types"),
-		parse(babel, input) {
+		parse(_babel, input) {
 			return require("babylon").parse(input, {
 				allowReturnOutsideFunction: true,
 				sourceType: "module",

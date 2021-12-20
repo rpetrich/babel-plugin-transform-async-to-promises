@@ -87,6 +87,7 @@ export default fetchAsObjectURL;
 
 ### Partial Support
 - `Function.length`: `async` functions will often return a length of 0 (when the `_async` wrapper is used)
+- Top level await support is experimental with compatible module bundler. Set `topLevelAwait` option to `return` when using SystemJS.
 
 ### No support
 - `eval`: impossible to support without deep hooks into the runtime

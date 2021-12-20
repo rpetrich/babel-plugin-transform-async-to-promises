@@ -290,7 +290,7 @@ type UsedHelpers = { [key in HelperName]: true };
 
 interface PluginState {
 	readonly opts: Partial<Readonly<AsyncToPromisesConfiguration>>;
-	processedTopLevelAwait?: true;
+	hasTopLevelAwait?: boolean;
 	usedHelpers?: UsedHelpers;
 }
 
@@ -348,6 +348,10 @@ const alwaysTruthy = Object.keys(constantStaticMethods);
 const numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
 type CompatibleSubset<New, Old> = Partial<New> & Pick<New, keyof New & keyof Old>;
+
+interface FindAwaitExpressionState {
+	awaitPath?: NodePath;
+}
 
 // function generate(node?: Node): string {
 // 	if (node === undefined) {
@@ -4791,6 +4795,13 @@ export default function ({
 		},
 	};
 
+	const findAwaitExpressionVisitor: Visitor<FindAwaitExpressionState> = {
+		AwaitExpression(path) {
+			this.awaitPath = path;
+			path.stop();
+		},
+	};
+
 	// Main babel plugin implementation and top level visitor
 	return {
 		manipulateOptions(_options: any, parserOptions: { plugins: string[] }) {
@@ -4798,31 +4809,45 @@ export default function ({
 		},
 		visitor: {
 			AwaitExpression(path) {
-				if (!path.getFunctionParent() && !this.processedTopLevelAwait) {
-					this.processedTopLevelAwait = true;
-					switch (readConfigKey(this.opts, "topLevelAwait")) {
-						case "simple": {
-							const programPath = path.scope.getProgramParent().path;
-							rewriteAsyncBlock({ state: this }, programPath, [], undefined, false, true);
-							break;
-						}
-						case "return": {
-							const programPath = path.scope.getProgramParent().path;
-							rewriteAsyncBlock({ state: this }, programPath, [], undefined, false, false);
-							break;
-						}
-						case "ignore":
-							break;
-						default:
-							throw path.buildCodeFrameError(
-								`Top level await is not supported unless experimental topLevelAwait: "simple" or topLevelAwait: "return" options are specified!`,
-								TypeError
-							);
-					}
+				if (!path.getFunctionParent() && !this.hasTopLevelAwait) {
+					this.hasTopLevelAwait = true;
 				}
 			},
 			Program: {
 				exit(path) {
+					if (this.hasTopLevelAwait) {
+						// rediscover the top level await path since it may have been reorganized by a module plugin
+						let rediscoverState = {} as FindAwaitExpressionState;
+						path.traverse(findAwaitExpressionVisitor, rediscoverState);
+						if (rediscoverState.awaitPath !== undefined) {
+							const functionParent = rediscoverState.awaitPath.getFunctionParent();
+							const topLevelAwaitParent = functionParent ? functionParent.get("body") : path;
+							switch (readConfigKey(this.opts, "topLevelAwait")) {
+								case "simple": {
+									rewriteAsyncBlock({ state: this }, topLevelAwaitParent, [], undefined, false, true);
+									break;
+								}
+								case "return": {
+									rewriteAsyncBlock(
+										{ state: this },
+										topLevelAwaitParent,
+										[],
+										undefined,
+										false,
+										false
+									);
+									break;
+								}
+								case "ignore":
+									break;
+								default:
+									throw rediscoverState.awaitPath.buildCodeFrameError(
+										`Top level await is not supported unless experimental topLevelAwait: "simple" or topLevelAwait: "return" options are specified!`,
+										TypeError
+									);
+							}
+						}
+					}
 					const usedHelpers = this.usedHelpers;
 					if (usedHelpers !== undefined) {
 						const file = getFile(path);

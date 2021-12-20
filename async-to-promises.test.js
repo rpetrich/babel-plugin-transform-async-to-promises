@@ -40,6 +40,7 @@ const environments = {
 		},
 		pluginMapping: {
 			"transform-modules-commonjs": "@babel/plugin-transform-modules-commonjs",
+			"transform-modules-systemjs": "@babel/plugin-transform-modules-systemjs",
 			"transform-parameters": "@babel/plugin-transform-parameters",
 			"transform-classes": "@babel/plugin-transform-classes",
 			"external-helpers": "@babel/plugin-external-helpers",

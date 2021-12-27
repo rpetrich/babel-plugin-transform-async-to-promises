@@ -4804,6 +4804,7 @@ export default function ({
 
 	// Main babel plugin implementation and top level visitor
 	return {
+		name: "transform-async-to-promises",
 		manipulateOptions(_options: any, parserOptions: { plugins: string[] }) {
 			parserOptions.plugins.push("asyncGenerators");
 		},

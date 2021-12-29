@@ -4817,14 +4817,20 @@ export default function ({
 			ImportDeclaration: {
 				exit(path) {
 					if (this.hasTopLevelAwait && readConfigKey(this.opts, "topLevelAwait") === "simple") {
-						throw path.buildCodeFrameError(`Cannot import after a top-level await when using topLevelAwait: "simple"!`, TypeError);
+						throw path.buildCodeFrameError(
+							`Cannot import after a top-level await when using topLevelAwait: "simple"!`,
+							TypeError
+						);
 					}
 				},
 			},
 			ExportDeclaration: {
 				exit(path) {
 					if (this.hasTopLevelAwait && readConfigKey(this.opts, "topLevelAwait") === "simple") {
-						throw path.buildCodeFrameError(`Cannot export after a top-level await when using topLevelAwait: "simple"!`, TypeError);
+						throw path.buildCodeFrameError(
+							`Cannot export after a top-level await when using topLevelAwait: "simple"!`,
+							TypeError
+						);
 					}
 				},
 			},

@@ -48,6 +48,7 @@ import { code as helperCode } from "./helpers-string";
 // Configuration types
 interface AsyncToPromisesConfiguration {
 	externalHelpers: boolean;
+	externalHelpersPath: string;
 	hoist: boolean;
 	inlineHelpers: boolean;
 	minify: boolean;
@@ -57,6 +58,7 @@ interface AsyncToPromisesConfiguration {
 
 const defaultConfigValues: AsyncToPromisesConfiguration = {
 	externalHelpers: false,
+	externalHelpersPath: "babel-plugin-transform-async-to-promises/helpers",
 	hoist: false,
 	inlineHelpers: false,
 	minify: false,
@@ -4214,7 +4216,7 @@ export default function ({
 					"body",
 					types.importDeclaration(
 						[types.importSpecifier(result, types.identifier(name))],
-						types.stringLiteral("babel-plugin-transform-async-to-promises/helpers")
+						types.stringLiteral(readConfigKey(state.opts, "externalHelpersPath"))
 					)
 				);
 			} else {
